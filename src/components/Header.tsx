@@ -58,6 +58,7 @@ const LoadingDot = styled.div`
 
 interface HeaderProps {
   selectedCrypto: string;
+  selectedFiat: string;
 }
 
 const cryptoIds: { [key: string]: string } = {
@@ -68,7 +69,7 @@ const cryptoIds: { [key: string]: string } = {
   XRP: 'ripple'
 };
 
-const Header: React.FC<HeaderProps> = ({ selectedCrypto }) => {
+const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const { prices, loading, error } = useCrypto();
 
   const handlePowerClick = () => {
@@ -83,10 +84,10 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto }) => {
     const cryptoId = cryptoIds[selectedCrypto];
     if (!prices[cryptoId]) return 'N/A';
     
-    const price = prices[cryptoId].usd;
-    return price.toLocaleString('en-US', { 
+    const price = prices[cryptoId][selectedFiat.toLowerCase()];
+    return price.toLocaleString(selectedFiat === 'USD' ? 'en-US' : selectedFiat === 'EUR' ? 'de-DE' : 'en-CA', { 
       style: 'currency', 
-      currency: 'USD',
+      currency: selectedFiat,
       maximumFractionDigits: 0
     });
   };

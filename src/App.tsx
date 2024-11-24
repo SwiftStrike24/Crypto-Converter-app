@@ -29,13 +29,19 @@ const ContentContainer = styled.div`
 
 const App: React.FC = () => {
   const [selectedCrypto, setSelectedCrypto] = useState('BTC');
+  const [selectedFiat, setSelectedFiat] = useState('USD');
 
   return (
     <CryptoProvider>
       <AppContainer>
-        <Header selectedCrypto={selectedCrypto} />
+        <Header selectedCrypto={selectedCrypto} selectedFiat={selectedFiat} />
         <ContentContainer>
-          <Converter onCryptoChange={setSelectedCrypto} defaultCrypto={selectedCrypto} />
+          <Converter 
+            onCryptoChange={setSelectedCrypto} 
+            onFiatChange={setSelectedFiat}
+            defaultCrypto={selectedCrypto}
+            defaultFiat={selectedFiat}
+          />
           <Footer />
         </ContentContainer>
       </AppContainer>

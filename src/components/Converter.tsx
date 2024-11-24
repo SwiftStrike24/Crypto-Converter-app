@@ -12,6 +12,7 @@ const InputGroup = styled.div`
   display: flex;
   gap: 10px;
   align-items: center;
+  position: relative;
 `;
 
 const Input = styled.input`
@@ -26,6 +27,11 @@ const Input = styled.input`
   &:focus {
     outline: none;
     border-color: #8b5cf6;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 `;
 
@@ -59,6 +65,15 @@ const Label = styled.label`
   border: 0;
 `;
 
+const ErrorMessage = styled.div`
+  color: #ff4444;
+  font-size: 12px;
+  margin-top: 4px;
+  position: absolute;
+  bottom: -20px;
+  left: 0;
+`;
+
 const cryptos = ['BTC', 'ETH', 'SOL', 'USDC', 'XRP'];
 const fiats = ['USD', 'EUR', 'CAD'];
 
@@ -72,27 +87,109 @@ const cryptoIds: { [key: string]: string } = {
 
 interface ConverterProps {
   onCryptoChange: (crypto: string) => void;
+  onFiatChange: (fiat: string) => void;
   defaultCrypto: string;
+  defaultFiat: string;
 }
 
-const Converter: React.FC<ConverterProps> = ({ onCryptoChange, defaultCrypto }) => {
-  const [amount, setAmount] = useState<string>('');
+const Converter: React.FC<ConverterProps> = ({ 
+  onCryptoChange, 
+  onFiatChange,
+  defaultCrypto,
+  defaultFiat
+}) => {
+  const [cryptoAmount, setCryptoAmount] = useState<string>('');
+  const [fiatAmount, setFiatAmount] = useState<string>('');
   const [selectedCrypto, setSelectedCrypto] = useState(defaultCrypto);
-  const [selectedFiat, setSelectedFiat] = useState('USD');
+  const [selectedFiat, setSelectedFiat] = useState(defaultFiat);
+  const [error, setError] = useState<string>('');
   const { prices, loading } = useCrypto();
 
-  const convertedAmount = useMemo(() => {
-    if (!amount || loading || !prices) return '';
+  // Reset inputs when switching assets
+  useEffect(() => {
+    setCryptoAmount('');
+    setFiatAmount('');
+    setError('');
+  }, [selectedCrypto, selectedFiat]);
 
-    const cryptoId = cryptoIds[selectedCrypto];
-    if (!prices[cryptoId]) return '';
+  const getRate = (cryptoId: string, fiat: string): number => {
+    if (!prices[cryptoId]) return 0;
+    return prices[cryptoId][fiat.toLowerCase()] || 0;
+  };
 
-    const rate = prices[cryptoId][selectedFiat.toLowerCase()];
-    if (!rate) return '';
+  const handleCryptoAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    // Clear error
+    setError('');
 
-    const converted = parseFloat(amount) * rate;
-    return converted.toFixed(2);
-  }, [amount, selectedCrypto, selectedFiat, prices, loading]);
+    // Validate input
+    if (value === '') {
+      setCryptoAmount('');
+      setFiatAmount('');
+      return;
+    }
+
+    if (!/^\d*\.?\d*$/.test(value)) {
+      setError('Please enter a valid number');
+      return;
+    }
+
+    const numValue = parseFloat(value);
+    if (numValue < 0) {
+      setError('Amount cannot be negative');
+      return;
+    }
+
+    if (numValue > 1000000000) {
+      setError('Amount is too large');
+      return;
+    }
+
+    setCryptoAmount(value);
+    const rate = getRate(cryptoIds[selectedCrypto], selectedFiat);
+    if (rate) {
+      const converted = numValue * rate;
+      setFiatAmount(converted.toFixed(2));
+    }
+  };
+
+  const handleFiatAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    
+    // Clear error
+    setError('');
+
+    // Validate input
+    if (value === '') {
+      setCryptoAmount('');
+      setFiatAmount('');
+      return;
+    }
+
+    if (!/^\d*\.?\d*$/.test(value)) {
+      setError('Please enter a valid number');
+      return;
+    }
+
+    const numValue = parseFloat(value);
+    if (numValue < 0) {
+      setError('Amount cannot be negative');
+      return;
+    }
+
+    if (numValue > 1000000000) {
+      setError('Amount is too large');
+      return;
+    }
+
+    setFiatAmount(value);
+    const rate = getRate(cryptoIds[selectedCrypto], selectedFiat);
+    if (rate) {
+      const converted = numValue / rate;
+      setCryptoAmount(converted.toFixed(8));
+    }
+  };
 
   // Handle crypto selection change
   const handleCryptoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -101,23 +198,32 @@ const Converter: React.FC<ConverterProps> = ({ onCryptoChange, defaultCrypto }) 
     onCryptoChange(newCrypto);
   };
 
+  // Handle fiat selection change
+  const handleFiatChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newFiat = e.target.value;
+    setSelectedFiat(newFiat);
+    onFiatChange(newFiat);
+  };
+
   return (
     <ConverterContainer>
       <InputGroup>
         <Label htmlFor="crypto-amount">Cryptocurrency Amount</Label>
         <Input
           id="crypto-amount"
-          type="number"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="Amount"
+          type="text"
+          value={cryptoAmount}
+          onChange={handleCryptoAmountChange}
+          placeholder="0.00"
           aria-label="Cryptocurrency amount"
+          disabled={loading}
         />
         <Select
           id="crypto-select"
           value={selectedCrypto}
           onChange={handleCryptoChange}
-          title="Cryptocurrency"
+          title="Select Cryptocurrency"
+          disabled={loading}
         >
           {cryptos.map((crypto) => (
             <option key={crypto} value={crypto}>
@@ -125,22 +231,25 @@ const Converter: React.FC<ConverterProps> = ({ onCryptoChange, defaultCrypto }) 
             </option>
           ))}
         </Select>
+        {error && <ErrorMessage>{error}</ErrorMessage>}
       </InputGroup>
       <InputGroup>
         <Label htmlFor="fiat-amount">Fiat Amount</Label>
         <Input
           id="fiat-amount"
           type="text"
-          value={convertedAmount}
-          readOnly
-          placeholder="Converted amount"
-          aria-label="Converted fiat amount"
+          value={fiatAmount}
+          onChange={handleFiatAmountChange}
+          placeholder="0.00"
+          aria-label="Fiat amount"
+          disabled={loading}
         />
         <Select
           id="fiat-select"
           value={selectedFiat}
-          onChange={(e) => setSelectedFiat(e.target.value)}
-          title="Fiat Currency"
+          onChange={handleFiatChange}
+          title="Select Fiat Currency"
+          disabled={loading}
         >
           {fiats.map((fiat) => (
             <option key={fiat} value={fiat}>
