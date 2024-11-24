@@ -18,6 +18,7 @@ function createWindow() {
     height: 300,
     frame: false,
     transparent: true,
+    show: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -67,19 +68,7 @@ function createWindow() {
   ipcMain.on('show-window', () => {
     if (mainWindow && !mainWindow.isVisible()) {
       mainWindow.show();
-      mainWindow.setOpacity(0);
-      let opacity = 0;
-      const fadeIn = setInterval(() => {
-        if (!mainWindow) {
-          clearInterval(fadeIn);
-          return;
-        }
-        opacity += 0.1;
-        if (opacity >= 1) {
-          clearInterval(fadeIn);
-        }
-        mainWindow.setOpacity(opacity);
-      }, 10);
+      mainWindow.setOpacity(1);
     }
   });
 }
@@ -91,22 +80,10 @@ app.whenReady().then(() => {
   globalShortcut.register('`', () => {
     if (mainWindow) {
       if (mainWindow.isVisible()) {
-        let opacity = 1;
-        const fadeOut = setInterval(() => {
-          if (!mainWindow) {
-            clearInterval(fadeOut);
-            return;
-          }
-          opacity -= 0.1;
-          if (opacity <= 0) {
-            clearInterval(fadeOut);
-            mainWindow.hide();
-          }
-          mainWindow.setOpacity(opacity);
-        }, 10);
+        mainWindow.hide();
       } else {
         mainWindow.show();
-        ipcMain.emit('show-window');
+        mainWindow.setOpacity(1);
       }
     }
   });

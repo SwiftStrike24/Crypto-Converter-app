@@ -1,5 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
+import { useCrypto } from '../context/CryptoContext';
 
 const HeaderContainer = styled.div`
   display: flex;
@@ -16,6 +17,9 @@ const ExchangeRate = styled.div`
   font-size: 14px;
   color: #ffffff;
   margin-right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
 `;
 
 const PowerButton = styled.button`
@@ -38,16 +42,61 @@ const PowerButton = styled.button`
   }
 `;
 
-const Header: React.FC = () => {
+const LoadingDot = styled.div`
+  width: 8px;
+  height: 8px;
+  background-color: #8b5cf6;
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+
+  @keyframes pulse {
+    0% { opacity: 0.3; }
+    50% { opacity: 1; }
+    100% { opacity: 0.3; }
+  }
+`;
+
+interface HeaderProps {
+  selectedCrypto: string;
+}
+
+const cryptoIds: { [key: string]: string } = {
+  BTC: 'bitcoin',
+  ETH: 'ethereum',
+  SOL: 'solana',
+  USDC: 'usd-coin',
+  XRP: 'ripple'
+};
+
+const Header: React.FC<HeaderProps> = ({ selectedCrypto }) => {
+  const { prices, loading, error } = useCrypto();
+
   const handlePowerClick = () => {
     const { ipcRenderer } = window.require('electron');
     ipcRenderer.send('quit-app');
   };
 
+  const getPrice = () => {
+    if (loading) return <LoadingDot />;
+    if (error) return 'Error';
+    
+    const cryptoId = cryptoIds[selectedCrypto];
+    if (!prices[cryptoId]) return 'N/A';
+    
+    const price = prices[cryptoId].usd;
+    return price.toLocaleString('en-US', { 
+      style: 'currency', 
+      currency: 'USD',
+      maximumFractionDigits: 0
+    });
+  };
+
   return (
     <HeaderContainer>
       <PowerButton onClick={handlePowerClick} aria-label="Power off" />
-      <ExchangeRate>1 BTC = $45,000 USD</ExchangeRate>
+      <ExchangeRate>
+        1 {selectedCrypto} = {getPrice()}
+      </ExchangeRate>
     </HeaderContainer>
   );
 };

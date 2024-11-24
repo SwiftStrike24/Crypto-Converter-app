@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
 import Header from './components/Header';
 import Converter from './components/Converter';
 import Footer from './components/Footer';
+import { CryptoProvider } from './context/CryptoContext';
 
 const AppContainer = styled.div`
   width: 400px;
@@ -27,14 +28,18 @@ const ContentContainer = styled.div`
 `;
 
 const App: React.FC = () => {
+  const [selectedCrypto, setSelectedCrypto] = useState('BTC');
+
   return (
-    <AppContainer>
-      <Header />
-      <ContentContainer>
-        <Converter />
-        <Footer />
-      </ContentContainer>
-    </AppContainer>
+    <CryptoProvider>
+      <AppContainer>
+        <Header selectedCrypto={selectedCrypto} />
+        <ContentContainer>
+          <Converter onCryptoChange={setSelectedCrypto} defaultCrypto={selectedCrypto} />
+          <Footer />
+        </ContentContainer>
+      </AppContainer>
+    </CryptoProvider>
   );
 };
 
