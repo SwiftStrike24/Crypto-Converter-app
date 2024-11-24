@@ -1,5 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
+import { GiPowerButton } from "react-icons/gi";
 import { useCrypto } from '../context/CryptoContext';
 
 const HeaderContainer = styled.div`
@@ -7,10 +8,44 @@ const HeaderContainer = styled.div`
   justify-content: space-between;
   align-items: center;
   -webkit-app-region: drag;
-  padding: 10px;
+  padding: 10px 15px;
   background: rgba(0, 0, 0, 0.2);
   border-top-left-radius: 10px;
   border-top-right-radius: 10px;
+  position: relative;
+`;
+
+const WindowControls = styled.div`
+  -webkit-app-region: no-drag;
+`;
+
+const PowerButton = styled.button`
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.2s;
+  background: #ff5f57;
+  
+  &:hover {
+    background: #ff3b30;
+    transform: scale(1.05);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  svg {
+    width: 12px;
+    height: 12px;
+    color: white;
+  }
 `;
 
 const ExchangeRate = styled.div`
@@ -20,26 +55,9 @@ const ExchangeRate = styled.div`
   display: flex;
   align-items: center;
   gap: 5px;
-`;
-
-const PowerButton = styled.button`
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: #ff4444;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s;
-  -webkit-app-region: no-drag;
-
-  &:hover {
-    background: #ff0000;
-    transform: scale(1.1);
-  }
-
-  &:active {
-    transform: scale(0.95);
-  }
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
 `;
 
 const LoadingDot = styled.div`
@@ -94,7 +112,11 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
 
   return (
     <HeaderContainer>
-      <PowerButton onClick={handlePowerClick} aria-label="Power off" />
+      <WindowControls>
+        <PowerButton onClick={handlePowerClick} aria-label="Close app">
+          <GiPowerButton />
+        </PowerButton>
+      </WindowControls>
       <ExchangeRate>
         1 {selectedCrypto} = {getPrice()}
       </ExchangeRate>
