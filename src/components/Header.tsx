@@ -5,11 +5,17 @@ const HeaderContainer = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
+  -webkit-app-region: drag;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
 `;
 
 const ExchangeRate = styled.div`
   font-size: 14px;
   color: #ffffff;
+  margin-right: 10px;
 `;
 
 const PowerButton = styled.button`
@@ -20,9 +26,15 @@ const PowerButton = styled.button`
   border: none;
   cursor: pointer;
   transition: all 0.2s;
+  -webkit-app-region: no-drag;
 
   &:hover {
     background: #ff0000;
+    transform: scale(1.1);
+  }
+
+  &:active {
+    transform: scale(0.95);
   }
 `;
 

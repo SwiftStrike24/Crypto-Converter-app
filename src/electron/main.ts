@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import path from 'path';
 
 // Ensure DIST path is always defined
@@ -10,6 +10,9 @@ let mainWindow: BrowserWindow | null = null;
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
 function createWindow() {
+  // Get the primary display's work area (screen size minus taskbar/dock)
+  const { workArea } = screen.getPrimaryDisplay();
+
   mainWindow = new BrowserWindow({
     width: 400,
     height: 300,
@@ -19,15 +22,32 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
     },
+    // Center the window
+    x: Math.round(workArea.x + (workArea.width - 400) / 2),
+    y: Math.round(workArea.y + (workArea.height - 300) / 2),
     alwaysOnTop: true,
+    skipTaskbar: false, // Show in taskbar for better UX
+    resizable: false,
+    maximizable: false,
+    minimizable: true,
+    // Set window behavior
+    hasShadow: true,
+    visualEffectState: 'active',
+    roundedCorners: true,
+  });
+
+  // Prevent the window from being closed accidentally
+  mainWindow.on('close', (event) => {
+    if (mainWindow?.isVisible()) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
   });
 
   // Load the app
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools();
   } else {
-    // Load your app
     mainWindow.loadFile(path.join(DIST_PATH, 'index.html'));
   }
 
@@ -39,18 +59,54 @@ function createWindow() {
   ipcMain.on('quit-app', () => {
     app.quit();
   });
+
+  // Keep the window on top even when fullscreen apps are running
+  mainWindow.setAlwaysOnTop(true, 'screen-saver');
+
+  // Optional: Add animation when showing/hiding
+  ipcMain.on('show-window', () => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      mainWindow.show();
+      mainWindow.setOpacity(0);
+      let opacity = 0;
+      const fadeIn = setInterval(() => {
+        if (!mainWindow) {
+          clearInterval(fadeIn);
+          return;
+        }
+        opacity += 0.1;
+        if (opacity >= 1) {
+          clearInterval(fadeIn);
+        }
+        mainWindow.setOpacity(opacity);
+      }, 10);
+    }
+  });
 }
 
 app.whenReady().then(() => {
   createWindow();
 
-  // Register the '~' key shortcut
+  // Register the '~' key shortcut with animation
   globalShortcut.register('`', () => {
     if (mainWindow) {
       if (mainWindow.isVisible()) {
-        mainWindow.hide();
+        let opacity = 1;
+        const fadeOut = setInterval(() => {
+          if (!mainWindow) {
+            clearInterval(fadeOut);
+            return;
+          }
+          opacity -= 0.1;
+          if (opacity <= 0) {
+            clearInterval(fadeOut);
+            mainWindow.hide();
+          }
+          mainWindow.setOpacity(opacity);
+        }, 10);
       } else {
         mainWindow.show();
+        ipcMain.emit('show-window');
       }
     }
   });
