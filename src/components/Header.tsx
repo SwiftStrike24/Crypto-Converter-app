@@ -48,9 +48,9 @@ const PowerButton = styled.button`
   }
 `;
 
-const ExchangeRate = styled.div`
+const ExchangeRate = styled.div<{ isError?: boolean }>`
   font-size: 14px;
-  color: #ffffff;
+  color: ${props => props.isError ? '#ff4444' : '#ffffff'};
   margin-right: 10px;
   display: flex;
   align-items: center;
@@ -58,6 +58,16 @@ const ExchangeRate = styled.div`
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
+  transition: color 0.2s ease;
+  white-space: nowrap;
+
+  &:hover {
+    color: ${props => props.isError ? '#ff6666' : '#ffffff'};
+  }
+
+  &:hover .last-updated {
+    opacity: 1;
+  }
 `;
 
 const LoadingDot = styled.div`
@@ -74,6 +84,32 @@ const LoadingDot = styled.div`
   }
 `;
 
+const RetryButton = styled.button`
+  background: none;
+  border: none;
+  color: #8b5cf6;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+  margin-left: 8px;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: #9f7aea;
+  }
+`;
+
+const LastUpdated = styled.span`
+  position: absolute;
+  top: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+`;
+
 interface HeaderProps {
   selectedCrypto: string;
   selectedFiat: string;
@@ -87,27 +123,52 @@ const cryptoIds: { [key: string]: string } = {
   XRP: 'ripple'
 };
 
+const formatTimeAgo = (date: Date): string => {
+  const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
+};
+
 const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
-  const { prices, loading, error } = useCrypto();
+  const { prices, loading, error, updatePrices, lastUpdated } = useCrypto();
 
   const handlePowerClick = () => {
     const { ipcRenderer } = window.require('electron');
     ipcRenderer.send('quit-app');
   };
 
+  const handleRetry = () => {
+    updatePrices(true).catch(console.error);
+  };
+
   const getPrice = () => {
     if (loading) return <LoadingDot />;
-    if (error) return 'Error';
+    if (error) {
+      return (
+        <>
+          {error}
+          <RetryButton onClick={handleRetry} title="Retry">↻</RetryButton>
+        </>
+      );
+    }
     
     const cryptoId = cryptoIds[selectedCrypto];
     if (!prices[cryptoId]) return 'N/A';
     
     const price = prices[cryptoId][selectedFiat.toLowerCase()];
-    return price.toLocaleString(selectedFiat === 'USD' ? 'en-US' : selectedFiat === 'EUR' ? 'de-DE' : 'en-CA', { 
-      style: 'currency', 
-      currency: selectedFiat,
-      maximumFractionDigits: 0
-    });
+    if (!price) return 'N/A';
+
+    return price.toLocaleString(
+      selectedFiat === 'USD' ? 'en-US' : selectedFiat === 'EUR' ? 'de-DE' : 'en-CA', 
+      { 
+        style: 'currency', 
+        currency: selectedFiat,
+        maximumFractionDigits: 0
+      }
+    );
   };
 
   return (
@@ -117,7 +178,8 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
           <GiPowerButton />
         </PowerButton>
       </WindowControls>
-      <ExchangeRate>
+      <ExchangeRate isError={!!error}>
+        {lastUpdated && <LastUpdated className="last-updated">Updated {formatTimeAgo(lastUpdated)}</LastUpdated>}
         1 {selectedCrypto} = {getPrice()}
       </ExchangeRate>
     </HeaderContainer>

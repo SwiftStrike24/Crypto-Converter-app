@@ -74,6 +74,48 @@ const ErrorMessage = styled.div`
   left: 0;
 `;
 
+const ResultBox = styled.div`
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 4px;
+  padding: 12px;
+  margin-top: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+
+  &:hover {
+    background: rgba(139, 92, 246, 0.15);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0px);
+  }
+
+  &::after {
+    content: "Click to copy";
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  &:hover::after {
+    opacity: 1;
+  }
+`;
+
+const Amount = styled.div`
+  font-size: 20px;
+  color: white;
+  font-weight: 500;
+`;
+
 const cryptos = ['BTC', 'ETH', 'SOL', 'USDC', 'XRP'];
 const fiats = ['USD', 'EUR', 'CAD'];
 
@@ -103,6 +145,7 @@ const Converter: React.FC<ConverterProps> = ({
   const [selectedCrypto, setSelectedCrypto] = useState(defaultCrypto);
   const [selectedFiat, setSelectedFiat] = useState(defaultFiat);
   const [error, setError] = useState<string>('');
+  const [copyFeedback, setCopyFeedback] = useState(false);
   const { prices, loading } = useCrypto();
 
   // Reset inputs when switching assets
@@ -205,6 +248,35 @@ const Converter: React.FC<ConverterProps> = ({
     onFiatChange(newFiat);
   };
 
+  const formatNumber = (value: string, isCrypto: boolean): string => {
+    const num = parseFloat(value);
+    if (isNaN(num)) return '';
+    
+    return new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: isCrypto ? 8 : 2,
+      maximumFractionDigits: isCrypto ? 8 : 2,
+    }).format(num);
+  };
+
+  const handleCopy = async () => {
+    let textToCopy = '';
+    if (cryptoAmount && fiatAmount) {
+      if (document.activeElement?.id === 'crypto-amount') {
+        textToCopy = fiatAmount;
+      } else {
+        textToCopy = cryptoAmount;
+      }
+      
+      try {
+        await navigator.clipboard.writeText(textToCopy);
+        setCopyFeedback(true);
+        setTimeout(() => setCopyFeedback(false), 1000);
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    }
+  };
+
   return (
     <ConverterContainer>
       <InputGroup>
@@ -231,8 +303,8 @@ const Converter: React.FC<ConverterProps> = ({
             </option>
           ))}
         </Select>
-        {error && <ErrorMessage>{error}</ErrorMessage>}
       </InputGroup>
+
       <InputGroup>
         <Label htmlFor="fiat-amount">Fiat Amount</Label>
         <Input
@@ -258,6 +330,19 @@ const Converter: React.FC<ConverterProps> = ({
           ))}
         </Select>
       </InputGroup>
+
+      {error && <ErrorMessage>{error}</ErrorMessage>}
+      
+      {(cryptoAmount || fiatAmount) && !error && (
+        <ResultBox onClick={handleCopy} style={{ opacity: copyFeedback ? 0.7 : 1 }}>
+          <Label>{document.activeElement?.id === 'crypto-amount' ? 'Converted to Fiat' : 'Converted to Crypto'}</Label>
+          <Amount>
+            {document.activeElement?.id === 'crypto-amount' 
+              ? `${selectedFiat} ${formatNumber(fiatAmount, false)}`
+              : `${selectedCrypto} ${formatNumber(cryptoAmount, true)}`}
+          </Amount>
+        </ResultBox>
+      )}
     </ConverterContainer>
   );
 };

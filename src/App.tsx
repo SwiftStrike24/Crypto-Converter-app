@@ -7,7 +7,7 @@ import { CryptoProvider } from './context/CryptoContext';
 
 const AppContainer = styled.div`
   width: 400px;
-  height: 300px;
+  height: 340px;
   background: rgba(18, 18, 18, 0.95);
   border-radius: 10px;
   padding: 0;

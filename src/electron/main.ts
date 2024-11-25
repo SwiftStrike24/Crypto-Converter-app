@@ -15,7 +15,7 @@ function createWindow() {
 
   mainWindow = new BrowserWindow({
     width: 400,
-    height: 300,
+    height: 340,
     frame: false,
     transparent: true,
     show: true,
@@ -25,9 +25,9 @@ function createWindow() {
     },
     // Center the window
     x: Math.round(workArea.x + (workArea.width - 400) / 2),
-    y: Math.round(workArea.y + (workArea.height - 300) / 2),
+    y: Math.round(workArea.y + (workArea.height - 340) / 2),
     alwaysOnTop: true,
-    skipTaskbar: false, // Show in taskbar for better UX
+    skipTaskbar: false,
     resizable: false,
     maximizable: false,
     minimizable: true,
