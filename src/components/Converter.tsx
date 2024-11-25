@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
 
@@ -13,6 +13,7 @@ const InputGroup = styled.div`
   gap: 10px;
   align-items: center;
   position: relative;
+  -webkit-app-region: no-drag;
 `;
 
 const Input = styled.input`
@@ -23,6 +24,7 @@ const Input = styled.input`
   border-radius: 4px;
   color: white;
   font-size: 16px;
+  -webkit-app-region: no-drag;
 
   &:focus {
     outline: none;
@@ -42,6 +44,7 @@ const Select = styled.select`
   border-radius: 4px;
   color: white;
   cursor: pointer;
+  -webkit-app-region: no-drag;
 
   &:focus {
     outline: none;
@@ -188,6 +191,37 @@ const Converter: React.FC<ConverterProps> = ({
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [lastEditedField, setLastEditedField] = useState<'crypto' | 'fiat'>('crypto');
   const { prices, loading } = useCrypto();
+  const cryptoInputRef = useRef<HTMLInputElement>(null);
+  const fiatInputRef = useRef<HTMLInputElement>(null);
+
+  // Enhanced focus handling
+  useEffect(() => {
+    const electron = window.require('electron');
+    const ipcRenderer = electron.ipcRenderer;
+
+    const handleWindowFocus = () => {
+      // Small delay to ensure window is fully focused
+      setTimeout(() => {
+        if (lastEditedField === 'crypto' && cryptoInputRef.current) {
+          cryptoInputRef.current.focus();
+        } else if (lastEditedField === 'fiat' && fiatInputRef.current) {
+          fiatInputRef.current.focus();
+        }
+      }, 50);
+    };
+
+    // Listen for focus events from main process
+    ipcRenderer.on('window-focused', handleWindowFocus);
+
+    return () => {
+      ipcRenderer.removeListener('window-focused', handleWindowFocus);
+    };
+  }, [lastEditedField]);
+
+  // Input focus handlers
+  const handleInputFocus = (field: 'crypto' | 'fiat') => {
+    setLastEditedField(field);
+  };
 
   // Reset inputs when switching assets
   useEffect(() => {
@@ -323,10 +357,12 @@ const Converter: React.FC<ConverterProps> = ({
       <InputGroup>
         <Label htmlFor="crypto-amount">Cryptocurrency Amount</Label>
         <Input
+          ref={cryptoInputRef}
           id="crypto-amount"
           type="text"
           value={cryptoAmount}
           onChange={handleCryptoAmountChange}
+          onFocus={() => handleInputFocus('crypto')}
           placeholder="0.00"
           aria-label="Cryptocurrency amount"
           disabled={loading}
@@ -349,10 +385,12 @@ const Converter: React.FC<ConverterProps> = ({
       <InputGroup>
         <Label htmlFor="fiat-amount">Fiat Amount</Label>
         <Input
+          ref={fiatInputRef}
           id="fiat-amount"
           type="text"
           value={fiatAmount}
           onChange={handleFiatAmountChange}
+          onFocus={() => handleInputFocus('fiat')}
           placeholder="0.00"
           aria-label="Fiat amount"
           disabled={loading}

@@ -60,6 +60,7 @@ const ExchangeRate = styled.div<{ isError?: boolean }>`
   transform: translateX(-50%);
   transition: color 0.2s ease;
   white-space: nowrap;
+  -webkit-app-region: no-drag;
 
   &:hover {
     color: ${props => props.isError ? '#ff6666' : '#ffffff'};
