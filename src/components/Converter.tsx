@@ -235,14 +235,30 @@ const Converter: React.FC<ConverterProps> = ({
     return prices[cryptoId][fiat.toLowerCase()] || 0;
   };
 
+  // Add utility function for optimal decimals
+  const getOptimalDecimals = (value: number, isCrypto: boolean): number => {
+    if (isCrypto) {
+      // For crypto amounts
+      if (value >= 1000) return 2;
+      if (value >= 1) return 4;
+      if (value >= 0.1) return 6;
+      return 8;
+    } else {
+      // For fiat amounts
+      if (value >= 1000) return 0;
+      if (value >= 100) return 1;
+      if (value >= 10) return 2;
+      if (value >= 1) return 3;
+      return 4;
+    }
+  };
+
   const handleCryptoAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setLastEditedField('crypto');
     const value = e.target.value;
     
-    // Clear error
     setError('');
 
-    // Validate input
     if (value === '') {
       setCryptoAmount('');
       setFiatAmount('');
@@ -269,7 +285,8 @@ const Converter: React.FC<ConverterProps> = ({
     const rate = getRate(cryptoIds[selectedCrypto], selectedFiat);
     if (rate) {
       const converted = numValue * rate;
-      setFiatAmount(converted.toFixed(2));
+      const decimals = getOptimalDecimals(converted, false);
+      setFiatAmount(converted.toFixed(decimals));
     }
   };
 
@@ -277,10 +294,8 @@ const Converter: React.FC<ConverterProps> = ({
     setLastEditedField('fiat');
     const value = e.target.value;
     
-    // Clear error
     setError('');
 
-    // Validate input
     if (value === '') {
       setCryptoAmount('');
       setFiatAmount('');
@@ -307,7 +322,8 @@ const Converter: React.FC<ConverterProps> = ({
     const rate = getRate(cryptoIds[selectedCrypto], selectedFiat);
     if (rate) {
       const converted = numValue / rate;
-      setCryptoAmount(converted.toFixed(8));
+      const decimals = getOptimalDecimals(converted, true);
+      setCryptoAmount(converted.toFixed(decimals));
     }
   };
 
@@ -329,9 +345,10 @@ const Converter: React.FC<ConverterProps> = ({
     const num = parseFloat(value);
     if (isNaN(num)) return '';
     
+    const decimals = getOptimalDecimals(num, isCrypto);
     return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: isCrypto ? 8 : 2,
-      maximumFractionDigits: isCrypto ? 8 : 2,
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
     }).format(num);
   };
 

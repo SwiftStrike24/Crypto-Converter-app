@@ -145,6 +145,14 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
     updatePrices(true).catch(console.error);
   };
 
+  const getOptimalDecimals = (price: number): number => {
+    if (price >= 1000) return 0;  // For high value currencies like BTC
+    if (price >= 100) return 1;   // For mid-range values
+    if (price >= 10) return 2;    // For lower values
+    if (price >= 1) return 3;     // For values close to 1
+    return 4;                     // For very small values
+  };
+
   const getPrice = () => {
     if (loading) return <LoadingDot />;
     if (error) {
@@ -162,12 +170,15 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
     const price = prices[cryptoId][selectedFiat.toLowerCase()];
     if (!price) return 'N/A';
 
+    const decimals = getOptimalDecimals(price);
+
     return price.toLocaleString(
       selectedFiat === 'USD' ? 'en-US' : selectedFiat === 'EUR' ? 'de-DE' : 'en-CA', 
       { 
         style: 'currency', 
         currency: selectedFiat,
-        maximumFractionDigits: 0
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
       }
     );
   };
