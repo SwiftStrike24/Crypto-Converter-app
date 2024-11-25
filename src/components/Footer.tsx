@@ -5,7 +5,7 @@ const FooterContainer = styled.div`
   text-align: center;
   font-size: 12px;
   color: rgba(255, 255, 255, 0.5);
-  margin-top: auto;
+  margin-top: 5px;
 `;
 
 const Link = styled.a`

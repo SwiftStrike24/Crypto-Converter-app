@@ -7,7 +7,7 @@ import { CryptoProvider } from './context/CryptoContext';
 
 const AppContainer = styled.div`
   width: 400px;
-  height: 340px;
+  height: 300px;
   background: rgba(18, 18, 18, 0.95);
   border-radius: 10px;
   padding: 0;
@@ -20,11 +20,11 @@ const AppContainer = styled.div`
 `;
 
 const ContentContainer = styled.div`
-  padding: 20px;
+  padding: 15px;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 15px;
 `;
 
 const App: React.FC = () => {
