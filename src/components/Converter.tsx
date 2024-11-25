@@ -81,8 +81,9 @@ const ResultBox = styled.div`
   padding: 12px;
   margin-top: 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   position: relative;
+  overflow: hidden;
 
   &:hover {
     background: rgba(139, 92, 246, 0.15);
@@ -91,6 +92,45 @@ const ResultBox = styled.div`
 
   &:active {
     transform: translateY(0px);
+  }
+
+  &::before {
+    content: "Copied!";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(139, 92, 246, 0.9);
+    padding: 4px 12px;
+    border-radius: 4px;
+    color: white;
+    font-size: 14px;
+    opacity: 0;
+    transition: all 0.3s ease;
+    pointer-events: none;
+  }
+
+  &.copied::before {
+    animation: showCopied 1s ease forwards;
+  }
+
+  @keyframes showCopied {
+    0% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.8);
+    }
+    10% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    90% {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.8);
+    }
   }
 
   &::after {
@@ -146,6 +186,7 @@ const Converter: React.FC<ConverterProps> = ({
   const [selectedFiat, setSelectedFiat] = useState(defaultFiat);
   const [error, setError] = useState<string>('');
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const [lastEditedField, setLastEditedField] = useState<'crypto' | 'fiat'>('crypto');
   const { prices, loading } = useCrypto();
 
   // Reset inputs when switching assets
@@ -161,6 +202,7 @@ const Converter: React.FC<ConverterProps> = ({
   };
 
   const handleCryptoAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLastEditedField('crypto');
     const value = e.target.value;
     
     // Clear error
@@ -198,6 +240,7 @@ const Converter: React.FC<ConverterProps> = ({
   };
 
   const handleFiatAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLastEditedField('fiat');
     const value = e.target.value;
     
     // Clear error
@@ -259,13 +302,11 @@ const Converter: React.FC<ConverterProps> = ({
   };
 
   const handleCopy = async () => {
-    let textToCopy = '';
     if (cryptoAmount && fiatAmount) {
-      if (document.activeElement?.id === 'crypto-amount') {
-        textToCopy = fiatAmount;
-      } else {
-        textToCopy = cryptoAmount;
-      }
+      let textToCopy = '';
+      textToCopy = lastEditedField === 'crypto' 
+        ? formatNumber(fiatAmount, false)
+        : formatNumber(cryptoAmount, true);
       
       try {
         await navigator.clipboard.writeText(textToCopy);
@@ -334,10 +375,13 @@ const Converter: React.FC<ConverterProps> = ({
       {error && <ErrorMessage>{error}</ErrorMessage>}
       
       {(cryptoAmount || fiatAmount) && !error && (
-        <ResultBox onClick={handleCopy} style={{ opacity: copyFeedback ? 0.7 : 1 }}>
-          <Label>{document.activeElement?.id === 'crypto-amount' ? 'Converted to Fiat' : 'Converted to Crypto'}</Label>
+        <ResultBox 
+          onClick={handleCopy} 
+          className={copyFeedback ? 'copied' : ''}
+        >
+          <Label>{lastEditedField === 'crypto' ? 'Converted to Fiat' : 'Converted to Crypto'}</Label>
           <Amount>
-            {document.activeElement?.id === 'crypto-amount' 
+            {lastEditedField === 'crypto' 
               ? `${selectedFiat} ${formatNumber(fiatAmount, false)}`
               : `${selectedCrypto} ${formatNumber(cryptoAmount, true)}`}
           </Amount>
