@@ -7,6 +7,8 @@ interface CryptoContextType {
   error: string | null;
   updatePrices: (force?: boolean) => Promise<void>;
   lastUpdated: Date | null;
+  addCrypto: (symbol: string) => void;
+  availableCryptos: string[];
 }
 
 interface CacheData {
@@ -39,7 +41,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  
+  const [availableCryptos, setAvailableCryptos] = useState<string[]>(Object.keys(cryptoIds));
+
   const cache = useRef<CacheData | null>(null);
   const lastApiCall = useRef<number>(0);
   const retryCount = useRef<number>(0);
@@ -70,7 +73,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const updatePrices = useCallback(async (force: boolean = false) => {
     const now = Date.now();
-    
+
     // Check cache first unless forced update
     if (!force) {
       const cachedPrices = getCachedPrices();
@@ -115,7 +118,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     } catch (err) {
       console.error('API Error:', err);
-      
+
       let errorMessage = 'Failed to fetch prices. Retrying...';
       if (axios.isAxiosError(err)) {
         if (err.response?.status === 429) {
@@ -126,7 +129,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           errorMessage = 'API access denied. Using free tier limits.';
         }
       }
-      
+
       setError(errorMessage);
 
       // Use cached data if available
@@ -147,6 +150,18 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
+  const addCrypto = useCallback((symbol: string) => {
+    if (!cryptoIds[symbol]) {
+      console.warn(`Crypto symbol ${symbol} not found in cryptoIds mapping`);
+      return;
+    }
+
+    if (!availableCryptos.includes(symbol)) {
+      setAvailableCryptos(prev => [...prev, symbol]);
+      updatePrices(true).catch(console.error);
+    }
+  }, [availableCryptos, updatePrices]);
+
   useEffect(() => {
     updatePrices(true);
 
@@ -161,7 +176,15 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [updatePrices]);
 
   return (
-    <CryptoContext.Provider value={{ prices, loading, error, updatePrices, lastUpdated }}>
+    <CryptoContext.Provider value={{
+      prices,
+      loading,
+      error,
+      updatePrices,
+      lastUpdated,
+      addCrypto,
+      availableCryptos
+    }}>
       {children}
     </CryptoContext.Provider>
   );
@@ -173,4 +196,4 @@ export const useCrypto = () => {
     throw new Error('useCrypto must be used within a CryptoProvider');
   }
   return context;
-}; 
+};

@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
 import { GiPowerButton } from "react-icons/gi";
+import { IoMdAdd } from "react-icons/io";
 import { useCrypto } from '../context/CryptoContext';
+import AddCryptoModal from './AddCryptoModal';
 
 const HeaderContainer = styled.div`
   display: flex;
@@ -45,6 +47,29 @@ const PowerButton = styled.button`
     width: 12px;
     height: 12px;
     color: white;
+  }
+`;
+
+const AddButton = styled.button`
+  -webkit-app-region: no-drag;
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  padding: 5px;
+  margin-right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+
+  &:hover {
+    color: #8b5cf6;
+    transform: scale(1.1);
+  }
+
+  &:active {
+    transform: scale(0.95);
   }
 `;
 
@@ -135,6 +160,7 @@ const formatTimeAgo = (date: Date): string => {
 
 const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const { prices, loading, error, updatePrices, lastUpdated } = useCrypto();
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const handlePowerClick = () => {
     const { ipcRenderer } = window.require('electron');
@@ -186,16 +212,28 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   return (
     <HeaderContainer>
       <WindowControls>
-        <PowerButton onClick={handlePowerClick} aria-label="Close app">
-          <GiPowerButton />
-        </PowerButton>
+        <AddButton onClick={() => setIsAddModalOpen(true)}>
+          <IoMdAdd size={20} />
+        </AddButton>
       </WindowControls>
+      
       <ExchangeRate isError={!!error}>
         {lastUpdated && <LastUpdated className="last-updated">Updated {formatTimeAgo(lastUpdated)}</LastUpdated>}
         1 {selectedCrypto} = {getPrice()}
       </ExchangeRate>
+
+      <WindowControls>
+        <PowerButton onClick={handlePowerClick} aria-label="Close app">
+          <GiPowerButton />
+        </PowerButton>
+      </WindowControls>
+
+      <AddCryptoModal 
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+      />
     </HeaderContainer>
   );
 };
 
-export default Header; 
+export default Header;
