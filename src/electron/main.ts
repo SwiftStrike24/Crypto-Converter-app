@@ -3,7 +3,6 @@ import path from 'path';
 
 // Ensure DIST path is always defined
 const DIST_PATH = path.join(__dirname, '../dist');
-const PUBLIC_PATH = app.isPackaged ? DIST_PATH : path.join(DIST_PATH, '../public');
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;

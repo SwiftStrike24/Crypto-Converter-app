@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "start": "electron .",
     "electron:dev": "vite build && vite --mode development && electron .",
-    "electron:build": "vite build && electron-builder"
+    "electron:build": "vite build && electron-builder --win portable",
+    "electron:build-installer": "vite build && electron-builder --win nsis"
   },
   "dependencies": {
     "@types/lodash": "^4.17.13",
@@ -52,21 +53,28 @@
   "build": {
     "appId": "com.cryptoconverter.app",
     "productName": "Crypto Converter",
+    "asar": true,
     "directories": {
-      "output": "release/"
+      "output": "release/${version}"
     },
     "files": [
       "dist/**/*",
+      "dist-electron/**/*",
       "package.json"
     ],
-    "mac": {
-      "category": "public.app-category.finance"
-    },
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "src/assets/icon.ico",
+      "artifactName": "${productName}-${version}.${ext}",
+      "signAndEditExecutable": false
     },
-    "linux": {
-      "target": "AppImage"
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
     }
   }
 }

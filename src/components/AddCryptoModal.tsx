@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
-import { IoMdClose } from 'react-icons/io';
 import { useCrypto } from '../context/CryptoContext';
 import debounce from 'lodash/debounce';
 import { FiCheck } from 'react-icons/fi';
@@ -235,16 +234,6 @@ const LoadingSpinner = styled.div`
   }
 `;
 
-const ErrorMessage = styled.div`
-  color: #ff4444;
-  text-align: center;
-  margin: 10px 0;
-  padding: 10px;
-  background: rgba(255, 68, 68, 0.1);
-  border-radius: 6px;
-  font-size: 14px;
-`;
-
 interface CryptoResult {
   id: string;
   symbol: string;
@@ -261,7 +250,6 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState<CryptoResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [selectedCryptos, setSelectedCryptos] = useState<Set<string>>(new Set());
   const { addCrypto } = useCrypto();
 
@@ -273,7 +261,6 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
 
     try {
       setLoading(true);
-      setError(null);
       const response = await fetch(
         `https://api.coingecko.com/api/v3/search?query=${query}`
       );
@@ -289,8 +276,6 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
         name: coin.name,
         image: coin.thumb
       })));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
