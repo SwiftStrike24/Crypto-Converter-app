@@ -233,7 +233,7 @@ const AddTokens: React.FC = () => {
   const [results, setResults] = useState<CryptoResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedCryptos, setSelectedCryptos] = useState<Set<string>>(new Set());
-  const { addCrypto } = useCrypto();
+  const { addCryptos } = useCrypto();
   const navigate = useNavigate();
 
   const searchCryptos = async (query: string) => {
@@ -282,7 +282,6 @@ const AddTokens: React.FC = () => {
         newSet.delete(crypto.id);
       } else {
         newSet.add(crypto.id);
-        addCrypto(crypto.symbol);
       }
       return newSet;
     });
@@ -292,14 +291,32 @@ const AddTokens: React.FC = () => {
     navigate('/');
   };
 
-  const handleAddTokens = () => {
-    selectedCryptos.forEach(cryptoId => {
-      const crypto = results.find(r => r.id === cryptoId);
-      if (crypto) {
-        addCrypto(crypto.symbol, crypto.id);
-      }
-    });
-    navigate('/');
+  const handleAddTokens = async () => {
+    try {
+      // Create an array of all tokens to add
+      const tokensToAdd = Array.from(selectedCryptos)
+        .map(cryptoId => results.find(r => r.id === cryptoId))
+        .filter((crypto): crypto is CryptoResult => crypto !== undefined)
+        .map(crypto => ({
+          symbol: crypto.symbol,
+          id: crypto.id
+        }));
+
+      if (tokensToAdd.length === 0) return;
+
+      // Add loading state
+      setLoading(true);
+
+      // Add all tokens at once
+      await addCryptos(tokensToAdd);
+
+      // Navigate back to main page
+      navigate('/');
+    } catch (error) {
+      console.error('Failed to add tokens:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

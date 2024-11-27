@@ -398,6 +398,23 @@ const Converter: React.FC<ConverterProps> = ({
     }
   };
 
+  useEffect(() => {
+    const resetState = () => {
+      setCryptoAmount('');
+      setFiatAmount('');
+      setError('');
+    };
+
+    // Reset state when crypto selection changes
+    resetState();
+    
+    // Update selected crypto if it's no longer available
+    if (!availableCryptos.includes(selectedCrypto)) {
+      setSelectedCrypto(availableCryptos[0]);
+      onCryptoChange(availableCryptos[0]);
+    }
+  }, [selectedCrypto, selectedFiat, availableCryptos]);
+
   return (
     <ConverterContainer>
       <InputGroup>

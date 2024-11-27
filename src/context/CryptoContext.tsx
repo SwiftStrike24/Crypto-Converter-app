@@ -7,7 +7,8 @@ interface CryptoContextType {
   error: string | null;
   updatePrices: (force?: boolean) => Promise<void>;
   lastUpdated: Date | null;
-  addCrypto: (symbol: string, id?: string) => void;
+  addCrypto: (symbol: string, id?: string) => Promise<void>;
+  addCryptos: (tokens: { symbol: string; id: string }[]) => Promise<void>;
   availableCryptos: string[];
   getCryptoId: (symbol: string) => string | undefined;
 }
@@ -182,40 +183,90 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [cryptoIds]);
 
-  const addCrypto = useCallback((symbol: string, id?: string) => {
+  const addCrypto = useCallback(async (symbol: string, id?: string) => {
     if (!id) {
       console.warn(`No CoinGecko ID provided for symbol ${symbol}`);
       return;
     }
 
-    setCryptoIds(prev => {
-      const newIds = { ...prev, [symbol.toUpperCase()]: id.toLowerCase() };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newIds));
-      return newIds;
-    });
+    const upperSymbol = symbol.toUpperCase();
+    const lowerId = id.toLowerCase();
 
+    return new Promise<void>((resolve) => {
+      setCryptoIds(prev => {
+        const newIds = { ...prev, [upperSymbol]: lowerId };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newIds));
+        return newIds;
+      });
+
+      setAvailableCryptos(prev => {
+        if (!prev.includes(upperSymbol)) {
+          // Separate default and custom tokens
+          const defaultTokens = Object.keys(defaultCryptoIds);
+          const customTokens = prev.filter(token => !defaultTokens.includes(token));
+          
+          // Add new token to custom tokens and sort them
+          const newCustomTokens = [...customTokens, upperSymbol].sort();
+          
+          // Combine default tokens with sorted custom tokens
+          return [...defaultTokens, ...newCustomTokens];
+        }
+        return prev;
+      });
+
+      resolve();
+    });
+  }, []);
+
+  // Batch add multiple tokens
+  const addCryptos = useCallback(async (tokens: { symbol: string; id: string }[]) => {
+    // Update cryptoIds
+    const newCryptoIds = { ...cryptoIds };
+    tokens.forEach(({ symbol, id }) => {
+      newCryptoIds[symbol.toUpperCase()] = id.toLowerCase();
+    });
+    
+    // Save to localStorage and update state
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newCryptoIds));
+    setCryptoIds(newCryptoIds);
+
+    // Update available cryptos
+    const defaultTokens = Object.keys(defaultCryptoIds);
+    const newSymbols = tokens.map(t => t.symbol.toUpperCase());
+    
     setAvailableCryptos(prev => {
-      if (!prev.includes(symbol.toUpperCase())) {
-        const newCryptos = [...prev, symbol.toUpperCase()];
-        updatePrices(true).catch(console.error);
-        return newCryptos;
-      }
-      return prev;
+      const existingCustomTokens = prev.filter(token => !defaultTokens.includes(token));
+      const allTokens = [...new Set([...defaultTokens, ...existingCustomTokens, ...newSymbols])];
+      return allTokens;
     });
-  }, [updatePrices]);
 
+    // Force price update for new tokens
+    await updatePrices(true);
+  }, [cryptoIds, updatePrices]);
+
+  // Update prices whenever cryptoIds changes
   useEffect(() => {
-    updatePrices(true);
+    const updatePricesAndRetry = async () => {
+      try {
+        await updatePrices(true);
+      } catch (error) {
+        console.error('Failed to update prices:', error);
+        // Retry after a delay
+        setTimeout(() => updatePricesAndRetry(), 2000);
+      }
+    };
+
+    updatePricesAndRetry();
 
     const interval = setInterval(() => {
-      updatePrices(false);
+      updatePrices(false).catch(console.error);
     }, CACHE_DURATION);
 
     return () => {
       clearInterval(interval);
       clearUpdateTimeout();
     };
-  }, [updatePrices]);
+  }, [updatePrices, cryptoIds]);
 
   return (
     <CryptoContext.Provider value={{
@@ -225,6 +276,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       updatePrices,
       lastUpdated,
       addCrypto,
+      addCryptos,
       availableCryptos,
       getCryptoId
     }}>
