@@ -18,7 +18,6 @@ const PageContainer = styled.div`
   position: fixed;
   top: 0;
   left: 0;
-  overflow-y: auto;
 `;
 
 const Header = styled.div`
@@ -84,6 +83,30 @@ const ResultsContainer = styled.div`
   max-width: 800px;
   margin: 0 auto;
   width: 100%;
+  background: #1a1a1a;
+  border-radius: 16px;
+  padding: 16px;
+  max-height: calc(100vh - 300px);
+  overflow-y: auto;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #1a1a1a;
+    border-radius: 8px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 8px;
+    
+    &:hover {
+      background: #444;
+    }
+  }
 `;
 
 const CryptoItem = styled.div<{ isSelected: boolean }>`
@@ -165,6 +188,39 @@ const Message = styled.div`
   font-size: 1.1rem;
 `;
 
+const ButtonContainer = styled.div`
+  display: flex;
+  gap: 16px;
+  max-width: 800px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 16px 0;
+`;
+
+const Button = styled.button<{ primary?: boolean }>`
+  flex: 1;
+  padding: 16px;
+  border-radius: 12px;
+  border: none;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: ${props => props.primary ? '#8b5cf6' : '#2a2a2a'};
+  color: ${props => props.primary ? 'white' : '#888'};
+
+  &:hover {
+    transform: translateY(-1px);
+    background: ${props => props.primary ? '#7c3aed' : '#333'};
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
+`;
+
 interface CryptoResult {
   id: string;
   symbol: string;
@@ -236,6 +292,16 @@ const AddTokens: React.FC = () => {
     navigate('/');
   };
 
+  const handleAddTokens = () => {
+    selectedCryptos.forEach(cryptoId => {
+      const crypto = results.find(r => r.id === cryptoId);
+      if (crypto) {
+        addCrypto(crypto.symbol, crypto.id);
+      }
+    });
+    navigate('/');
+  };
+
   return (
     <PageContainer>
       <Header>
@@ -279,6 +345,17 @@ const AddTokens: React.FC = () => {
           <Message>Start typing to search for tokens</Message>
         )}
       </ResultsContainer>
+
+      <ButtonContainer>
+        <Button onClick={handleBack}>Cancel</Button>
+        <Button 
+          primary 
+          onClick={handleAddTokens}
+          disabled={selectedCryptos.size === 0}
+        >
+          Add Token{selectedCryptos.size !== 1 ? 's' : ''} ({selectedCryptos.size})
+        </Button>
+      </ButtonContainer>
     </PageContainer>
   );
 };
