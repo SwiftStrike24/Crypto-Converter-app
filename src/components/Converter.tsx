@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
+import { useNavigate } from 'react-router-dom';
 
 const ConverterContainer = styled.div`
   display: flex;
@@ -168,6 +169,30 @@ interface ConverterProps {
   defaultFiat: string;
 }
 
+const ChartButton = styled.button`
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: #2196f3;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: #1976d2;
+    transform: scale(1.05);
+  }
+`;
+
 const Converter: React.FC<ConverterProps> = ({ 
   onCryptoChange, 
   onFiatChange,
@@ -184,6 +209,7 @@ const Converter: React.FC<ConverterProps> = ({
   const { prices, loading, availableCryptos } = useCrypto();
   const cryptoInputRef = useRef<HTMLInputElement>(null);
   const fiatInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
 
   // Enhanced focus handling
   useEffect(() => {
@@ -488,8 +514,17 @@ const Converter: React.FC<ConverterProps> = ({
           </Amount>
         </ResultBox>
       )}
+
+      <ChartButton onClick={() => navigate('/chart', { 
+        state: { 
+          cryptoId: selectedCrypto, 
+          currency: selectedFiat 
+        }
+      })}>
+        📈
+      </ChartButton>
     </ConverterContainer>
   );
 };
 
-export default Converter; 
+export default Converter;

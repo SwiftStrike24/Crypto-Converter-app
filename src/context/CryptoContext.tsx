@@ -155,15 +155,18 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let errorMessage = 'Failed to fetch prices. Retrying...';
       if (axios.isAxiosError(err)) {
         if (err.response?.status === 429) {
-          errorMessage = 'Rate limit exceeded. Please wait...';
+          errorMessage = 'Rate limit exceeded. Please wait 1-2 minutes...';
         } else if (err.code === 'ECONNABORTED') {
           errorMessage = 'Connection timeout. Check your internet.';
         } else if (err.response?.status === 403) {
-          errorMessage = 'API access denied. Using free tier limits.';
+          errorMessage = 'API access denied. Please check your API key.';
+        } else if (err.response?.status === 401) {
+          errorMessage = 'Invalid API key. Please check your configuration.';
         }
       }
 
       setError(errorMessage);
+      console.error('Detailed error:', err);
 
       // Use cached data if available
       const cachedPrices = getCachedPrices();
