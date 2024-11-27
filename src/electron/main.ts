@@ -26,7 +26,7 @@ function createWindow() {
     y: Math.round(workArea.y + (workArea.height - 300) / 2),
     alwaysOnTop: true,
     skipTaskbar: false,
-    resizable: false,
+    resizable: true,
     maximizable: false,
     minimizable: true,
     hasShadow: true,
@@ -83,6 +83,28 @@ function createWindow() {
       mainWindow.webContents.send('window-focused');
     }
   });
+
+  // Handle window resizing
+  ipcMain.on('set-window-size', (_, { width, height, isFullScreen }) => {
+    if (!mainWindow) return;
+
+    const { workArea } = screen.getPrimaryDisplay();
+    const x = Math.round(workArea.x + (workArea.width - width) / 2);
+    const y = Math.round(workArea.y + (workArea.height - height) / 2);
+
+    mainWindow.setResizable(true);
+    mainWindow.setSize(width, height);
+    mainWindow.setPosition(x, y);
+    
+    // Update window properties based on mode
+    if (isFullScreen) {
+      mainWindow.setAlwaysOnTop(false);
+      mainWindow.setSkipTaskbar(false);
+    } else {
+      mainWindow.setAlwaysOnTop(true);
+      mainWindow.setSkipTaskbar(false);
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -130,4 +152,4 @@ app.on('activate', () => {
   if (mainWindow === null) {
     createWindow();
   }
-}); 
+});

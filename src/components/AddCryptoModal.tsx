@@ -10,47 +10,46 @@ const ModalOverlay = styled.div`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.95);
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
   z-index: 9999;
   backdrop-filter: blur(5px);
-  padding: 20px;
+  padding: 0;
+  overflow-y: auto;
 `;
 
 const ModalContent = styled.div`
   background: #1a1a1a;
-  border-radius: 16px;
-  padding: 24px;
+  padding: 32px;
   width: 100%;
-  max-width: 480px;
-  position: relative;
+  min-height: 100vh;
   color: white;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37),
-              0 16px 64px 0 rgba(0, 0, 0, 0.25);
+  gap: 24px;
+  border: none;
+  box-shadow: none;
   animation: modalFadeIn 0.2s ease-out;
 
   @keyframes modalFadeIn {
     from {
       opacity: 0;
-      transform: scale(0.95);
+      transform: translateY(-20px);
     }
     to {
       opacity: 1;
-      transform: scale(1);
+      transform: translateY(0);
     }
   }
 
   h2 {
     margin: 0;
-    font-size: 1.4rem;
+    font-size: 2rem;
     color: #ffffff;
     font-weight: 600;
+    text-align: center;
   }
 `;
 
@@ -89,10 +88,12 @@ const InitialMessage = styled.div`
 `;
 
 const ResultsList = styled.div`
-  overflow-y: auto;
-  max-height: 320px;
-  margin: 0 -24px;
-  padding: 0 24px;
+  overflow-y: visible;
+  max-height: none;
+  margin: 0 auto;
+  padding: 0;
+  width: 100%;
+  max-width: 800px;
 
   &::-webkit-scrollbar {
     width: 6px;
@@ -160,7 +161,7 @@ const CryptoItem = styled.div<{ isSelected: boolean }>`
     right: 12px;
     color: #8b5cf6;
     opacity: ${props => props.isSelected ? 1 : 0};
-    transform: ${props => props.isSelected ? 'scale(1)' : 'scale(0.8)'};
+    transform: ${props => props.isSelected ? 'scale(1)' : 'scale(0.8)'};;
     transition: all 0.2s ease;
   }
 `;

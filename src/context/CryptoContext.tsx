@@ -7,7 +7,7 @@ interface CryptoContextType {
   error: string | null;
   updatePrices: (force?: boolean) => Promise<void>;
   lastUpdated: Date | null;
-  addCrypto: (symbol: string) => void;
+  addCrypto: (symbol: string, id?: string) => void;
   availableCryptos: string[];
 }
 
@@ -19,13 +19,15 @@ interface CacheData {
 const CryptoContext = createContext<CryptoContextType | undefined>(undefined);
 
 // Map crypto symbols to CoinGecko IDs
-const cryptoIds: { [key: string]: string } = {
+const defaultCryptoIds: { [key: string]: string } = {
   BTC: 'bitcoin',
   ETH: 'ethereum',
   SOL: 'solana',
   USDC: 'usd-coin',
   XRP: 'ripple'
 };
+
+const STORAGE_KEY = 'crypto-converter-tokens';
 
 // CoinGecko API configuration
 const API_BASE = 'https://api.coingecko.com/api/v3';
@@ -41,7 +43,11 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [availableCryptos, setAvailableCryptos] = useState<string[]>(Object.keys(cryptoIds));
+  const [availableCryptos, setAvailableCryptos] = useState<string[]>(Object.keys(defaultCryptoIds));
+  const [cryptoIds, setCryptoIds] = useState<{ [key: string]: string }>(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? JSON.parse(stored) : defaultCryptoIds;
+  });
 
   const cache = useRef<CacheData | null>(null);
   const lastApiCall = useRef<number>(0);
@@ -148,13 +154,19 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [cryptoIds]);
 
-  const addCrypto = useCallback((symbol: string) => {
-    if (!cryptoIds[symbol]) {
+  const addCrypto = useCallback((symbol: string, id?: string) => {
+    if (!id) {
       console.warn(`Crypto symbol ${symbol} not found in cryptoIds mapping`);
       return;
     }
+
+    setCryptoIds(prev => {
+      const newIds = { ...prev, [symbol]: id };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newIds));
+      return newIds;
+    });
 
     if (!availableCryptos.includes(symbol)) {
       setAvailableCryptos(prev => [...prev, symbol]);

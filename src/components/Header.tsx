@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { GiPowerButton } from "react-icons/gi";
 import { IoMdAdd } from "react-icons/io";
@@ -159,8 +160,12 @@ const formatTimeAgo = (date: Date): string => {
 };
 
 const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
-  const { prices, loading, error, updatePrices, lastUpdated } = useCrypto();
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const { prices, loading, error, lastUpdated, updatePrices } = useCrypto();
+  const navigate = useNavigate();
+
+  const handleAddClick = () => {
+    navigate('/add-tokens');
+  };
 
   const handlePowerClick = () => {
     const { ipcRenderer } = window.require('electron');
@@ -212,7 +217,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   return (
     <HeaderContainer>
       <WindowControls>
-        <AddButton onClick={() => setIsAddModalOpen(true)}>
+        <AddButton onClick={handleAddClick}>
           <IoMdAdd size={20} />
         </AddButton>
       </WindowControls>
@@ -229,8 +234,8 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
       </WindowControls>
 
       <AddCryptoModal 
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        isOpen={false}
+        onClose={() => {}}
       />
     </HeaderContainer>
   );

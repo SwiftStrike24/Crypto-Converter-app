@@ -1,21 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { HashRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import Header from './components/Header';
 import Converter from './components/Converter';
 import Footer from './components/Footer';
+import AddTokens from './pages/AddTokens';
 import { CryptoProvider } from './context/CryptoContext';
 
-const AppContainer = styled.div`
-  width: 400px;
-  height: 300px;
+const AppContainer = styled.div<{ isFullScreen?: boolean }>`
+  width: ${props => props.isFullScreen ? '100vw' : '400px'};
+  height: ${props => props.isFullScreen ? '100vh' : '300px'};
   background: rgba(18, 18, 18, 0.95);
-  border-radius: 10px;
+  border-radius: ${props => props.isFullScreen ? '0' : '10px'};
   padding: 0;
   display: flex;
   flex-direction: column;
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  border: ${props => props.isFullScreen ? 'none' : '1px solid rgba(255, 255, 255, 0.1)'};
+  box-shadow: ${props => props.isFullScreen ? 'none' : '0 8px 32px 0 rgba(0, 0, 0, 0.37)'};
   overflow: hidden;
 `;
 
@@ -27,26 +29,51 @@ const ContentContainer = styled.div`
   gap: 15px;
 `;
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const location = useLocation();
+  const isFullScreen = location.pathname === '/add-tokens';
   const [selectedCrypto, setSelectedCrypto] = useState('BTC');
   const [selectedFiat, setSelectedFiat] = useState('USD');
 
+  useEffect(() => {
+    // Resize electron window based on route
+    const { ipcRenderer } = window.require('electron');
+    if (isFullScreen) {
+      ipcRenderer.send('set-window-size', { width: 800, height: 600, isFullScreen: true });
+    } else {
+      ipcRenderer.send('set-window-size', { width: 400, height: 300, isFullScreen: false });
+    }
+  }, [isFullScreen]);
+
   return (
-    <CryptoProvider>
-      <AppContainer>
-        <Header selectedCrypto={selectedCrypto} selectedFiat={selectedFiat} />
-        <ContentContainer>
-          <Converter 
-            onCryptoChange={setSelectedCrypto} 
-            onFiatChange={setSelectedFiat}
-            defaultCrypto={selectedCrypto}
-            defaultFiat={selectedFiat}
-          />
-          <Footer />
-        </ContentContainer>
-      </AppContainer>
-    </CryptoProvider>
+    <Routes>
+      <Route path="/add-tokens" element={<AddTokens />} />
+      <Route path="/" element={
+        <AppContainer isFullScreen={false}>
+          <Header selectedCrypto={selectedCrypto} selectedFiat={selectedFiat} />
+          <ContentContainer>
+            <Converter 
+              onCryptoChange={setSelectedCrypto} 
+              onFiatChange={setSelectedFiat}
+              defaultCrypto={selectedCrypto}
+              defaultFiat={selectedFiat}
+            />
+            <Footer />
+          </ContentContainer>
+        </AppContainer>
+      } />
+    </Routes>
   );
 };
 
-export default App; 
+const App: React.FC = () => {
+  return (
+    <Router>
+      <CryptoProvider>
+        <AppContent />
+      </CryptoProvider>
+    </Router>
+  );
+};
+
+export default App;
