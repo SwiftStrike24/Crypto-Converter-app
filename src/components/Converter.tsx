@@ -159,16 +159,7 @@ const Amount = styled.div`
   font-weight: 500;
 `;
 
-const cryptos = ['BTC', 'ETH', 'SOL', 'USDC', 'XRP'];
-const fiats = ['USD', 'EUR', 'CAD'];
-
-const cryptoIds: { [key: string]: string } = {
-  BTC: 'bitcoin',
-  ETH: 'ethereum',
-  SOL: 'solana',
-  USDC: 'usd-coin',
-  XRP: 'ripple'
-};
+const fiats = ['USD', 'CAD', 'EUR'];
 
 interface ConverterProps {
   onCryptoChange: (crypto: string) => void;
@@ -190,7 +181,7 @@ const Converter: React.FC<ConverterProps> = ({
   const [error, setError] = useState<string>('');
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [lastEditedField, setLastEditedField] = useState<'crypto' | 'fiat'>('crypto');
-  const { prices, loading } = useCrypto();
+  const { prices, loading, availableCryptos } = useCrypto();
   const cryptoInputRef = useRef<HTMLInputElement>(null);
   const fiatInputRef = useRef<HTMLInputElement>(null);
 
@@ -230,9 +221,11 @@ const Converter: React.FC<ConverterProps> = ({
     setError('');
   }, [selectedCrypto, selectedFiat]);
 
-  const getRate = (cryptoId: string, fiat: string): number => {
-    if (!prices[cryptoId]) return 0;
-    return prices[cryptoId][fiat.toLowerCase()] || 0;
+  const getRate = (crypto: string, fiat: string): number => {
+    if (!prices[crypto] || !prices[crypto][fiat.toLowerCase()]) {
+      return 0;
+    }
+    return prices[crypto][fiat.toLowerCase()];
   };
 
   // Add utility function for optimal decimals
@@ -242,15 +235,58 @@ const Converter: React.FC<ConverterProps> = ({
       if (value >= 1000) return 2;
       if (value >= 1) return 4;
       if (value >= 0.1) return 6;
-      return 8;
+      if (value >= 0.0001) return 8;
+      return 8;  // Cap at 8 decimals for readability
     } else {
       // For fiat amounts
-      if (value >= 1000) return 0;
-      if (value >= 100) return 1;
-      if (value >= 10) return 2;
-      if (value >= 1) return 3;
-      return 4;
+      if (value >= 1000) return 2;
+      if (value >= 100) return 3;
+      if (value >= 10) return 4;
+      if (value >= 1) return 6;
+      if (value >= 0.01) return 8;
+      return 8;  // Cap at 8 decimals for readability
     }
+  };
+
+  const formatSmallNumber = (num: number): string => {
+    // Convert to string to avoid scientific notation
+    const str = num.toString();
+    
+    // If it's in scientific notation, convert it
+    if (str.includes('e')) {
+      const [base, exponent] = str.split('e');
+      const exp = parseInt(exponent);
+      if (exp < 0) {
+        // Move decimal point left by adding zeros
+        const absExp = Math.abs(exp);
+        return '0.' + '0'.repeat(absExp - 1) + base.replace('.', '');
+      }
+    }
+    
+    // For regular numbers, ensure we show appropriate decimals
+    const parts = str.split('.');
+    if (parts.length === 2) {
+      const decimals = Math.min(8, parts[1].length);
+      return num.toFixed(decimals);
+    }
+    
+    return str;
+  };
+
+  const formatNumber = (value: string, isCrypto: boolean): string => {
+    const num = parseFloat(value);
+    if (isNaN(num)) return '';
+    
+    // For very small numbers, use special formatting
+    if (!isCrypto && num < 0.01) {
+      return formatSmallNumber(num);
+    }
+
+    const decimals = getOptimalDecimals(num, isCrypto);
+    return new Intl.NumberFormat('en-US', {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    }).format(num);
   };
 
   const handleCryptoAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -282,11 +318,13 @@ const Converter: React.FC<ConverterProps> = ({
     }
 
     setCryptoAmount(value);
-    const rate = getRate(cryptoIds[selectedCrypto], selectedFiat);
+    const rate = getRate(selectedCrypto, selectedFiat);
     if (rate) {
       const converted = numValue * rate;
       const decimals = getOptimalDecimals(converted, false);
       setFiatAmount(converted.toFixed(decimals));
+    } else {
+      setFiatAmount('N/A');
     }
   };
 
@@ -319,11 +357,13 @@ const Converter: React.FC<ConverterProps> = ({
     }
 
     setFiatAmount(value);
-    const rate = getRate(cryptoIds[selectedCrypto], selectedFiat);
+    const rate = getRate(selectedCrypto, selectedFiat);
     if (rate) {
       const converted = numValue / rate;
       const decimals = getOptimalDecimals(converted, true);
       setCryptoAmount(converted.toFixed(decimals));
+    } else {
+      setCryptoAmount('N/A');
     }
   };
 
@@ -339,17 +379,6 @@ const Converter: React.FC<ConverterProps> = ({
     const newFiat = e.target.value;
     setSelectedFiat(newFiat);
     onFiatChange(newFiat);
-  };
-
-  const formatNumber = (value: string, isCrypto: boolean): string => {
-    const num = parseFloat(value);
-    if (isNaN(num)) return '';
-    
-    const decimals = getOptimalDecimals(num, isCrypto);
-    return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    }).format(num);
   };
 
   const handleCopy = async () => {
@@ -391,7 +420,7 @@ const Converter: React.FC<ConverterProps> = ({
           title="Select Cryptocurrency"
           disabled={loading}
         >
-          {cryptos.map((crypto) => (
+          {availableCryptos.map((crypto) => (
             <option key={crypto} value={crypto}>
               {crypto}
             </option>

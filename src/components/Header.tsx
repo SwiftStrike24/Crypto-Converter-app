@@ -142,14 +142,6 @@ interface HeaderProps {
   selectedFiat: string;
 }
 
-const cryptoIds: { [key: string]: string } = {
-  BTC: 'bitcoin',
-  ETH: 'ethereum',
-  SOL: 'solana',
-  USDC: 'usd-coin',
-  XRP: 'ripple'
-};
-
 const formatTimeAgo = (date: Date): string => {
   const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
   if (seconds < 60) return `${seconds}s ago`;
@@ -177,11 +169,38 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   };
 
   const getOptimalDecimals = (price: number): number => {
-    if (price >= 1000) return 0;  // For high value currencies like BTC
-    if (price >= 100) return 1;   // For mid-range values
-    if (price >= 10) return 2;    // For lower values
-    if (price >= 1) return 3;     // For values close to 1
-    return 4;                     // For very small values
+    if (price >= 1000) return 2;    // For high value currencies like BTC
+    if (price >= 100) return 3;     // For mid-range values
+    if (price >= 10) return 4;      // For lower values
+    if (price >= 1) return 6;       // For values close to 1
+    if (price >= 0.01) return 8;    // For small values
+    if (price >= 0.0001) return 8;  // For very small values
+    return 8;                       // For extremely small values like BONK
+  };
+
+  const formatSmallNumber = (num: number): string => {
+    // Convert to string to avoid scientific notation
+    const str = num.toString();
+    
+    // If it's in scientific notation, convert it
+    if (str.includes('e')) {
+      const [base, exponent] = str.split('e');
+      const exp = parseInt(exponent);
+      if (exp < 0) {
+        // Move decimal point left by adding zeros
+        const absExp = Math.abs(exp);
+        return '0.' + '0'.repeat(absExp - 1) + base.replace('.', '');
+      }
+    }
+    
+    // For regular numbers, ensure we show 8 significant digits
+    const parts = str.split('.');
+    if (parts.length === 2) {
+      const decimals = Math.min(8, parts[1].length);
+      return num.toFixed(decimals);
+    }
+    
+    return str;
   };
 
   const getPrice = () => {
@@ -195,14 +214,17 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
       );
     }
     
-    const cryptoId = cryptoIds[selectedCrypto];
-    if (!prices[cryptoId]) return 'N/A';
+    if (!prices[selectedCrypto]) return 'N/A';
     
-    const price = prices[cryptoId][selectedFiat.toLowerCase()];
+    const price = prices[selectedCrypto][selectedFiat.toLowerCase()];
     if (!price) return 'N/A';
 
-    const decimals = getOptimalDecimals(price);
+    // For very small numbers, use special formatting
+    if (price < 0.01) {
+      return formatSmallNumber(price);
+    }
 
+    const decimals = getOptimalDecimals(price);
     return price.toLocaleString(
       selectedFiat === 'USD' ? 'en-US' : selectedFiat === 'EUR' ? 'de-DE' : 'en-CA', 
       { 

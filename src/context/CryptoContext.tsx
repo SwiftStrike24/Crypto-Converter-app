@@ -9,6 +9,7 @@ interface CryptoContextType {
   lastUpdated: Date | null;
   addCrypto: (symbol: string, id?: string) => void;
   availableCryptos: string[];
+  getCryptoId: (symbol: string) => string | undefined;
 }
 
 interface CacheData {
@@ -77,6 +78,10 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   };
 
+  const getCryptoId = useCallback((symbol: string) => {
+    return cryptoIds[symbol];
+  }, [cryptoIds]);
+
   const updatePrices = useCallback(async (force: boolean = false) => {
     const now = Date.now();
 
@@ -103,11 +108,14 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setLoading(true);
       setError(null);
 
+      const cryptoIdsList = Object.values(cryptoIds);
+      if (cryptoIdsList.length === 0) return;
+
       const response = await axios.get(`${API_BASE}/simple/price`, {
         params: {
-          ids: Object.values(cryptoIds).join(','),
+          ids: cryptoIdsList.join(','),
           vs_currencies: 'usd,eur,cad',
-          precision: 2
+          precision: 18
         },
         timeout: 10000
       });
@@ -116,8 +124,26 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         throw new Error('No price data received');
       }
 
-      setPrices(response.data);
-      setCachePrices(response.data);
+      // Transform the response data to map symbols to prices
+      const transformedPrices: Record<string, Record<string, number>> = {};
+      
+      // Iterate through our cryptoIds mapping
+      Object.entries(cryptoIds).forEach(([symbol, id]) => {
+        if (response.data[id]) {
+          transformedPrices[symbol] = {
+            usd: response.data[id].usd,
+            eur: response.data[id].eur,
+            cad: response.data[id].cad
+          };
+        }
+      });
+
+      if (Object.keys(transformedPrices).length === 0) {
+        throw new Error('Failed to transform price data');
+      }
+
+      setPrices(transformedPrices);
+      setCachePrices(transformedPrices);
       setLastUpdated(new Date());
       lastApiCall.current = now;
       retryCount.current = 0;
@@ -158,21 +184,25 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const addCrypto = useCallback((symbol: string, id?: string) => {
     if (!id) {
-      console.warn(`Crypto symbol ${symbol} not found in cryptoIds mapping`);
+      console.warn(`No CoinGecko ID provided for symbol ${symbol}`);
       return;
     }
 
     setCryptoIds(prev => {
-      const newIds = { ...prev, [symbol]: id };
+      const newIds = { ...prev, [symbol.toUpperCase()]: id.toLowerCase() };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newIds));
       return newIds;
     });
 
-    if (!availableCryptos.includes(symbol)) {
-      setAvailableCryptos(prev => [...prev, symbol]);
-      updatePrices(true).catch(console.error);
-    }
-  }, [availableCryptos, updatePrices]);
+    setAvailableCryptos(prev => {
+      if (!prev.includes(symbol.toUpperCase())) {
+        const newCryptos = [...prev, symbol.toUpperCase()];
+        updatePrices(true).catch(console.error);
+        return newCryptos;
+      }
+      return prev;
+    });
+  }, [updatePrices]);
 
   useEffect(() => {
     updatePrices(true);
@@ -195,7 +225,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       updatePrices,
       lastUpdated,
       addCrypto,
-      availableCryptos
+      availableCryptos,
+      getCryptoId
     }}>
       {children}
     </CryptoContext.Provider>

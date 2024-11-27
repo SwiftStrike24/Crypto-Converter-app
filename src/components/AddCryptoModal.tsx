@@ -304,12 +304,13 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
     });
   };
 
-  const handleSave = () => {
-    results
-      .filter(crypto => selectedCryptos.has(crypto.id))
-      .forEach(crypto => {
-        addCrypto(crypto.symbol);
-      });
+  const handleAddSelected = () => {
+    selectedCryptos.forEach(cryptoId => {
+      const crypto = results.find(r => r.id === cryptoId);
+      if (crypto) {
+        addCrypto(crypto.symbol, crypto.id);
+      }
+    });
     onClose();
   };
 
@@ -379,7 +380,7 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
           </Button>
           <Button
             variant="primary"
-            onClick={handleSave}
+            onClick={handleAddSelected}
             disabled={selectedCryptos.size === 0}
           >
             Add {selectedCryptos.size > 0 ? `${selectedCryptos.size} Token${selectedCryptos.size !== 1 ? 's' : ''}` : 'Tokens'}
