@@ -173,25 +173,76 @@ const ChartButton = styled.button`
   position: fixed;
   bottom: 20px;
   right: 20px;
-  background: #2196f3;
-  color: white;
-  border: none;
+  background: transparent;
+  color: #8b5cf6;
+  border: 2px solid rgba(139, 92, 246, 0.3);
   border-radius: 50%;
-  width: 50px;
-  height: 50px;
+  width: 48px;
+  height: 48px;
   cursor: pointer;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 100;
-  transition: all 0.2s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center;
   
   &:hover {
-    background: #1976d2;
-    transform: scale(1.05);
+    transform: translateY(-2px) scale(1.05);
+    border-color: #8b5cf6;
+    color: #7c3aed;
+    background: rgba(139, 92, 246, 0.1);
+  }
+
+  &:active {
+    transform: translateY(0) scale(0.95);
+    background: rgba(139, 92, 246, 0.2);
+  }
+
+  svg {
+    width: 24px;
+    height: 24px;
+    transition: transform 0.3s ease;
+    filter: drop-shadow(0 2px 4px rgba(139, 92, 246, 0.2));
+  }
+
+  &:hover svg {
+    transform: scale(1.1);
+    filter: drop-shadow(0 4px 8px rgba(139, 92, 246, 0.3));
+  }
+
+  @media (max-width: 768px) {
+    width: 42px;
+    height: 42px;
+    bottom: 16px;
+    right: 16px;
+
+    svg {
+      width: 20px;
+      height: 20px;
+    }
   }
 `;
+
+const ChartIcon = () => (
+  <svg 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    <path d="M3 3v18h18" />
+    <path d="M18 9l-5 5-2-2-4 4" />
+    <circle cx="18" cy="9" r="1" />
+    <circle cx="13" cy="14" r="1" />
+    <circle cx="11" cy="12" r="1" />
+    <circle cx="7" cy="16" r="1" />
+  </svg>
+);
 
 const Converter: React.FC<ConverterProps> = ({ 
   onCryptoChange, 
@@ -521,7 +572,7 @@ const Converter: React.FC<ConverterProps> = ({
           currency: selectedFiat 
         }
       })}>
-        📈
+        <ChartIcon />
       </ChartButton>
     </ConverterContainer>
   );

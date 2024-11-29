@@ -58,6 +58,22 @@ const ChartContainer = styled.div`
     }
   }
 
+  .recharts-cartesian-grid-horizontal line,
+  .recharts-cartesian-grid-vertical line {
+    stroke: rgba(255, 255, 255, 0.1);
+  }
+
+  .recharts-line path {
+    stroke: #8b5cf6;
+    stroke-width: 2px;
+  }
+
+  .recharts-tooltip-wrapper {
+    background: rgba(17, 17, 17, 0.9);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    backdrop-filter: blur(8px);
+  }
+
   @media (max-width: 768px) {
     height: 350px;
     padding: 1rem;
@@ -82,18 +98,18 @@ const LoadingOverlay = styled.div`
 const LoadingSpinner = styled.div`
   width: 60px;
   height: 60px;
-  border: 4px solid rgba(33, 150, 243, 0.1);
-  border-top: 4px solid #2196f3;
+  border: 4px solid rgba(139, 92, 246, 0.1);
+  border-top: 4px solid #8b5cf6;
   border-radius: 50%;
   animation: ${spin} 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
-  box-shadow: 0 0 25px rgba(33, 150, 243, 0.4);
+  box-shadow: 0 0 25px rgba(139, 92, 246, 0.4);
 `;
 
 const LoadingText = styled.div`
   margin-top: 20px;
   font-size: 16px;
-  color: #2196f3;
-  text-shadow: 0 0 10px rgba(33, 150, 243, 0.4);
+  color: #8b5cf6;
+  text-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
 `;
 
 const ChartHeader = styled.div`
@@ -121,19 +137,23 @@ interface TimeButtonProps {
 }
 
 const TimeButton = styled.button<TimeButtonProps>`
-  background: ${props => props.active ? 'rgba(33, 150, 243, 0.1)' : 'rgba(255, 255, 255, 0.05)'};
-  border: 1px solid ${props => props.active ? '#2196f3' : 'rgba(255, 255, 255, 0.1)'};
-  color: ${props => props.active ? '#2196f3' : '#888'};
-  padding: 4px 8px;
-  border-radius: 8px;
-  font-size: 0.8rem;
+  background: ${props => props.active ? 'rgba(139, 92, 246, 0.1)' : 'rgba(255, 255, 255, 0.05)'};
+  border: 1px solid ${props => props.active ? '#8b5cf6' : 'rgba(255, 255, 255, 0.1)'};
+  color: ${props => props.active ? '#8b5cf6' : '#9ca3af'};
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover {
-    background: rgba(33, 150, 243, 0.1);
-    border-color: #2196f3;
-    color: #2196f3;
+    background: rgba(139, 92, 246, 0.15);
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+  }
+
+  &:active {
+    transform: scale(0.95);
   }
 `;
 
@@ -423,6 +443,12 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
                   bottom: 30 
                 }}
               >
+                <defs>
+                  <linearGradient id="purpleGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
                 <XAxis
                   dataKey="timestamp"
@@ -476,13 +502,15 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
                 <Line
                   type="monotone"
                   dataKey="price"
-                  stroke="#2196f3"
+                  stroke="#8b5cf6"
+                  fill="url(#purpleGradient)"
+                  fillOpacity={1}
                   strokeWidth={2}
                   dot={false}
                   activeDot={{ 
                     r: 6, 
-                    fill: '#2196f3',
-                    stroke: 'rgba(33, 150, 243, 0.3)',
+                    fill: '#8b5cf6',
+                    stroke: 'rgba(139, 92, 246, 0.3)',
                     strokeWidth: 4
                   }}
                   animationDuration={1000}
@@ -496,4 +524,4 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
       </ChartContainer>
     </ErrorBoundary>
   );
-}); 
+});
