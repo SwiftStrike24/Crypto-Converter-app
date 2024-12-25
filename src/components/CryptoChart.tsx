@@ -34,13 +34,6 @@ const spin = keyframes`
 `;
 
 const ChartContainer = styled.div`
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.18);
   width: 100%;
   height: 400px;
   position: relative;
@@ -60,7 +53,7 @@ const ChartContainer = styled.div`
 
   .recharts-cartesian-grid-horizontal line,
   .recharts-cartesian-grid-vertical line {
-    stroke: rgba(255, 255, 255, 0.1);
+    stroke: rgba(255, 255, 255, 0.05);
   }
 
   .recharts-line path {
@@ -76,7 +69,6 @@ const ChartContainer = styled.div`
 
   @media (max-width: 768px) {
     height: 350px;
-    padding: 1rem;
   }
 `;
 
@@ -116,12 +108,13 @@ const ChartHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 0 0.5rem;
 `;
 
 const ChartTitle = styled.div`
-  color: #888;
-  font-size: 0.9rem;
+  color: #9ca3af;
+  font-size: 1rem;
   display: flex;
   align-items: center;
   gap: 1rem;
@@ -186,17 +179,23 @@ interface CustomTooltipProps {
 }
 
 const TooltipContainer = styled.div`
-  background: rgba(0, 0, 0, 0.8);
-  padding: 8px;
-  border: 1px solid #444;
-  border-radius: 4px;
+  background: rgba(17, 17, 17, 0.95);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 6px;
+  padding: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(8px);
 `;
 
 const TooltipText = styled.p`
   color: #fff;
   margin: 0;
+  font-size: 0.9rem;
+  
   & + & {
-    margin-top: 4px;
+    margin-top: 6px;
+    color: #9ca3af;
+    font-size: 0.85rem;
   }
 `;
 
@@ -449,7 +448,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
                     <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis
                   dataKey="timestamp"
                   tickFormatter={(timestamp) => {
@@ -465,9 +464,9 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
                     dy: 10
                   }}
                   height={50}
-                  stroke="rgba(255,255,255,0.1)"
-                  axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
-                  tickLine={{ stroke: 'rgba(255,255,255,0.1)' }}
+                  stroke="rgba(255,255,255,0.05)"
+                  axisLine={{ stroke: 'rgba(255,255,255,0.05)' }}
+                  tickLine={{ stroke: 'rgba(255,255,255,0.05)' }}
                 />
                 <YAxis
                   domain={calculateYAxisDomain(chartData)}
@@ -488,9 +487,9 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
                     fontSize: window.innerWidth <= 480 ? 11 : 12 
                   }}
                   width={80}
-                  stroke="rgba(255,255,255,0.1)"
-                  axisLine={{ stroke: 'rgba(255,255,255,0.1)' }}
-                  tickLine={{ stroke: 'rgba(255,255,255,0.1)' }}
+                  stroke="rgba(255,255,255,0.05)"
+                  axisLine={{ stroke: 'rgba(255,255,255,0.05)' }}
+                  tickLine={{ stroke: 'rgba(255,255,255,0.05)' }}
                   allowDataOverflow={false}
                   scale="linear"
                   interval="preserveStartEnd"
