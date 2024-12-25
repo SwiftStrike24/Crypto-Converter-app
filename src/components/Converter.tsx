@@ -257,7 +257,7 @@ const Converter: React.FC<ConverterProps> = ({
   const [error, setError] = useState<string>('');
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [lastEditedField, setLastEditedField] = useState<'crypto' | 'fiat'>('crypto');
-  const { prices, loading, availableCryptos } = useCrypto();
+  const { prices, availableCryptos } = useCrypto();
   const cryptoInputRef = useRef<HTMLInputElement>(null);
   const fiatInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -286,11 +286,6 @@ const Converter: React.FC<ConverterProps> = ({
     };
   }, [lastEditedField]);
 
-  // Input focus handlers
-  const handleInputFocus = (field: 'crypto' | 'fiat') => {
-    setLastEditedField(field);
-  };
-
   // Reset inputs when switching assets
   useEffect(() => {
     setCryptoAmount('');
@@ -305,142 +300,130 @@ const Converter: React.FC<ConverterProps> = ({
     return prices[crypto][fiat.toLowerCase()];
   };
 
-  // Add utility function for optimal decimals
-  const getOptimalDecimals = (value: number, isCrypto: boolean): number => {
-    if (isCrypto) {
-      // For crypto amounts
-      if (value >= 1000) return 2;
-      if (value >= 1) return 4;
-      if (value >= 0.1) return 6;
-      if (value >= 0.0001) return 8;
-      return 8;  // Cap at 8 decimals for readability
-    } else {
-      // For fiat amounts
-      if (value >= 1000) return 2;
-      if (value >= 100) return 3;
-      if (value >= 10) return 4;
-      if (value >= 1) return 6;
-      if (value >= 0.01) return 8;
-      return 8;  // Cap at 8 decimals for readability
-    }
-  };
-
-  const formatSmallNumber = (num: number): string => {
-    // Convert to string to avoid scientific notation
-    const str = num.toString();
-    
-    // If it's in scientific notation, convert it
-    if (str.includes('e')) {
-      const [base, exponent] = str.split('e');
-      const exp = parseInt(exponent);
-      if (exp < 0) {
-        // Move decimal point left by adding zeros
-        const absExp = Math.abs(exp);
-        return '0.' + '0'.repeat(absExp - 1) + base.replace('.', '');
-      }
-    }
-    
-    // For regular numbers, ensure we show appropriate decimals
-    const parts = str.split('.');
-    if (parts.length === 2) {
-      const decimals = Math.min(8, parts[1].length);
-      return num.toFixed(decimals);
-    }
-    
-    return str;
-  };
-
   const formatNumber = (value: string, isCrypto: boolean): string => {
     const num = parseFloat(value);
     if (isNaN(num)) return '';
     
-    // For very small numbers, use special formatting
-    if (!isCrypto && num < 0.01) {
-      return formatSmallNumber(num);
+    // For crypto amounts, use more decimals
+    if (isCrypto) {
+      if (num < 0.000001) return num.toFixed(8);
+      if (num < 0.0001) return num.toFixed(6);
+      if (num < 0.01) return num.toFixed(4);
+      return num.toFixed(2);
     }
-
-    const decimals = getOptimalDecimals(num, isCrypto);
-    return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: decimals,
-      maximumFractionDigits: decimals,
-    }).format(num);
+    
+    // For fiat amounts
+    if (num >= 1000000) return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    if (num >= 1000) return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    if (num >= 1) return num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (num >= 0.01) return num.toFixed(2);
+    return num.toFixed(4);
   };
 
   const handleCryptoAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
     setLastEditedField('crypto');
-    const value = e.target.value;
     
-    setError('');
-
-    if (value === '') {
-      setCryptoAmount('');
-      setFiatAmount('');
-      return;
-    }
-
-    if (!/^\d*\.?\d*$/.test(value)) {
-      setError('Please enter a valid number');
-      return;
-    }
-
-    const numValue = parseFloat(value);
-    if (numValue < 0) {
-      setError('Amount cannot be negative');
-      return;
-    }
-
-    if (numValue > 1000000000) {
-      setError('Amount is too large');
-      return;
+    // Remove all non-numeric characters except decimal point
+    value = value.replace(/[^0-9.]/g, '');
+    
+    // Ensure only one decimal point
+    const parts = value.split('.');
+    if (parts.length > 2) {
+      value = parts[0] + '.' + parts.slice(1).join('');
     }
 
     setCryptoAmount(value);
-    const rate = getRate(selectedCrypto, selectedFiat);
-    if (rate) {
-      const converted = numValue * rate;
-      const decimals = getOptimalDecimals(converted, false);
-      setFiatAmount(converted.toFixed(decimals));
-    } else {
-      setFiatAmount('N/A');
-    }
-  };
-
-  const handleFiatAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setLastEditedField('fiat');
-    const value = e.target.value;
-    
-    setError('');
-
     if (value === '') {
-      setCryptoAmount('');
       setFiatAmount('');
       return;
     }
 
-    if (!/^\d*\.?\d*$/.test(value)) {
+    const numericValue = parseFloat(value);
+    if (isNaN(numericValue)) {
       setError('Please enter a valid number');
       return;
     }
 
-    const numValue = parseFloat(value);
-    if (numValue < 0) {
-      setError('Amount cannot be negative');
+    const rate = getRate(selectedCrypto, selectedFiat);
+    if (rate === 0) {
+      setError('Price data unavailable');
       return;
     }
 
-    if (numValue > 1000000000) {
-      setError('Amount is too large');
-      return;
+    const convertedAmount = (numericValue * rate).toString();
+    setFiatAmount(convertedAmount);
+    setError('');
+  };
+
+  const handleFiatAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+    setLastEditedField('fiat');
+    
+    // Remove all non-numeric characters except decimal point
+    value = value.replace(/[^0-9.]/g, '');
+    
+    // Ensure only one decimal point
+    const parts = value.split('.');
+    if (parts.length > 2) {
+      value = parts[0] + '.' + parts.slice(1).join('');
     }
 
     setFiatAmount(value);
+    if (value === '') {
+      setCryptoAmount('');
+      return;
+    }
+
+    const numericValue = parseFloat(value);
+    if (isNaN(numericValue)) {
+      setError('Please enter a valid number');
+      return;
+    }
+
     const rate = getRate(selectedCrypto, selectedFiat);
-    if (rate) {
-      const converted = numValue / rate;
-      const decimals = getOptimalDecimals(converted, true);
-      setCryptoAmount(converted.toFixed(decimals));
+    if (rate === 0) {
+      setError('Price data unavailable');
+      return;
+    }
+
+    const convertedAmount = (numericValue / rate).toString();
+    setCryptoAmount(convertedAmount);
+    setError('');
+  };
+
+  // Add paste event handlers for both inputs
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>, isCrypto: boolean) => {
+    e.preventDefault();
+    const pastedText = e.clipboardData.getData('text');
+    
+    // Remove all non-numeric characters except decimal point
+    const cleanedValue = pastedText.replace(/[^0-9.]/g, '');
+    
+    // Ensure only one decimal point
+    const parts = cleanedValue.split('.');
+    const value = parts[0] + (parts.length > 1 ? '.' + parts[1] : '');
+    
+    if (isCrypto) {
+      setLastEditedField('crypto');
+      setCryptoAmount(value);
+      const numericValue = parseFloat(value);
+      if (!isNaN(numericValue)) {
+        const rate = getRate(selectedCrypto, selectedFiat);
+        const convertedAmount = (numericValue * rate).toString();
+        setFiatAmount(convertedAmount);
+        setError('');
+      }
     } else {
-      setCryptoAmount('N/A');
+      setLastEditedField('fiat');
+      setFiatAmount(value);
+      const numericValue = parseFloat(value);
+      if (!isNaN(numericValue)) {
+        const rate = getRate(selectedCrypto, selectedFiat);
+        const convertedAmount = (numericValue / rate).toString();
+        setCryptoAmount(convertedAmount);
+        setError('');
+      }
     }
   };
 
@@ -495,24 +478,18 @@ const Converter: React.FC<ConverterProps> = ({
   return (
     <ConverterContainer>
       <InputGroup>
-        <Label htmlFor="crypto-amount">Cryptocurrency Amount</Label>
+        <Label htmlFor="cryptoAmount">Crypto Amount</Label>
         <Input
-          ref={cryptoInputRef}
-          id="crypto-amount"
+          id="cryptoAmount"
           type="text"
           value={cryptoAmount}
           onChange={handleCryptoAmountChange}
-          onFocus={() => handleInputFocus('crypto')}
+          onPaste={(e) => handlePaste(e, true)}
           placeholder="0.00"
-          aria-label="Cryptocurrency amount"
-          disabled={loading}
         />
         <Select
-          id="crypto-select"
           value={selectedCrypto}
           onChange={handleCryptoChange}
-          title="Select Cryptocurrency"
-          disabled={loading}
         >
           {availableCryptos.map((crypto) => (
             <option key={crypto} value={crypto}>
@@ -523,24 +500,18 @@ const Converter: React.FC<ConverterProps> = ({
       </InputGroup>
 
       <InputGroup>
-        <Label htmlFor="fiat-amount">Fiat Amount</Label>
+        <Label htmlFor="fiatAmount">Fiat Amount</Label>
         <Input
-          ref={fiatInputRef}
-          id="fiat-amount"
+          id="fiatAmount"
           type="text"
           value={fiatAmount}
           onChange={handleFiatAmountChange}
-          onFocus={() => handleInputFocus('fiat')}
+          onPaste={(e) => handlePaste(e, false)}
           placeholder="0.00"
-          aria-label="Fiat amount"
-          disabled={loading}
         />
         <Select
-          id="fiat-select"
           value={selectedFiat}
           onChange={handleFiatChange}
-          title="Select Fiat Currency"
-          disabled={loading}
         >
           {fiats.map((fiat) => (
             <option key={fiat} value={fiat}>

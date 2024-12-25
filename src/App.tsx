@@ -7,6 +7,7 @@ import Footer from './components/Footer';
 import AddTokens from './pages/AddTokens';
 import ChartPage from './pages/ChartPage';
 import { CryptoProvider } from './context/CryptoContext';
+import { CryptoCompareProvider } from './context/CryptoCompareContext';
 
 const AppContainer = styled.div<{ isFullScreen?: boolean }>`
   width: ${props => props.isFullScreen ? '100vw' : '400px'};
@@ -70,11 +71,13 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <Router>
-      <CryptoProvider>
-        <AppContent />
-      </CryptoProvider>
-    </Router>
+    <CryptoProvider>
+      <CryptoCompareProvider>
+        <Router>
+          <AppContent />
+        </Router>
+      </CryptoCompareProvider>
+    </CryptoProvider>
   );
 };
 

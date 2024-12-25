@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, memo } from 'react';
+import React, { useEffect, useState, useCallback, memo, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import {
   LineChart,
@@ -11,6 +11,7 @@ import {
 } from 'recharts';
 import { format } from 'date-fns';
 import { useCrypto } from '../context/CryptoContext';
+import { useCryptoCompare } from '../context/CryptoCompareContext';
 import { ErrorBoundary } from 'react-error-boundary';
 
 const fadeIn = keyframes`
@@ -224,6 +225,15 @@ const RetryButton = styled.button`
   }
 `;
 
+const FallbackIndicator = styled.span`
+  font-size: 0.8rem;
+  color: #666;
+  margin-left: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+`;
+
 const COINGECKO_API_KEY = import.meta.env.VITE_COINGECKO_API_KEY;
 
 const ErrorFallbackComponent = ({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) => (
@@ -275,8 +285,23 @@ const calculateYAxisDomain = (data: ChartDataPoint[]): [number, number] => {
   ];
 };
 
+// Constants for chart data management
+const CHART_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes cache for chart data
+const CHART_UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes update interval
+const CHART_RETRY_DELAY = 5000; // 5 seconds base delay for retries
+const MAX_RETRIES = 3;
+
+interface ChartCache {
+  data: ChartDataPoint[];
+  timeframe: Timeframe;
+  cryptoId: string;
+  currency: string;
+  timestamp: number;
+}
+
 export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) => {
   const { error: contextError, loading: contextLoading, getCryptoId } = useCrypto();
+  const cryptoCompare = useCryptoCompare();
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [timeframe, setTimeframe] = useState<Timeframe>('24H');
   const [loading, setLoading] = useState(true);
@@ -285,8 +310,31 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
   const [chartLoaded, setChartLoaded] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [displayTicks, setDisplayTicks] = useState<number[]>([]);
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY = 5000;
+  const [usingFallbackApi, setUsingFallbackApi] = useState(false);
+  const chartCache = useRef<{ [key: string]: ChartCache }>({});
+  const fetchTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  const getCacheKey = (tf: Timeframe, id: string, curr: string) => `${tf}-${id}-${curr}`;
+
+  const getChartCache = (tf: Timeframe, id: string, curr: string): ChartDataPoint[] | null => {
+    const key = getCacheKey(tf, id, curr);
+    const cache = chartCache.current[key];
+    if (cache && Date.now() - cache.timestamp <= CHART_CACHE_DURATION) {
+      return cache.data;
+    }
+    return null;
+  };
+
+  const setChartCache = (tf: Timeframe, id: string, curr: string, data: ChartDataPoint[]) => {
+    const key = getCacheKey(tf, id, curr);
+    chartCache.current[key] = {
+      data,
+      timeframe: tf,
+      cryptoId: id,
+      currency: curr,
+      timestamp: Date.now()
+    };
+  };
 
   const getTickCount = (timeframe: Timeframe, isMobile: boolean): number => {
     if (isMobile) return 6;
@@ -304,45 +352,115 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
   };
 
   const fetchPriceHistory = useCallback(async (selectedTimeframe: Timeframe) => {
+    if (fetchTimeout.current) {
+      clearTimeout(fetchTimeout.current);
+      fetchTimeout.current = null;
+    }
+
     try {
       setLoading(true);
       setError(null);
-      const days = selectedTimeframe === '24H' ? '1' : selectedTimeframe === '7D' ? '7' : '30';
       
       const coinGeckoId = getCryptoId(cryptoId.toUpperCase());
-      
       if (!coinGeckoId) {
         throw new Error(`Could not find CoinGecko ID for ${cryptoId}`);
       }
 
-      const baseUrl = `https://api.coingecko.com/api/v3/coins/${coinGeckoId}/market_chart`;
-      const url = `${baseUrl}?vs_currency=${currency.toLowerCase()}&days=${days}${selectedTimeframe !== '24H' ? '&interval=daily' : ''}`;
-
-      const response = await fetch(url, {
-        headers: {
-          'x-cg-demo-api-key': COINGECKO_API_KEY
+      // Check cache first and validate age
+      const cachedData = getChartCache(selectedTimeframe, cryptoId, currency);
+      const now = Date.now();
+      
+      if (cachedData) {
+        const cacheAge = now - chartCache.current[getCacheKey(selectedTimeframe, cryptoId, currency)]?.timestamp;
+        
+        // Use cache if it's still fresh
+        if (cacheAge < CHART_CACHE_DURATION) {
+          setChartData(cachedData);
+          setLoading(false);
+          setTimeout(() => setChartLoaded(true), 300);
+          
+          // If cache is getting old, trigger background refresh
+          if (cacheAge > CHART_CACHE_DURATION * 0.8) {
+            fetchTimeout.current = setTimeout(() => {
+              fetchPriceHistory(selectedTimeframe);
+            }, CHART_RETRY_DELAY);
+          }
+          return;
         }
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        if (response.status === 429) {
-          throw new Error('Rate limit exceeded. Please wait 1-2 minutes before trying again.');
-        }
-        throw new Error(`API Error: ${response.status} - ${errorText}`);
       }
-      
-      const data = await response.json();
-      
-      if (!data.prices || !Array.isArray(data.prices)) {
-        throw new Error('Invalid data format received from API');
-      }
-      
-      const formattedData = data.prices.map(([timestamp, price]: [number, number]) => ({
-        timestamp,
-        price,
-      }));
 
+      let data;
+      let usedFallbackApi = false;
+
+      // Try CoinGecko first if not already using fallback
+      if (!usingFallbackApi) {
+        try {
+          const days = selectedTimeframe === '24H' ? '1' : selectedTimeframe === '7D' ? '7' : '30';
+          const baseUrl = `https://api.coingecko.com/api/v3/coins/${coinGeckoId}/market_chart`;
+          const url = `${baseUrl}?vs_currency=${currency.toLowerCase()}&days=${days}${selectedTimeframe !== '24H' ? '&interval=daily' : ''}`;
+
+          const response = await fetch(url, {
+            headers: {
+              'x-cg-demo-api-key': COINGECKO_API_KEY
+            }
+          });
+
+          if (!response.ok) {
+            if (response.status === 429) {
+              throw new Error('Rate limit exceeded');
+            }
+            throw new Error(`API Error: ${response.status}`);
+          }
+
+          const jsonData = await response.json();
+          if (!jsonData.prices || !Array.isArray(jsonData.prices)) {
+            throw new Error('Invalid data format received from CoinGecko');
+          }
+
+          data = jsonData.prices.map(([timestamp, price]: [number, number]) => ({
+            timestamp,
+            price,
+          }));
+        } catch (error) {
+          console.log('CoinGecko API failed, switching to CryptoCompare');
+          // If CoinGecko fails, we'll try CryptoCompare
+          usedFallbackApi = true;
+        }
+      }
+
+      // Try CryptoCompare if CoinGecko failed or we're already using fallback
+      if (!data || usingFallbackApi) {
+        try {
+          data = await cryptoCompare.getHistoricalData(
+            cryptoId,
+            currency,
+            selectedTimeframe
+          );
+          usedFallbackApi = true;
+        } catch (fallbackError) {
+          console.error('CryptoCompare API failed:', fallbackError);
+          // If both APIs fail, try to use stale cache
+          if (cachedData) {
+            setChartData(cachedData);
+            setError('Using cached data');
+            setLoading(false);
+            setTimeout(() => setChartLoaded(true), 300);
+            return;
+          }
+          throw new Error('Both APIs failed to fetch data');
+        }
+      }
+
+      // Update UI to show which API we're using
+      setUsingFallbackApi(usedFallbackApi);
+      setError(null); // Clear any error when data is successfully loaded
+
+      if (!data || !Array.isArray(data)) {
+        throw new Error('No valid data received from either API');
+      }
+
+      // Process the data
+      const formattedData = data;
       const newDisplayTicks = formattedData.filter((_: ChartDataPoint, index: number) => {
         const totalPoints = formattedData.length;
         const tickCount = getTickCount(selectedTimeframe, window.innerWidth <= 480);
@@ -359,31 +477,69 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
         setPriceChange(changePercent);
       }
 
+      setChartCache(selectedTimeframe, cryptoId, currency, formattedData);
       setChartData(formattedData);
       setRetryCount(0);
+      setError(null);
       setTimeout(() => setChartLoaded(true), 300);
+
     } catch (error) {
       console.error('Error fetching price data:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch price data';
       setError(errorMessage);
 
       if (retryCount < MAX_RETRIES) {
-        const nextRetry = RETRY_DELAY * Math.pow(2, retryCount);
-        setTimeout(() => fetchPriceHistory(selectedTimeframe), nextRetry);
+        const nextRetry = CHART_RETRY_DELAY * Math.pow(2, retryCount);
+        fetchTimeout.current = setTimeout(() => {
+          fetchPriceHistory(selectedTimeframe);
+        }, nextRetry);
         setRetryCount(prev => prev + 1);
       }
     } finally {
       setLoading(false);
     }
-  }, [cryptoId, currency, getCryptoId, retryCount]);
+  }, [cryptoId, currency, getCryptoId, retryCount, usingFallbackApi, cryptoCompare]);
 
   useEffect(() => {
     setChartLoaded(false);
-    const fetchData = () => fetchPriceHistory(timeframe);
-    fetchData();
     
-    const interval = setInterval(fetchData, 60000);
-    return () => clearInterval(interval);
+    // Debounce the fetch call
+    if (fetchTimeout.current) {
+      clearTimeout(fetchTimeout.current);
+    }
+    
+    // Check cache first before making a new request
+    const cachedData = getChartCache(timeframe, cryptoId, currency);
+    if (cachedData) {
+      setChartData(cachedData);
+      setChartLoaded(true);
+      
+      // If cache is getting old, schedule a background refresh
+      const cacheAge = Date.now() - chartCache.current[getCacheKey(timeframe, cryptoId, currency)]?.timestamp;
+      if (cacheAge > CHART_CACHE_DURATION * 0.8) {
+        fetchTimeout.current = setTimeout(() => {
+          fetchPriceHistory(timeframe);
+        }, CHART_RETRY_DELAY);
+      }
+    } else {
+      fetchTimeout.current = setTimeout(() => {
+        fetchPriceHistory(timeframe);
+      }, 300);
+    }
+
+    // Set up less frequent updates with exponential backoff on errors
+    const interval = setInterval(() => {
+      if (retryCount === 0) { // Only update if we're not in a retry state
+        fetchPriceHistory(timeframe);
+      }
+    }, CHART_UPDATE_INTERVAL);
+
+    return () => {
+      if (fetchTimeout.current) {
+        clearTimeout(fetchTimeout.current);
+      }
+      clearInterval(interval);
+    };
   }, [timeframe, fetchPriceHistory]);
 
   return (
@@ -396,6 +552,11 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
               <PriceChange isPositive={priceChange > 0}>
                 {priceChange > 0 ? '+' : ''}{priceChange.toFixed(2)}%
               </PriceChange>
+            )}
+            {usingFallbackApi && (
+              <FallbackIndicator>
+                Fallback API
+              </FallbackIndicator>
             )}
           </ChartTitle>
           <TimeframeButtons>
