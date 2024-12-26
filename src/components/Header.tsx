@@ -1,8 +1,9 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { GiPowerButton } from "react-icons/gi";
 import { IoMdAdd } from "react-icons/io";
+import { FiTrash2 } from "react-icons/fi";
 import { useCrypto } from '../context/CryptoContext';
 import AddCryptoModal from './AddCryptoModal';
 
@@ -51,7 +52,7 @@ const PowerButton = styled.button`
   }
 `;
 
-const AddButton = styled.button`
+const IconButton = styled.button`
   -webkit-app-region: no-drag;
   background: none;
   border: none;
@@ -72,6 +73,11 @@ const AddButton = styled.button`
   &:active {
     transform: scale(0.95);
   }
+`;
+
+const IconsContainer = styled.div`
+  display: flex;
+  gap: 8px;
 `;
 
 const ExchangeRate = styled.div<{ isError?: boolean }>`
@@ -142,30 +148,28 @@ interface HeaderProps {
   selectedFiat: string;
 }
 
-const formatTimeAgo = (date: Date): string => {
-  const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
-};
-
 const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
-  const { prices, loading, error, lastUpdated, updatePrices } = useCrypto();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const { prices, loading, error, lastUpdated, updatePrices } = useCrypto();
 
-  const handleAddClick = () => {
-    navigate('/add-tokens');
-  };
-
-  const handlePowerClick = () => {
+  const handleQuit = () => {
     const { ipcRenderer } = window.require('electron');
     ipcRenderer.send('quit-app');
   };
 
   const handleRetry = () => {
     updatePrices(true).catch(console.error);
+  };
+
+  const formatTimeAgo = (date: Date): string => {
+    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ago`;
   };
 
   const getOptimalDecimals = (price: number): number => {
@@ -179,21 +183,16 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   };
 
   const formatSmallNumber = (num: number): string => {
-    // Convert to string to avoid scientific notation
     const str = num.toString();
-    
-    // If it's in scientific notation, convert it
     if (str.includes('e')) {
       const [base, exponent] = str.split('e');
       const exp = parseInt(exponent);
       if (exp < 0) {
-        // Move decimal point left by adding zeros
         const absExp = Math.abs(exp);
         return '0.' + '0'.repeat(absExp - 1) + base.replace('.', '');
       }
     }
     
-    // For regular numbers, ensure we show 8 significant digits
     const parts = str.split('.');
     if (parts.length === 2) {
       const decimals = Math.min(8, parts[1].length);
@@ -202,6 +201,9 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
     
     return str;
   };
+
+  // Only show price on main page
+  const showPrice = location.pathname === '/';
 
   const getPrice = () => {
     if (loading) return <LoadingDot />;
@@ -238,27 +240,28 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
 
   return (
     <HeaderContainer>
-      <WindowControls>
-        <AddButton onClick={handleAddClick}>
+      <IconsContainer>
+        <IconButton onClick={() => navigate('/add-tokens')} title="Add tokens">
           <IoMdAdd size={20} />
-        </AddButton>
-      </WindowControls>
-      
-      <ExchangeRate isError={!!error}>
-        {lastUpdated && <LastUpdated className="last-updated">Updated {formatTimeAgo(lastUpdated)}</LastUpdated>}
-        1 {selectedCrypto} = {getPrice()}
-      </ExchangeRate>
+        </IconButton>
+        <IconButton onClick={() => navigate('/manage-tokens')} title="Manage tokens">
+          <FiTrash2 size={18} />
+        </IconButton>
+      </IconsContainer>
+
+      {showPrice && (
+        <ExchangeRate isError={!!error}>
+          {lastUpdated && <LastUpdated className="last-updated">Updated {formatTimeAgo(lastUpdated)}</LastUpdated>}
+          1 {selectedCrypto} = {getPrice()}
+        </ExchangeRate>
+      )}
 
       <WindowControls>
-        <PowerButton onClick={handlePowerClick} aria-label="Close app">
+        <PowerButton onClick={handleQuit}>
           <GiPowerButton />
         </PowerButton>
       </WindowControls>
-
-      <AddCryptoModal 
-        isOpen={false}
-        onClose={() => {}}
-      />
+      <AddCryptoModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </HeaderContainer>
   );
 };

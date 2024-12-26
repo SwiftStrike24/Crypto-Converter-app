@@ -5,6 +5,7 @@ import Header from './components/Header';
 import Converter from './components/Converter';
 import Footer from './components/Footer';
 import AddTokens from './pages/AddTokens';
+import ManageTokens from './pages/ManageTokens';
 import ChartPage from './pages/ChartPage';
 import { CryptoProvider } from './context/CryptoContext';
 import { CryptoCompareProvider } from './context/CryptoCompareContext';
@@ -33,7 +34,9 @@ const ContentContainer = styled.div`
 
 const AppContent: React.FC = () => {
   const location = useLocation();
-  const isFullScreen = location.pathname === '/add-tokens' || location.pathname === '/chart';
+  const isFullScreen = location.pathname === '/add-tokens' || 
+                      location.pathname === '/chart' || 
+                      location.pathname === '/manage-tokens';
   const [selectedCrypto, setSelectedCrypto] = useState('BTC');
   const [selectedFiat, setSelectedFiat] = useState('USD');
 
@@ -50,6 +53,7 @@ const AppContent: React.FC = () => {
   return (
     <Routes>
       <Route path="/add-tokens" element={<AddTokens />} />
+      <Route path="/manage-tokens" element={<ManageTokens />} />
       <Route path="/chart" element={<ChartPage />} />
       <Route path="/" element={
         <AppContainer isFullScreen={false}>

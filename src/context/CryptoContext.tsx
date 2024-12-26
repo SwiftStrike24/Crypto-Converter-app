@@ -9,6 +9,7 @@ interface CryptoContextType {
   lastUpdated: Date | null;
   addCrypto: (symbol: string, id?: string) => Promise<void>;
   addCryptos: (tokens: { symbol: string; id: string }[]) => Promise<void>;
+  deleteCrypto: (symbol: string) => void;
   availableCryptos: string[];
   getCryptoId: (symbol: string) => string | undefined;
 }
@@ -55,10 +56,19 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [availableCryptos, setAvailableCryptos] = useState<string[]>(Object.keys(defaultCryptoIds));
+  const [availableCryptos, setAvailableCryptos] = useState<string[]>(() => {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const storedIds = JSON.parse(stored);
+      const defaultTokens = Object.keys(defaultCryptoIds);
+      const customTokens = Object.keys(storedIds).filter(token => !defaultTokens.includes(token));
+      return [...defaultTokens, ...customTokens.sort()];
+    }
+    return Object.keys(defaultCryptoIds);
+  });
   const [cryptoIds, setCryptoIds] = useState<{ [key: string]: string }>(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? JSON.parse(stored) : defaultCryptoIds;
+    return stored ? { ...defaultCryptoIds, ...JSON.parse(stored) } : defaultCryptoIds;
   });
 
   const cache = useRef<CacheData | null>(null);
@@ -354,7 +364,12 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     setCryptoIds(prev => {
       const newIds = { ...prev, [upperSymbol]: lowerId };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newIds));
+      // Save to localStorage, but preserve default tokens
+      const storageIds = { ...newIds };
+      Object.keys(defaultCryptoIds).forEach(key => {
+        delete storageIds[key];
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(storageIds));
       return newIds;
     });
 
@@ -376,14 +391,22 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const addCryptos = useCallback(async (tokens: { symbol: string; id: string }[]) => {
     const newCryptoIds = { ...cryptoIds };
     const newSymbols: string[] = [];
+    const storageIds = { ...cryptoIds };
+
+    // Remove default tokens from storage object
+    Object.keys(defaultCryptoIds).forEach(key => {
+      delete storageIds[key];
+    });
 
     tokens.forEach(({ symbol, id }) => {
       const upperSymbol = symbol.toUpperCase();
       newCryptoIds[upperSymbol] = id.toLowerCase();
+      storageIds[upperSymbol] = id.toLowerCase();
       newSymbols.push(upperSymbol);
     });
     
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newCryptoIds));
+    // Save only custom tokens to localStorage
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(storageIds));
     setCryptoIds(newCryptoIds);
 
     const defaultTokens = Object.keys(defaultCryptoIds);
@@ -396,6 +419,29 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Queue only the new symbols for update
     queuePriceUpdate(newSymbols);
   }, [cryptoIds, queuePriceUpdate]);
+
+  const deleteCrypto = useCallback((symbol: string) => {
+    // Don't allow deletion of default tokens
+    if (Object.keys(defaultCryptoIds).includes(symbol)) {
+      return;
+    }
+
+    setCryptoIds(prev => {
+      const newCryptoIds = { ...prev };
+      delete newCryptoIds[symbol];
+      
+      // Save only custom tokens to localStorage
+      const storageIds = { ...newCryptoIds };
+      Object.keys(defaultCryptoIds).forEach(key => {
+        delete storageIds[key];
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(storageIds));
+      
+      return newCryptoIds;
+    });
+
+    setAvailableCryptos(prev => prev.filter(s => s !== symbol));
+  }, []);
 
   // Update the useEffect to use the queue system
   useEffect(() => {
@@ -430,6 +476,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       lastUpdated,
       addCrypto,
       addCryptos,
+      deleteCrypto,
       availableCryptos,
       getCryptoId
     }}>
