@@ -1,5 +1,5 @@
 {
-  "name": "Crypto-Converter-app",
+  "name": "crypto-converter-app",
   "version": "1.0.0",
   "description": "A sleek cryptocurrency converter desktop app",
   "main": "./dist-electron/main.js",
