@@ -9,147 +9,167 @@ let isQuitting = false;
 
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
-function createWindow() {
-  const { workArea } = screen.getPrimaryDisplay();
+// Request single instance lock
+const gotTheLock = app.requestSingleInstanceLock();
 
-  mainWindow = new BrowserWindow({
-    width: 400,
-    height: 300,
-    frame: false,
-    transparent: true,
-    show: false,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
-    x: Math.round(workArea.x + (workArea.width - 400) / 2),
-    y: Math.round(workArea.y + (workArea.height - 300) / 2),
-    alwaysOnTop: true,
-    skipTaskbar: false,
-    resizable: true,
-    maximizable: false,
-    minimizable: true,
-    hasShadow: true,
-    visualEffectState: 'active',
-    roundedCorners: true,
-  });
-
-  // Prevent accidental closure
-  mainWindow.on('close', (event) => {
-    if (!isQuitting && mainWindow?.isVisible()) {
-      event.preventDefault();
-      mainWindow.hide();
-    }
-  });
-
-  if (VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(VITE_DEV_SERVER_URL);
-  } else {
-    mainWindow.loadFile(path.join(DIST_PATH, 'index.html'));
-  }
-
-  // Once ready to show, display window
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
-  });
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
-
-  // Handle window focus
-  mainWindow.on('focus', () => {
-    mainWindow?.webContents.send('window-focused');
-  });
-
-  mainWindow.on('blur', () => {
-    mainWindow?.webContents.send('window-blurred');
-  });
-
-  // Handle quit-app event
-  ipcMain.on('quit-app', () => {
-    isQuitting = true;
-    app.quit();
-  });
-
-  mainWindow.setAlwaysOnTop(true, 'screen-saver');
-
-  // Improved show/hide handling
-  ipcMain.on('show-window', () => {
-    if (mainWindow && !mainWindow.isVisible()) {
+// Quit if another instance is already running
+if (!gotTheLock) {
+  app.quit();
+} else {
+  // Handle second instance launch
+  app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
+    if (mainWindow) {
+      // Restore and focus the window if it exists
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
       mainWindow.show();
       mainWindow.focus();
-      // Send focus event after showing
-      mainWindow.webContents.send('window-focused');
     }
   });
 
-  // Handle window resizing
-  ipcMain.on('set-window-size', (_, { width, height, isFullScreen }) => {
-    if (!mainWindow) return;
-
+  function createWindow() {
     const { workArea } = screen.getPrimaryDisplay();
-    const x = Math.round(workArea.x + (workArea.width - width) / 2);
-    const y = Math.round(workArea.y + (workArea.height - height) / 2);
 
-    mainWindow.setResizable(true);
-    mainWindow.setSize(width, height);
-    mainWindow.setPosition(x, y);
-    
-    // Update window properties based on mode
-    if (isFullScreen) {
-      mainWindow.setAlwaysOnTop(false);
-      mainWindow.setSkipTaskbar(false);
+    mainWindow = new BrowserWindow({
+      width: 400,
+      height: 300,
+      frame: false,
+      transparent: true,
+      show: false,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+      },
+      x: Math.round(workArea.x + (workArea.width - 400) / 2),
+      y: Math.round(workArea.y + (workArea.height - 300) / 2),
+      alwaysOnTop: true,
+      skipTaskbar: false,
+      resizable: true,
+      maximizable: false,
+      minimizable: true,
+      hasShadow: true,
+      visualEffectState: 'active',
+      roundedCorners: true,
+    });
+
+    // Prevent accidental closure
+    mainWindow.on('close', (event) => {
+      if (!isQuitting && mainWindow?.isVisible()) {
+        event.preventDefault();
+        mainWindow.hide();
+      }
+    });
+
+    if (VITE_DEV_SERVER_URL) {
+      mainWindow.loadURL(VITE_DEV_SERVER_URL);
     } else {
-      mainWindow.setAlwaysOnTop(true);
-      mainWindow.setSkipTaskbar(false);
+      mainWindow.loadFile(path.join(DIST_PATH, 'index.html'));
+    }
+
+    // Once ready to show, display window
+    mainWindow.once('ready-to-show', () => {
+      mainWindow?.show();
+    });
+
+    mainWindow.on('closed', () => {
+      mainWindow = null;
+    });
+
+    // Handle window focus
+    mainWindow.on('focus', () => {
+      mainWindow?.webContents.send('window-focused');
+    });
+
+    mainWindow.on('blur', () => {
+      mainWindow?.webContents.send('window-blurred');
+    });
+
+    // Handle quit-app event
+    ipcMain.on('quit-app', () => {
+      isQuitting = true;
+      app.quit();
+    });
+
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+
+    // Improved show/hide handling
+    ipcMain.on('show-window', () => {
+      if (mainWindow && !mainWindow.isVisible()) {
+        mainWindow.show();
+        mainWindow.focus();
+        // Send focus event after showing
+        mainWindow.webContents.send('window-focused');
+      }
+    });
+
+    // Handle window resizing
+    ipcMain.on('set-window-size', (_, { width, height, isFullScreen }) => {
+      if (!mainWindow) return;
+
+      const { workArea } = screen.getPrimaryDisplay();
+      const x = Math.round(workArea.x + (workArea.width - width) / 2);
+      const y = Math.round(workArea.y + (workArea.height - height) / 2);
+
+      mainWindow.setResizable(true);
+      mainWindow.setSize(width, height);
+      mainWindow.setPosition(x, y);
+      
+      // Update window properties based on mode
+      if (isFullScreen) {
+        mainWindow.setAlwaysOnTop(false);
+        mainWindow.setSkipTaskbar(false);
+      } else {
+        mainWindow.setAlwaysOnTop(true);
+        mainWindow.setSkipTaskbar(false);
+      }
+    });
+  }
+
+  app.whenReady().then(() => {
+    createWindow();
+
+    // Improved shortcut handling
+    const toggleWindow = () => {
+      if (!mainWindow) return;
+      
+      if (mainWindow.isVisible()) {
+        mainWindow.hide();
+      } else {
+        mainWindow.show();
+        mainWindow.focus();
+        // Ensure window gets focus event
+        setTimeout(() => {
+          mainWindow?.webContents.send('window-focused');
+        }, 100);
+      }
+    };
+
+    // Register both ` and ~ keys (they're the same physical key)
+    globalShortcut.register('`', toggleWindow);
+    globalShortcut.register('~', toggleWindow);
+
+    // Handle failed registration
+    if (!globalShortcut.isRegistered('`') || !globalShortcut.isRegistered('~')) {
+      console.error('Shortcut registration failed');
+    }
+  });
+
+  app.on('will-quit', () => {
+    // Unregister shortcuts
+    globalShortcut.unregisterAll();
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      isQuitting = true;
+      app.quit();
+    }
+  });
+
+  app.on('activate', () => {
+    if (mainWindow === null) {
+      createWindow();
     }
   });
 }
-
-app.whenReady().then(() => {
-  createWindow();
-
-  // Improved shortcut handling
-  const toggleWindow = () => {
-    if (!mainWindow) return;
-    
-    if (mainWindow.isVisible()) {
-      mainWindow.hide();
-    } else {
-      mainWindow.show();
-      mainWindow.focus();
-      // Ensure window gets focus event
-      setTimeout(() => {
-        mainWindow?.webContents.send('window-focused');
-      }, 100);
-    }
-  };
-
-  // Register both ` and ~ keys (they're the same physical key)
-  globalShortcut.register('`', toggleWindow);
-  globalShortcut.register('~', toggleWindow);
-
-  // Handle failed registration
-  if (!globalShortcut.isRegistered('`') || !globalShortcut.isRegistered('~')) {
-    console.error('Shortcut registration failed');
-  }
-});
-
-app.on('will-quit', () => {
-  // Unregister shortcuts
-  globalShortcut.unregisterAll();
-});
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    isQuitting = true;
-    app.quit();
-  }
-});
-
-app.on('activate', () => {
-  if (mainWindow === null) {
-    createWindow();
-  }
-});
