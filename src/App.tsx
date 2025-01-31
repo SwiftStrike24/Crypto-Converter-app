@@ -9,6 +9,7 @@ import ManageTokens from './pages/ManageTokens';
 import ChartPage from './pages/ChartPage';
 import { CryptoProvider } from './context/CryptoContext';
 import { CryptoCompareProvider } from './context/CryptoCompareContext';
+import InstanceDialog from './pages/InstanceDialog';
 
 const AppContainer = styled.div<{ isFullScreen?: boolean }>`
   width: ${props => props.isFullScreen ? '100vw' : '400px'};
@@ -69,6 +70,7 @@ const AppContent: React.FC = () => {
           </ContentContainer>
         </AppContainer>
       } />
+      <Route path="/instance-dialog" element={<InstanceDialog />} />
     </Routes>
   );
 };
