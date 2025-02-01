@@ -27,7 +27,7 @@ export function initInstanceHandler() {
   // Handle restart requests
   ipcRenderer.on('request-hard-restart', () => {
     console.log('Handling restart request...');
-    ipcRenderer.send('instance-dialog-restart');
+    ipcRenderer.send('restart-request');
   });
 
   // Handle window focus events
@@ -38,4 +38,4 @@ export function initInstanceHandler() {
   ipcRenderer.on('window-blurred', () => {
     document.body.classList.add('window-blur');
   });
-} 
+}

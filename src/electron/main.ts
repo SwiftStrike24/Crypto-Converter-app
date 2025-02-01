@@ -1,6 +1,5 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import path from 'path';
-import { exec } from 'child_process';
 
 // Set app user model id for Windows
 if (process.platform === 'win32') {
@@ -36,23 +35,22 @@ function cleanupAndExit(shouldRelaunch = false) {
   ipcMain.removeAllListeners();
   globalShortcut.unregisterAll();
 
-  if (process.platform === 'win32') {
-    const exeName = path.basename(APP_PATH);
-    if (shouldRelaunch) {
-      // For relaunch, we want to exit this instance after a small delay
-      // to give the new instance time to start
-      setTimeout(() => {
-        exec(`taskkill /F /IM "${exeName}"`, (error) => {
-          if (error) console.error('Failed to kill processes:', error);
-          app.exit(0);
-        });
-      }, 1000);
-    } else {
-      exec(`taskkill /F /IM "${exeName}"`, (error) => {
-        if (error) console.error('Failed to kill processes:', error);
-        app.exit(0);
-      });
-    }
+  if (shouldRelaunch) {
+    const execPath = process.platform === 'win32' 
+      ? process.env.NODE_ENV === 'development'
+        ? process.execPath
+        : APP_PATH
+      : process.execPath;
+
+    const args = process.env.NODE_ENV === 'development'
+      ? process.argv.slice(1)
+      : ['--relaunch'];
+
+    app.relaunch({ 
+      execPath,
+      args
+    });
+    app.exit(0);
   } else {
     app.exit(0);
   }
@@ -67,29 +65,39 @@ if (!instanceLock) {
 }
 
 // Handle second instance attempt
-app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
-  console.log('Second instance detected, showing dialog...');
-  
+app.on('second-instance', () => {
   if (mainWindow) {
-    if (!mainWindow.isVisible()) mainWindow.show();
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
   }
-  
-  if (!dialogWindow) {
-    createDialogWindow();
-  } else {
-    dialogWindow.focus();
-  }
+  createDialogWindow();
 });
 
 // Handle IPC events for instance management
-ipcMain.on('instance-dialog-restart', () => {
-  if (dialogWindow) {
-    dialogWindow.close();
-  }
-  app.relaunch({ args: process.argv.slice(1).concat(['--relaunch']) });
+ipcMain.on('restart-request', () => {
   cleanupAndExit(true);
+});
+
+ipcMain.on('instance-dialog-restart', () => {
+  cleanupAndExit(true);
+});
+
+// Handle app relaunch event
+app.on('activate', () => {
+  if (process.argv.includes('--relaunch')) {
+    process.argv = process.argv.filter(arg => arg !== '--relaunch');
+    
+    // Windows-specific focus handling
+    if (process.platform === 'win32') {
+      setTimeout(() => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      }, 500);
+    }
+    // Existing logic...
+  }
 });
 
 function createDialogWindow() {
@@ -141,6 +149,12 @@ function createDialogWindow() {
 
 // Initialize app
 app.whenReady().then(() => {
+  // Check for relaunch flag early in the process
+  const isRelaunch = process.argv.includes('--relaunch');
+  if (isRelaunch) {
+    process.argv = process.argv.filter(arg => arg !== '--relaunch');
+  }
+
   createWindow();
 
   const toggleWindow = () => {
@@ -161,6 +175,12 @@ app.whenReady().then(() => {
 
   if (!globalShortcut.isRegistered('`') || !globalShortcut.isRegistered('~')) {
     console.error('Shortcut registration failed');
+  }
+
+  // Ensure proper window visibility after relaunch
+  if (isRelaunch && mainWindow) {
+    mainWindow.show();
+    mainWindow.focus();
   }
 });
 
@@ -190,11 +210,9 @@ function createWindow() {
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);
   } else {
-    // Load the index.html file directly
     const indexPath = path.join(DIST_PATH, 'index.html');
     mainWindow.loadFile(indexPath);
     
-    // Navigate to home route after load
     mainWindow.webContents.on('did-finish-load', () => {
       mainWindow?.webContents.send('navigate-to', '/');
     });
@@ -223,10 +241,8 @@ function createWindow() {
     mainWindow?.webContents.send('window-blurred');
   });
 
-  // Handle any errors during load
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error('Failed to load:', errorCode, errorDescription);
-    // Retry loading if failed
     const indexPath = path.join(DIST_PATH, 'index.html');
     mainWindow?.loadFile(indexPath);
   });
