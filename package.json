@@ -9,7 +9,7 @@
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "start": "electron .",
-    "electron:dev": "vite build && vite --mode development && electron .",
+    "electron:dev": "vite --mode development && electron .",
     "electron:build": "vite build && electron-builder --win portable",
     "electron:build-installer": "vite build && electron-builder --win nsis"
   },

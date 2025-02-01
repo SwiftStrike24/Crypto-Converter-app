@@ -1,39 +1,102 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import path from 'path';
+import { exec } from 'child_process';
 
-// Ensure DIST path is always defined
-const DIST_PATH = path.join(__dirname, '../dist');
+// Set app user model id for Windows
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.crypto.converter');
+}
+
+const IS_DEV = process.env.NODE_ENV === 'development';
+const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
+
+// Get app info dynamically
+const APP_PATH = app.getPath('exe');
+const DIST_PATH = IS_DEV 
+  ? path.join(__dirname, '../dist')
+  : path.join(process.resourcesPath, 'app.asar/dist');
 
 let mainWindow: BrowserWindow | null = null;
 let dialogWindow: BrowserWindow | null = null;
 let isQuitting = false;
 
-const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
-
-function cleanupAndExit() {
-  // Cleanup all windows
-  if (dialogWindow) {
-    dialogWindow.destroy();
-    dialogWindow = null;
-  }
-  if (mainWindow) {
-    mainWindow.destroy();
-    mainWindow = null;
-  }
+function cleanupAndExit(shouldRelaunch = false) {
+  isQuitting = true;
   
-  // Remove all listeners
+  // Cleanup windows with explicit checks
+  [mainWindow, dialogWindow].forEach(win => {
+    if (win && !win.isDestroyed()) {
+      win.destroy();
+    }
+  });
+  mainWindow = null;
+  dialogWindow = null;
+
+  // Remove listeners
   ipcMain.removeAllListeners();
   globalShortcut.unregisterAll();
-  
-  // Force exit after cleanup
-  setTimeout(() => {
+
+  if (process.platform === 'win32') {
+    const exeName = path.basename(APP_PATH);
+    if (shouldRelaunch) {
+      // For relaunch, we want to exit this instance after a small delay
+      // to give the new instance time to start
+      setTimeout(() => {
+        exec(`taskkill /F /IM "${exeName}"`, (error) => {
+          if (error) console.error('Failed to kill processes:', error);
+          app.exit(0);
+        });
+      }, 1000);
+    } else {
+      exec(`taskkill /F /IM "${exeName}"`, (error) => {
+        if (error) console.error('Failed to kill processes:', error);
+        app.exit(0);
+      });
+    }
+  } else {
     app.exit(0);
-    process.exit(0);
-  }, 100);
+  }
 }
 
+// Enforce single instance lock
+const instanceLock = app.requestSingleInstanceLock();
+
+if (!instanceLock) {
+  console.log('Another instance is running, quitting...');
+  app.quit();
+}
+
+// Handle second instance attempt
+app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
+  console.log('Second instance detected, showing dialog...');
+  
+  if (mainWindow) {
+    if (!mainWindow.isVisible()) mainWindow.show();
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+  
+  if (!dialogWindow) {
+    createDialogWindow();
+  } else {
+    dialogWindow.focus();
+  }
+});
+
+// Handle IPC events for instance management
+ipcMain.on('instance-dialog-restart', () => {
+  if (dialogWindow) {
+    dialogWindow.close();
+  }
+  app.relaunch({ args: process.argv.slice(1).concat(['--relaunch']) });
+  cleanupAndExit(true);
+});
+
 function createDialogWindow() {
-  if (dialogWindow) return;
+  if (dialogWindow) {
+    dialogWindow.focus();
+    return;
+  }
   
   const { workArea } = screen.getPrimaryDisplay();
   
@@ -61,24 +124,45 @@ function createDialogWindow() {
     
   dialogWindow.loadURL(url);
 
+  if (!VITE_DEV_SERVER_URL) {
+    dialogWindow.webContents.on('did-finish-load', () => {
+      dialogWindow?.webContents.send('navigate-to', '/instance-dialog');
+    });
+  }
+
   dialogWindow.once('ready-to-show', () => {
     dialogWindow?.show();
   });
 
-  // Simple restart handler
-  ipcMain.once('instance-dialog-restart', () => {
-    // Destroy dialog window immediately
-    if (dialogWindow) {
-      dialogWindow.destroy();
-      dialogWindow = null;
-    }
-    app.relaunch();
-    app.exit(0);  // Force exit all instances
+  dialogWindow.on('closed', () => {
+    dialogWindow = null;
   });
 }
 
-// Request single instance lock
-const gotTheLock = app.requestSingleInstanceLock();
+// Initialize app
+app.whenReady().then(() => {
+  createWindow();
+
+  const toggleWindow = () => {
+    if (!mainWindow) return;
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+      mainWindow.focus();
+      setTimeout(() => {
+        mainWindow?.webContents.send('window-focused');
+      }, 100);
+    }
+  };
+
+  globalShortcut.register('`', toggleWindow);
+  globalShortcut.register('~', toggleWindow);
+
+  if (!globalShortcut.isRegistered('`') || !globalShortcut.isRegistered('~')) {
+    console.error('Shortcut registration failed');
+  }
+});
 
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
@@ -92,6 +176,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
+      webSecurity: true,
     },
     x: Math.round(workArea.x + (workArea.width - 400) / 2),
     y: Math.round(workArea.y + (workArea.height - 300) / 2),
@@ -100,38 +185,36 @@ function createWindow() {
     resizable: true,
     maximizable: false,
     minimizable: true,
-    hasShadow: true,
-    visualEffectState: 'active',
-    roundedCorners: true,
-  });
-
-  // Prevent accidental closure
-  mainWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault();
-      mainWindow?.hide();
-    } else {
-      // Ensure cleanup on actual quit
-      mainWindow?.destroy();
-      mainWindow = null;
-    }
   });
 
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);
   } else {
-    mainWindow.loadFile(path.join(DIST_PATH, 'index.html'));
+    // Load the index.html file directly
+    const indexPath = path.join(DIST_PATH, 'index.html');
+    mainWindow.loadFile(indexPath);
+    
+    // Navigate to home route after load
+    mainWindow.webContents.on('did-finish-load', () => {
+      mainWindow?.webContents.send('navigate-to', '/');
+    });
   }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
   });
 
+  mainWindow.on('close', (event) => {
+    if (!isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
-  // Handle window focus
   mainWindow.on('focus', () => {
     mainWindow?.webContents.send('window-focused');
   });
@@ -140,94 +223,23 @@ function createWindow() {
     mainWindow?.webContents.send('window-blurred');
   });
 
-  // Handle quit-app event
-  ipcMain.on('quit-app', () => {
-    isQuitting = true;
-    cleanupAndExit();
-  });
-
-  mainWindow.setAlwaysOnTop(true, 'screen-saver');
-
-  // Improved show/hide handling
-  ipcMain.on('show-window', () => {
-    if (mainWindow && !mainWindow.isVisible()) {
-      mainWindow.show();
-      mainWindow.focus();
-      mainWindow.webContents.send('window-focused');
-    }
-  });
-
-  // Handle window resizing
-  ipcMain.on('set-window-size', (_, { width, height, isFullScreen }) => {
-    if (!mainWindow) return;
-
-    const { workArea } = screen.getPrimaryDisplay();
-    const x = Math.round(workArea.x + (workArea.width - width) / 2);
-    const y = Math.round(workArea.y + (workArea.height - height) / 2);
-
-    mainWindow.setResizable(true);
-    mainWindow.setSize(width, height);
-    mainWindow.setPosition(x, y);
-    
-    if (isFullScreen) {
-      mainWindow.setAlwaysOnTop(false);
-      mainWindow.setSkipTaskbar(false);
-    } else {
-      mainWindow.setAlwaysOnTop(true);
-      mainWindow.setSkipTaskbar(false);
-    }
+  // Handle any errors during load
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    console.error('Failed to load:', errorCode, errorDescription);
+    // Retry loading if failed
+    const indexPath = path.join(DIST_PATH, 'index.html');
+    mainWindow?.loadFile(indexPath);
   });
 }
 
-if (!gotTheLock) {
-  // For second instance, just show dialog
-  app.whenReady().then(() => {
-    createDialogWindow();
-  });
-} else {
-  // Handle second instance launch
-  app.on('second-instance', () => {
-    if (app.isReady()) {
-      createDialogWindow();
-    } else {
-      app.whenReady().then(createDialogWindow);
-    }
-  });
-
-  app.whenReady().then(() => {
-    createWindow();
-
-    const toggleWindow = () => {
-      if (!mainWindow) return;
-      
-      if (mainWindow.isVisible()) {
-        mainWindow.hide();
-      } else {
-        mainWindow.show();
-        mainWindow.focus();
-        setTimeout(() => {
-          mainWindow?.webContents.send('window-focused');
-        }, 100);
-      }
-    };
-
-    // Register both ` and ~ keys (they're the same physical key)
-    globalShortcut.register('`', toggleWindow);
-    globalShortcut.register('~', toggleWindow);
-
-    if (!globalShortcut.isRegistered('`') || !globalShortcut.isRegistered('~')) {
-      console.error('Shortcut registration failed');
-    }
-  });
-}
-
-// Ensure cleanup on all quit paths
+// App lifecycle events
 app.on('before-quit', () => {
   isQuitting = true;
 });
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  cleanupAndExit();
 });
 
 app.on('window-all-closed', () => {

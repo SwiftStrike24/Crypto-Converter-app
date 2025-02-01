@@ -16,7 +16,7 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
-            sourcemap: true,
+            sourcemap: false,
             rollupOptions: {
               external: ['electron']
             }
@@ -34,9 +34,19 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    minify: 'esbuild',
+    sourcemap: false,
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html')
+      },
+      output: {
+        manualChunks: {
+          'vendor': ['react', 'react-dom', 'react-router-dom'],
+          'ui': ['@mui/material', '@emotion/react', '@emotion/styled', 'styled-components'],
+          'charts': ['recharts'],
+        }
       }
     }
   }

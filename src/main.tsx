@@ -2,6 +2,8 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 import { createGlobalStyle } from 'styled-components';
+import { initRouter } from './renderer/router';
+import { initInstanceHandler } from './renderer/instanceHandler';
 
 const GlobalStyle = createGlobalStyle`
   * {
@@ -17,6 +19,10 @@ const GlobalStyle = createGlobalStyle`
     color: white;
   }
 `;
+
+// Initialize router and instance handler
+initRouter();
+initInstanceHandler();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
