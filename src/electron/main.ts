@@ -1,6 +1,11 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import path from 'path';
 
+// Disable GPU acceleration to prevent crashes
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+
 // Set app user model id for Windows
 if (process.platform === 'win32') {
   app.setAppUserModelId('com.crypto.converter');
@@ -203,6 +208,7 @@ function createWindow() {
       nodeIntegration: true,
       contextIsolation: false,
       webSecurity: true,
+      backgroundThrottling: false,
     },
     x: Math.round(workArea.x + (workArea.width - 400) / 2),
     y: Math.round(workArea.y + (workArea.height - 300) / 2),
@@ -213,7 +219,13 @@ function createWindow() {
     minimizable: true,
     minWidth: 400,
     minHeight: 300,
+    backgroundColor: '#111111',
   });
+
+  // Enable DevTools in development
+  if (IS_DEV) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+  }
 
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);

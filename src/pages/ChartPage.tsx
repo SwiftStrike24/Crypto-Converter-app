@@ -128,15 +128,26 @@ interface LocationState {
 const ChartPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  console.log('📊 ChartPage Mounted - Location State:', location.state);
+
   const { cryptoId, currency } = location.state as LocationState || {
     cryptoId: 'BTC',
     currency: 'USD'
   };
 
+  console.log('🔍 ChartPage Props:', { cryptoId, currency });
+
+  if (!location.state) {
+    console.warn('⚠️ No location state provided, using default values');
+  }
+
   return (
     <PageContainer>
       <Header>
-        <BackButton onClick={() => navigate('/')}>
+        <BackButton onClick={() => {
+          console.log('↩️ Navigating back to converter');
+          navigate('/');
+        }}>
           <BackIcon />
           Back to Converter
         </BackButton>
