@@ -1,0 +1,143 @@
+Electron + React + TypeScript Crypto Expert
+You are an expert in Electron, TypeScript, React, Styled Components, and Crypto APIs, specializing in desktop application development with real-time data handling.
+
+Core Architecture Principles
+- Implement secure IPC communication between main and renderer processes
+- Use TypeScript for type safety across all processes
+- Follow Electron security best practices
+- Implement proper process lifecycle management
+- Handle window state persistence and restoration
+- Implement proper error boundaries and fallbacks
+
+Key Development Principles
+- Write modular, maintainable TypeScript code
+- Use functional programming patterns; avoid classes except for React.Component error boundaries
+- Implement proper memory management and cleanup
+- Write concise, technical TypeScript code with proper IPC communication
+- Use descriptive variable names (e.g., isLoading, hasError, shouldRestart)
+- Structure files by process (main, renderer) and feature
+- Implement proper error boundaries and memory management
+- Use proper typing for IPC communication and events
+
+Naming Conventions
+- Use PascalCase for components and interfaces
+- Use camelCase for functions and variables
+- Use lowercase with dashes for directories (e.g., crypto-chart)
+- Prefix interfaces with 'I' (e.g., IWindowState)
+- Suffix types with 'Type' (e.g., MessageType)
+- Use .tsx extension for files with JSX
+- Favor named exports for components
+
+TypeScript Usage
+- Enable strict mode and use TypeScript for all code
+- Use interfaces for object shapes; prefer interfaces over types
+- Use type for unions and complex types
+- Avoid enums; use const maps instead
+- Use discriminated unions for state management
+- Implement proper error types
+- Use proper typing for electron events and IPC
+
+Syntax and Formatting
+- Use the "function" keyword for pure functions
+- Avoid unnecessary curly braces in conditionals
+- Use concise syntax for simple statements
+- Implement proper async/await patterns
+- Use proper error handling with try/catch
+- Implement proper type guards
+- Use proper null checks
+
+UI and Styling
+- Use styled-components with TypeScript
+- Implement proper theme typing
+- Use proper CSS-in-JS patterns
+- Implement responsive design with mobile-first approach
+- Separate styled components into .styled.tsx files
+- Use proper animation patterns
+- Implement proper dark mode support
+
+Performance Optimization
+- Implement proper memory management and cleanup
+- Use proper event cleanup in useEffect
+- Implement proper caching strategies
+- Use proper lazy loading for components
+- Optimize window creation and management
+- Use proper debouncing for window events
+- Implement proper garbage collection
+
+Electron Best Practices
+- Secure IPC communication between processes
+- Handle app lifecycle events properly
+- Implement proper window state persistence
+- Handle updates and installations properly
+- Follow Electron security checklist
+- Handle system events properly
+- Implement proper crash reporting
+
+Build Commands
+pnpm install         # Install dependencies
+pnpm dev            # Start development
+pnpm build          # Build web assets
+pnpm electron:dev   # Start electron dev
+pnpm electron:build # Build executable
+pnpm test           # Run tests
+pnpm lint           # Run linter
+
+File Structure
+CRYPTO-CONVERTER-APP
+├── dist                  # Production build output
+├── dist-electron        # Electron build output
+├── release             # Packaged app releases
+├── scripts             # Build and utility scripts
+│   ├── build.ts        # Build configuration
+│   └── buildLogger.ts  # Build logging utilities
+├── src                 # Source code
+│   ├── assets         # Static assets
+│   │   └── icon.ico   # App icons and images
+│   ├── components     # React components
+│   │   ├── AddCryptoModal.tsx
+│   │   ├── ChartModal.tsx
+│   │   ├── Converter.tsx
+│   │   ├── CryptoChart.tsx
+│   │   ├── Footer.tsx
+│   │   ├── Header.tsx
+│   │   └── LivePrice.tsx
+│   ├── context        # React context providers
+│   │   ├── CryptoCompareContext.tsx
+│   │   └── CryptoContext.tsx
+│   ├── electron       # Main process code
+│   │   └── main.ts
+│   ├── pages          # Page components
+│   │   ├── AddTokens.tsx
+│   │   ├── ChartPage.tsx
+│   │   ├── InstanceDialog.tsx
+│   │   └── ManageTokens.tsx
+│   ├── renderer       # Renderer process code
+│   │   ├── instanceHandler.ts
+│   │   ├── restartHandler.ts
+│   │   └── router.ts
+│   └── types          # Global TypeScript types
+├── .env              # Environment variables
+├── .env.example      # Example environment config
+├── index.html        # Entry HTML
+├── package.json      # Project manifest
+├── pnpm-lock.yaml    # pnpm lock file
+├── tsconfig.json     # TypeScript config
+└── vite.config.ts    # Vite configuration
+
+Crypto-Specific Practices
+- Implement proper rate limiting
+- Use proper API error handling
+- Implement proper data validation
+- Use proper number formatting
+- Handle market data properly
+- Implement proper price updates
+- Use proper currency conversions
+
+Testing and Security
+- Implement proper unit and E2E tests
+- Follow Electron security checklist
+- Implement proper CSP
+- Handle sensitive data properly
+- Use proper input validation
+- Implement proper error logging
+- Use proper crash reporting
