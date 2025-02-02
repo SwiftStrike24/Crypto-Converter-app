@@ -11,6 +11,11 @@ const PageContainer = styled.div`
   flex-direction: column;
   padding: 1rem;
   background: #111111;
+  transition: all 0.3s ease;
+  
+  @media (max-width: 768px) {
+    padding: 0.5rem;
+  }
 `;
 
 const Header = styled.div`
@@ -19,12 +24,29 @@ const Header = styled.div`
   align-items: center;
   margin-bottom: 2rem;
   padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
 `;
 
 const HeaderContent = styled.div`
   display: flex;
   align-items: center;
   gap: 2rem;
+  
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+    align-items: center;
+  }
 `;
 
 const Title = styled.h1`
@@ -67,11 +89,21 @@ const ChartWrapper = styled.div`
   width: 100%;
   max-width: 1400px;
   margin: 0 auto;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 1.5rem;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
   
   .chart-container {
     background: transparent;
     box-shadow: none;
     border: none;
+  }
+  
+  @media (max-width: 768px) {
+    padding: 1rem;
   }
 `;
 

@@ -203,8 +203,10 @@ function createWindow() {
     alwaysOnTop: true,
     skipTaskbar: false,
     resizable: true,
-    maximizable: false,
+    maximizable: true,
     minimizable: true,
+    minWidth: 400,
+    minHeight: 300,
   });
 
   if (VITE_DEV_SERVER_URL) {
@@ -245,6 +247,29 @@ function createWindow() {
     console.error('Failed to load:', errorCode, errorDescription);
     const indexPath = path.join(DIST_PATH, 'index.html');
     mainWindow?.loadFile(indexPath);
+  });
+
+  // Add IPC handler for window resizing
+  ipcMain.on('set-window-size', (_, { width, height, isFullScreen }) => {
+    if (!mainWindow) return;
+    
+    const { workArea } = screen.getPrimaryDisplay();
+    const x = Math.round(workArea.x + (workArea.width - width) / 2);
+    const y = Math.round(workArea.y + (workArea.height - height) / 2);
+    
+    mainWindow.setMinimumSize(400, 300);
+    mainWindow.setBounds({ 
+      x, 
+      y, 
+      width, 
+      height 
+    }, true);
+
+    // Update window properties based on isFullScreen
+    mainWindow.setResizable(true);
+    mainWindow.setMaximizable(isFullScreen);
+    mainWindow.setAlwaysOnTop(!isFullScreen);
+    mainWindow.setSkipTaskbar(!isFullScreen);
   });
 }
 

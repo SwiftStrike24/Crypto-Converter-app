@@ -44,12 +44,14 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     // Resize electron window based on route
     const { ipcRenderer } = window.require('electron');
-    if (isFullScreen) {
+    if (location.pathname === '/chart') {
+      ipcRenderer.send('set-window-size', { width: 1200, height: 800, isFullScreen: true });
+    } else if (isFullScreen) {
       ipcRenderer.send('set-window-size', { width: 800, height: 600, isFullScreen: true });
     } else {
       ipcRenderer.send('set-window-size', { width: 400, height: 300, isFullScreen: false });
     }
-  }, [isFullScreen]);
+  }, [isFullScreen, location.pathname]);
 
   return (
     <Routes>
