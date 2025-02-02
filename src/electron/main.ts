@@ -82,6 +82,12 @@ ipcMain.on('instance-dialog-restart', () => {
   cleanupAndExit(true);
 });
 
+// Handle quit request from renderer
+ipcMain.on('quit-app', () => {
+  isQuitting = true;
+  cleanupAndExit(false);
+});
+
 // Handle app relaunch event
 app.on('activate', () => {
   if (process.argv.includes('--relaunch')) {

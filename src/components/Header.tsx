@@ -251,13 +251,15 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
 
       {showPrice && (
         <ExchangeRate isError={!!error}>
-          {lastUpdated && <LastUpdated className="last-updated">Updated {formatTimeAgo(lastUpdated)}</LastUpdated>}
-          1 {selectedCrypto} = {getPrice()}
+          <LastUpdated className="last-updated">
+            {lastUpdated ? formatTimeAgo(lastUpdated) : ''}
+          </LastUpdated>
+          {getPrice()}
         </ExchangeRate>
       )}
 
       <WindowControls>
-        <PowerButton onClick={handleQuit}>
+        <PowerButton onClick={handleQuit} title="Quit application">
           <GiPowerButton />
         </PowerButton>
       </WindowControls>
