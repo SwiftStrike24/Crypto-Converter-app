@@ -1,1 +1,2 @@
-export { getHistoricalPriceData } from './priceService'; 
+export { getHistoricalPriceData } from './priceService';
+export * from './tokenStats'; 

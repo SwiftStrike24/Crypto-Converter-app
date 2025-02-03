@@ -32,27 +32,20 @@ const spin = keyframes`
 
 const ChartContainer = styled.div`
   width: 100%;
-  height: 400px;
+  min-height: 350px;
+  display: flex;
+  flex-direction: column;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   animation: ${fadeIn} 0.6s ease-out;
-  transition: all 0.3s ease;
+  transition: transform 0.3s ease, opacity 0.3s ease;
   background: #111111;
-  border-radius: 12px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
-
-  .chart-content {
-    opacity: 0;
-    transition: opacity 0.3s ease-in-out;
-    height: 100%;
-    
-    &.loaded {
-      opacity: 1;
-    }
-  }
-
+  border-radius: 16px;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5);
+  will-change: transform, opacity;
+  transform: translateZ(0);
   @media (max-width: 768px) {
-    height: 350px;
+    min-height: 300px;
   }
 `;
 
@@ -104,36 +97,6 @@ const ChartTitle = styled.div`
   gap: 1rem;
 `;
 
-const TimeframeButtons = styled.div`
-  display: flex;
-  gap: 0.5rem;
-`;
-
-interface TimeButtonProps {
-  $active: boolean;
-}
-
-const TimeButton = styled.button<TimeButtonProps>`
-  background: ${props => props.$active ? 'rgba(139, 92, 246, 0.1)' : 'rgba(255, 255, 255, 0.05)'};
-  border: 1px solid ${props => props.$active ? '#8b5cf6' : 'rgba(255, 255, 255, 0.1)'};
-  color: ${props => props.$active ? '#8b5cf6' : '#9ca3af'};
-  padding: 4px 12px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover {
-    background: rgba(139, 92, 246, 0.15);
-    border-color: #8b5cf6;
-    color: #8b5cf6;
-  }
-
-  &:active {
-    transform: scale(0.95);
-  }
-`;
-
 const PriceChange = styled.span<{ $isPositive: boolean }>`
   color: ${props => props.$isPositive ? '#4caf50' : '#ff4444'};
   font-size: 0.9rem;
@@ -163,41 +126,30 @@ const MAX_RETRIES = 3;
 interface CryptoChartProps {
   cryptoId: string;
   currency: string;
+  timeframe: Timeframe;
 }
 
 const ChartContentDiv = styled.div`
-  width: 100%;
-  height: 100%;
+  flex: 1;
+  opacity: 0;
+  will-change: opacity;
+  transform: translateZ(0);
+  transition: opacity 0.3s ease-in-out;
+  &.loaded {
+    opacity: 1;
+  }
 `;
 
-const intervalColors = {
-  '1D': {
-    line: '#2962FF',
-    top: 'rgba(41, 98, 255, 0.3)',
-    bottom: 'rgba(41, 98, 255, 0.1)'
-  },
-  '1W': {
-    line: 'rgb(225, 87, 90)',
-    top: 'rgba(225, 87, 90, 0.3)',
-    bottom: 'rgba(225, 87, 90, 0.1)'
-  },
-  '1M': {
-    line: 'rgb(242, 142, 44)',
-    top: 'rgba(242, 142, 44, 0.3)',
-    bottom: 'rgba(242, 142, 44, 0.1)'
-  },
-  '1Y': {
-    line: 'rgb(164, 89, 209)',
-    top: 'rgba(164, 89, 209, 0.3)',
-    bottom: 'rgba(164, 89, 209, 0.1)'
-  }
+const PURPLE_COLORS = {
+  line: '#8B5CF6',
+  top: 'rgba(139, 92, 246, 0.3)',
+  bottom: 'rgba(139, 92, 246, 0.1)'
 };
 
-const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) => {
+const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency, timeframe }) => {
   console.log('🚀 CryptoChart Component Mounted:', { cryptoId, currency });
 
   const { error: contextError, loading: contextLoading } = useCrypto();
-  const [timeframe, setTimeframe] = useState<Timeframe>('1D');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [priceChange, setPriceChange] = useState<number>(0);
@@ -208,6 +160,79 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Area'> | null>(null);
+
+  const chartOptions = useMemo<DeepPartial<ChartOptions>>(() => ({
+    layout: {
+      background: { type: ColorType.Solid, color: '#111111' },
+      textColor: '#9ca3af',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    },
+    grid: {
+      vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
+      horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+    },
+    timeScale: {
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      timeVisible: true,
+      secondsVisible: timeframe === '1D',
+      fixLeftEdge: true,
+      fixRightEdge: true,
+      tickMarkFormatter: (time: number) => {
+        const date = new Date(time * 1000);
+        const format = (n: number) => n.toString().padStart(2, '0');
+        switch (timeframe) {
+          case '1D':
+            return `${format(date.getHours())}:${format(date.getMinutes())}`;
+          case '1W':
+          case '1M':
+            return `${format(date.getDate())}/${format(date.getMonth() + 1)}`;
+          case '1Y':
+            return `${format(date.getMonth() + 1)}/${date.getFullYear()}`;
+          default:
+            return '';
+        }
+      },
+    },
+    crosshair: {
+      vertLine: {
+        color: 'rgba(139, 92, 246, 0.3)',
+        width: 1,
+        style: 1,
+        labelBackgroundColor: '#8b5cf6',
+      },
+      horzLine: {
+        color: 'rgba(139, 92, 246, 0.3)',
+        width: 1,
+        style: 1,
+        labelBackgroundColor: '#8b5cf6',
+      },
+    },
+    handleScale: {
+      mouseWheel: true,
+      pinch: true,
+      axisPressedMouseMove: {
+        time: true,
+        price: true,
+      },
+    },
+    handleScroll: {
+      mouseWheel: true,
+      pressedMouseMove: true,
+      horzTouchDrag: true,
+      vertTouchDrag: true,
+    },
+    rightPriceScale: {
+      borderVisible: false,
+      scaleMargins: {
+        top: 0.1,
+        bottom: 0.1,
+      },
+      autoScale: true,
+      alignLabels: true,
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      ticksVisible: true,
+    },
+  }), [timeframe]);
 
   const resetBaseVisibleRange = useCallback(() => {
     if (chartRef.current) {
@@ -227,6 +252,7 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
   const initChart = useCallback(() => {
     console.log('📊 Initializing Chart...', { cryptoId, currency });
     if (chartContainerRef.current) {
+      let resizeObserver: ResizeObserver | null = null;
       try {
         console.log('🎨 Creating new chart with options:', chartOptions);
         const chart = createChart(chartContainerRef.current, {
@@ -250,15 +276,11 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
         });
         chartRef.current = chart;
 
-        console.log('📈 Adding area series with colors:', {
-          line: intervalColors[timeframe].line,
-          top: intervalColors[timeframe].top,
-          bottom: intervalColors[timeframe].bottom
-        });
+        console.log('📈 Adding area series with purple colors');
         const areaSeries = chart.addSeries(AreaSeries, {
-          lineColor: intervalColors[timeframe].line,
-          topColor: intervalColors[timeframe].top,
-          bottomColor: intervalColors[timeframe].bottom,
+          lineColor: PURPLE_COLORS.line,
+          topColor: PURPLE_COLORS.top,
+          bottomColor: PURPLE_COLORS.bottom,
           lineWidth: 2,
           priceLineVisible: false,
           lastValueVisible: true,
@@ -266,38 +288,47 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
         seriesRef.current = areaSeries;
         console.log('✅ Chart initialization complete');
 
-        const handleResize = () => {
-          if (chartContainerRef.current && chartRef.current) {
-            chartRef.current.applyOptions({
-              width: chartContainerRef.current.clientWidth,
-              height: chartContainerRef.current.clientHeight,
-            });
-          }
-        };
-
-        window.addEventListener('resize', handleResize);
-
-        // Enhanced zoom control
-        chart.timeScale().subscribeVisibleTimeRangeChange((newRange) => {
-          if (newRange && baseVisibleRangeRef.current) {
-            const baseFrom = Number(baseVisibleRangeRef.current.from);
-            const baseTo = Number(baseVisibleRangeRef.current.to);
-            const newFrom = Number(newRange.from);
-            const newTo = Number(newRange.to);
-
-            const rangeWidth = newTo - newFrom;
-            const baseWidth = baseTo - baseFrom;
-
-            // Check if zoomed out too far or scrolled beyond bounds
-            if (rangeWidth > baseWidth || newFrom < baseFrom || newTo > baseTo) {
-              console.log('🔒 Restricting zoom/scroll to base visible range');
-              chart.timeScale().setVisibleRange(baseVisibleRangeRef.current);
+        let resizeFrameId: number | undefined;
+        resizeObserver = new ResizeObserver(() => {
+          if (resizeFrameId !== undefined) return;
+          resizeFrameId = requestAnimationFrame(() => {
+            if (chartContainerRef.current && chartRef.current) {
+              chartRef.current.applyOptions({
+                width: chartContainerRef.current.clientWidth,
+                height: chartContainerRef.current.clientHeight,
+              });
             }
-          }
+            resizeFrameId = undefined;
+          });
         });
+        resizeObserver.observe(chartContainerRef.current);
+
+        const throttledTimeScaleChange = (() => {
+          let rafId: number | null = null;
+          return (newRange: any) => {
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(() => {
+              if (newRange && baseVisibleRangeRef.current) {
+                const baseFrom = Number(baseVisibleRangeRef.current.from);
+                const baseTo = Number(baseVisibleRangeRef.current.to);
+                const newFrom = Number(newRange.from);
+                const newTo = Number(newRange.to);
+                const rangeWidth = newTo - newFrom;
+                const baseWidth = baseTo - baseFrom;
+                if (rangeWidth > baseWidth || newFrom < baseFrom || newTo > baseTo) {
+                  chart.timeScale().setVisibleRange(baseVisibleRangeRef.current);
+                }
+              }
+              rafId = null;
+            });
+          };
+        })();
+        chart.timeScale().subscribeVisibleTimeRangeChange(throttledTimeScaleChange);
 
         return () => {
-          window.removeEventListener('resize', handleResize);
+          if (resizeObserver) {
+            resizeObserver.disconnect();
+          }
           if (seriesRef.current) {
             seriesRef.current = null;
           }
@@ -316,26 +347,22 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
     } else {
       console.warn('⚠️ Chart container ref not available');
     }
-  }, [timeframe]);
+  }, [chartOptions, cryptoId, currency]);
 
   const updateChartData = useCallback((data: ChartDataPoint[]) => {
     console.log('🔄 Updating chart data:', { dataPoints: data.length });
-    
     if (seriesRef.current && data.length > 0) {
       try {
         const formattedData = data.map(point => ({
-          time: typeof point.time === 'string' ? 
-            Math.floor(new Date(point.time).getTime() / 1000) as Time : 
-            point.time as Time,
+          time: typeof point.time === 'string' ? Math.floor(new Date(point.time).getTime() / 1000) as Time : point.time as Time,
           value: Number(point.value || point.price)
         }));
         console.log('📊 Formatted data sample:', formattedData[0], '...', formattedData[formattedData.length - 1]);
 
         seriesRef.current.setData(formattedData);
         console.log('✅ Chart data updated successfully');
-        
+
         if (chartRef.current) {
-          // Apply timeframe-specific options
           chartRef.current.applyOptions({
             timeScale: {
               timeVisible: true,
@@ -343,7 +370,6 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
               tickMarkFormatter: (time: number) => {
                 const date = new Date(time * 1000);
                 const format = (n: number) => n.toString().padStart(2, '0');
-                
                 switch (timeframe) {
                   case '1D':
                     return `${format(date.getHours())}:${format(date.getMinutes())}`;
@@ -361,7 +387,6 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
           });
 
           chartRef.current.timeScale().fitContent();
-          
           const currentRange = chartRef.current.timeScale().getVisibleRange();
           if (currentRange) {
             const timeBuffer = {
@@ -385,9 +410,9 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
         setPriceChange(changePercent);
 
         seriesRef.current.applyOptions({
-          lineColor: intervalColors[timeframe].line,
-          topColor: intervalColors[timeframe].top,
-          bottomColor: intervalColors[timeframe].bottom,
+          lineColor: PURPLE_COLORS.line,
+          topColor: PURPLE_COLORS.top,
+          bottomColor: PURPLE_COLORS.bottom,
         });
       } catch (error) {
         console.error('❌ Error updating chart data:', error);
@@ -409,7 +434,6 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
       setLoading(true);
       setError(null);
       
-      // Fetch data using the new service which handles caching and fallback
       const data = await getHistoricalPriceData(cryptoId, currency, selectedTimeframe);
       
       updateChartData(data);
@@ -473,9 +497,9 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
   useEffect(() => {
     if (seriesRef.current) {
       seriesRef.current.applyOptions({
-        lineColor: intervalColors[timeframe].line,
-        topColor: intervalColors[timeframe].top,
-        bottomColor: intervalColors[timeframe].bottom,
+        lineColor: PURPLE_COLORS.line,
+        topColor: PURPLE_COLORS.top,
+        bottomColor: PURPLE_COLORS.bottom,
       });
       resetBaseVisibleRange();
     }
@@ -498,81 +522,6 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
     };
   }, []);
 
-  const chartOptions = useMemo<DeepPartial<ChartOptions>>(() => ({
-    layout: {
-      background: { type: ColorType.Solid, color: '#111111' },
-      textColor: '#9ca3af',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    },
-    grid: {
-      vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
-      horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
-    },
-    timeScale: {
-      borderColor: 'rgba(255, 255, 255, 0.1)',
-      timeVisible: true,
-      secondsVisible: false,
-      fixLeftEdge: true,
-      fixRightEdge: true,
-      tickMarkFormatter: (time: number) => {
-        const date = new Date(time * 1000);
-        const format = (n: number) => n.toString().padStart(2, '0');
-        
-        switch (timeframe) {
-          case '1D':
-            return `${format(date.getHours())}:${format(date.getMinutes())}`;
-          case '1W':
-            return `${format(date.getDate())}/${format(date.getMonth() + 1)}`;
-          case '1M':
-            return `${format(date.getDate())}/${format(date.getMonth() + 1)}`;
-          case '1Y':
-            return `${format(date.getMonth() + 1)}/${date.getFullYear()}`;
-          default:
-            return '';
-        }
-      },
-    },
-    crosshair: {
-      vertLine: {
-        color: 'rgba(139, 92, 246, 0.3)',
-        width: 1,
-        style: 1,
-        labelBackgroundColor: '#8b5cf6',
-      },
-      horzLine: {
-        color: 'rgba(139, 92, 246, 0.3)',
-        width: 1,
-        style: 1,
-        labelBackgroundColor: '#8b5cf6',
-      },
-    },
-    handleScale: {
-      mouseWheel: true,
-      pinch: true,
-      axisPressedMouseMove: {
-        time: true,
-        price: true,
-      },
-    },
-    handleScroll: {
-      mouseWheel: true,
-      pressedMouseMove: true,
-      horzTouchDrag: true,
-      vertTouchDrag: true,
-    },
-    rightPriceScale: {
-      borderVisible: false,
-      scaleMargins: {
-        top: 0.1,
-        bottom: 0.1,
-      },
-      autoScale: true,
-      alignLabels: true,
-      borderColor: 'rgba(255, 255, 255, 0.1)',
-      ticksVisible: true,
-    },
-  }), [timeframe]);
-
   return (
     <ErrorBoundary
       FallbackComponent={({ error, resetErrorBoundary }) => (
@@ -594,20 +543,6 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
               </PriceChange>
             )}
           </ChartTitle>
-          <TimeframeButtons>
-            {(['1D', '1W', '1M', '1Y'] as Timeframe[]).map((tf) => (
-              <TimeButton
-                key={tf}
-                $active={timeframe === tf}
-                onClick={() => {
-                  setTimeframe(tf);
-                  setChartLoaded(false);
-                }}
-              >
-                {tf}
-              </TimeButton>
-            ))}
-          </TimeframeButtons>
         </ChartHeader>
 
         {(loading || contextLoading) && (
