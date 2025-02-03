@@ -11,8 +11,8 @@ import {
   AreaSeries
 } from 'lightweight-charts';
 import { useCrypto } from '../context/CryptoContext';
-import { useCryptoCompare } from '../context/CryptoCompareContext';
 import { ErrorBoundary } from 'react-error-boundary';
+import { getHistoricalPriceData } from '../services';
 
 const fadeIn = keyframes`
   from {
@@ -148,15 +148,6 @@ const ErrorMessage = styled.div`
   padding: 1rem;
 `;
 
-const FallbackIndicator = styled.span`
-  font-size: 0.8rem;
-  color: #666;
-  margin-left: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 2px 6px;
-  border-radius: 4px;
-`;
-
 interface ChartDataPoint {
   time: Time;
   value: number;
@@ -165,18 +156,9 @@ interface ChartDataPoint {
 
 type Timeframe = '1D' | '1W' | '1M' | '1Y';
 
-const CHART_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 const CHART_UPDATE_INTERVAL = 5 * 60 * 1000; // 5 minutes
 const CHART_RETRY_DELAY = 5000; // 5 seconds
 const MAX_RETRIES = 3;
-
-interface ChartCache {
-  data: ChartDataPoint[];
-  timeframe: Timeframe;
-  cryptoId: string;
-  currency: string;
-  timestamp: number;
-}
 
 interface CryptoChartProps {
   cryptoId: string;
@@ -214,43 +196,18 @@ const intervalColors = {
 const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) => {
   console.log('🚀 CryptoChart Component Mounted:', { cryptoId, currency });
 
-  const { error: contextError, loading: contextLoading, getCryptoId } = useCrypto();
-  const cryptoCompare = useCryptoCompare();
+  const { error: contextError, loading: contextLoading } = useCrypto();
   const [timeframe, setTimeframe] = useState<Timeframe>('1D');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [priceChange, setPriceChange] = useState<number>(0);
   const [chartLoaded, setChartLoaded] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
-  const [usingFallbackApi, setUsingFallbackApi] = useState(false);
-  const chartCache = useRef<{ [key: string]: ChartCache }>({});
   const baseVisibleRangeRef = useRef<{ from: Time; to: Time } | null>(null);
   const fetchTimeout = useRef<NodeJS.Timeout | null>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<'Area'> | null>(null);
-
-  const getCacheKey = (tf: Timeframe, id: string, curr: string) => `${tf}-${id}-${curr}`;
-
-  const getChartCache = (tf: Timeframe, id: string, curr: string): ChartDataPoint[] | null => {
-    const key = getCacheKey(tf, id, curr);
-    const cache = chartCache.current[key];
-    if (cache && Date.now() - cache.timestamp <= CHART_CACHE_DURATION) {
-      return cache.data;
-    }
-    return null;
-  };
-
-  const setChartCache = (tf: Timeframe, id: string, curr: string, data: ChartDataPoint[]) => {
-    const key = getCacheKey(tf, id, curr);
-    chartCache.current[key] = {
-      data,
-      timeframe: tf,
-      cryptoId: id,
-      currency: curr,
-      timestamp: Date.now()
-    };
-  };
 
   const resetBaseVisibleRange = useCallback(() => {
     if (chartRef.current) {
@@ -442,7 +399,6 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
 
   const fetchPriceHistory = useCallback(async (selectedTimeframe: Timeframe) => {
     console.log('🔍 Fetching price history:', { selectedTimeframe, cryptoId, currency });
-    
     if (fetchTimeout.current) {
       console.log('🔄 Clearing existing fetch timeout');
       clearTimeout(fetchTimeout.current);
@@ -453,79 +409,12 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
       setLoading(true);
       setError(null);
       
-      const coinGeckoId = getCryptoId(cryptoId.toUpperCase());
-      console.log('🪙 Resolved CoinGecko ID:', { cryptoId, coinGeckoId });
-
-      if (!coinGeckoId) {
-        throw new Error(`Could not find CoinGecko ID for ${cryptoId}`);
-      }
-
-      const cachedData = getChartCache(selectedTimeframe, cryptoId, currency);
-      if (cachedData) {
-        console.log('📦 Using cached data');
-        updateChartData(cachedData);
-        setLoading(false);
-        setChartLoaded(true);
-        return;
-      }
-
-      let data;
-      let usedFallbackApi = false;
-
-      try {
-        const days = selectedTimeframe === '1D' ? '1' : 
-                    selectedTimeframe === '1W' ? '7' : 
-                    selectedTimeframe === '1M' ? '30' : '365';
-                    
-        const baseUrl = `https://api.coingecko.com/api/v3/coins/${coinGeckoId}/market_chart`;
-        const url = `${baseUrl}?vs_currency=${currency.toLowerCase()}&days=${days}`;
-
-        const response = await fetch(url, {
-          headers: {
-            'x-cg-demo-api-key': import.meta.env.VITE_COINGECKO_API_KEY
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error(`API Error: ${response.status}`);
-        }
-
-        const jsonData = await response.json();
-        data = jsonData.prices.map(([timestamp, price]: [number, number]) => ({
-          time: timestamp / 1000 as Time,
-          value: price,
-        }));
-
-        // Optimize data points based on timeframe
-      } catch (error) {
-        console.log('CoinGecko API failed, switching to CryptoCompare');
-        usedFallbackApi = true;
-        data = await cryptoCompare.getHistoricalData(
-          cryptoId,
-          currency,
-          selectedTimeframe
-        );
-      }
-
-      setUsingFallbackApi(usedFallbackApi);
-      setError(null);
-
-      if (!data || !Array.isArray(data)) {
-        throw new Error('No valid data received');
-      }
-
-      const formattedData = data.map(point => ({
-        time: typeof point.time === 'string' ? 
-          Math.floor(new Date(point.time).getTime() / 1000) as Time : 
-          point.time as Time,
-        value: Number(point.value || point.price)
-      }));
-
-      setChartCache(selectedTimeframe, cryptoId, currency, formattedData);
-      updateChartData(formattedData);
+      // Fetch data using the new service which handles caching and fallback
+      const data = await getHistoricalPriceData(cryptoId, currency, selectedTimeframe);
+      
+      updateChartData(data);
       setRetryCount(0);
       setChartLoaded(true);
-
     } catch (error) {
       console.error('❌ Error in fetchPriceHistory:', error);
       setError(error instanceof Error ? error.message : 'Failed to fetch price data');
@@ -533,14 +422,14 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
       if (retryCount < MAX_RETRIES) {
         const nextRetry = CHART_RETRY_DELAY * Math.pow(2, retryCount);
         fetchTimeout.current = setTimeout(() => {
-          fetchPriceHistory(timeframe);
+          fetchPriceHistory(selectedTimeframe);
         }, nextRetry);
         setRetryCount(prev => prev + 1);
       }
     } finally {
       setLoading(false);
     }
-  }, [cryptoId, currency, getCryptoId, timeframe, cryptoCompare, updateChartData, retryCount]);
+  }, [cryptoId, currency, updateChartData, retryCount]);
 
   useEffect(() => {
     console.log('🔄 Chart effect triggered:', { timeframe });
@@ -703,11 +592,6 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) =>
               <PriceChange $isPositive={priceChange > 0}>
                 {priceChange > 0 ? '+' : ''}{priceChange.toFixed(2)}%
               </PriceChange>
-            )}
-            {usingFallbackApi && (
-              <FallbackIndicator>
-                Fallback API
-              </FallbackIndicator>
             )}
           </ChartTitle>
           <TimeframeButtons>

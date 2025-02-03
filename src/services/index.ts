@@ -1,0 +1,1 @@
+export { getHistoricalPriceData } from './priceService'; 
