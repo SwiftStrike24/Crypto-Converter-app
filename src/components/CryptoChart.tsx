@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, memo, useRef } from 'react';
+import React, { useEffect, useState, useCallback, memo, useRef, useMemo } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { 
   createChart, 
@@ -34,11 +34,12 @@ const ChartContainer = styled.div`
   width: 100%;
   height: 400px;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   animation: ${fadeIn} 0.6s ease-out;
   transition: all 0.3s ease;
   background: #111111;
-  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
 
   .chart-content {
     opacity: 0;
@@ -177,43 +178,15 @@ interface ChartCache {
   timestamp: number;
 }
 
-const chartOptions: DeepPartial<ChartOptions> = {
-  layout: {
-    background: { type: ColorType.Solid, color: '#111111' },
-    textColor: '#9ca3af',
-  },
-  grid: {
-    vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
-    horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
-  },
-  timeScale: {
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    timeVisible: true,
-    secondsVisible: false,
-  },
-  crosshair: {
-    vertLine: {
-      color: 'rgba(139, 92, 246, 0.3)',
-      width: 1,
-      style: 1,
-    },
-    horzLine: {
-      color: 'rgba(139, 92, 246, 0.3)',
-      width: 1,
-      style: 1,
-    },
-  },
-  handleScale: {
-    mouseWheel: true,
-    pinch: true,
-  },
-  handleScroll: {
-    mouseWheel: true,
-    pressedMouseMove: true,
-    horzTouchDrag: true,
-    vertTouchDrag: true,
-  },
-};
+interface CryptoChartProps {
+  cryptoId: string;
+  currency: string;
+}
+
+const ChartContentDiv = styled.div`
+  width: 100%;
+  height: 100%;
+`;
 
 const intervalColors = {
   '1D': {
@@ -238,17 +211,7 @@ const intervalColors = {
   }
 };
 
-interface CryptoChartProps {
-  cryptoId: string;
-  currency: string;
-}
-
-const ChartContentDiv = styled.div`
-  width: 100%;
-  height: 100%;
-`;
-
-export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) => {
+const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency }) => {
   console.log('🚀 CryptoChart Component Mounted:', { cryptoId, currency });
 
   const { error: contextError, loading: contextLoading, getCryptoId } = useCrypto();
@@ -261,6 +224,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
   const [retryCount, setRetryCount] = useState(0);
   const [usingFallbackApi, setUsingFallbackApi] = useState(false);
   const chartCache = useRef<{ [key: string]: ChartCache }>({});
+  const baseVisibleRangeRef = useRef<{ from: Time; to: Time } | null>(null);
   const fetchTimeout = useRef<NodeJS.Timeout | null>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -288,6 +252,21 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
     };
   };
 
+  const resetBaseVisibleRange = useCallback(() => {
+    if (chartRef.current) {
+      chartRef.current.timeScale().fitContent();
+      const currentRange = chartRef.current.timeScale().getVisibleRange();
+      if (currentRange) {
+        const buffer = (Number(currentRange.to) - Number(currentRange.from)) * 0.02;
+        baseVisibleRangeRef.current = {
+          from: (Number(currentRange.from) - buffer) as Time,
+          to: (Number(currentRange.to) + buffer) as Time
+        };
+        console.log('🔄 Reset base visible range with buffer:', baseVisibleRangeRef.current);
+      }
+    }
+  }, []);
+
   const initChart = useCallback(() => {
     console.log('📊 Initializing Chart...', { cryptoId, currency });
     if (chartContainerRef.current) {
@@ -297,6 +276,20 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
           ...chartOptions,
           width: chartContainerRef.current.clientWidth,
           height: chartContainerRef.current.clientHeight,
+          handleScale: {
+            mouseWheel: true,
+            pinch: true,
+            axisPressedMouseMove: {
+              time: true,
+              price: false
+            }
+          },
+          handleScroll: {
+            mouseWheel: true,
+            pressedMouseMove: true,
+            horzTouchDrag: true,
+            vertTouchDrag: false
+          },
         });
         chartRef.current = chart;
 
@@ -327,6 +320,25 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
 
         window.addEventListener('resize', handleResize);
 
+        // Enhanced zoom control
+        chart.timeScale().subscribeVisibleTimeRangeChange((newRange) => {
+          if (newRange && baseVisibleRangeRef.current) {
+            const baseFrom = Number(baseVisibleRangeRef.current.from);
+            const baseTo = Number(baseVisibleRangeRef.current.to);
+            const newFrom = Number(newRange.from);
+            const newTo = Number(newRange.to);
+
+            const rangeWidth = newTo - newFrom;
+            const baseWidth = baseTo - baseFrom;
+
+            // Check if zoomed out too far or scrolled beyond bounds
+            if (rangeWidth > baseWidth || newFrom < baseFrom || newTo > baseTo) {
+              console.log('🔒 Restricting zoom/scroll to base visible range');
+              chart.timeScale().setVisibleRange(baseVisibleRangeRef.current);
+            }
+          }
+        });
+
         return () => {
           window.removeEventListener('resize', handleResize);
           if (seriesRef.current) {
@@ -334,7 +346,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
           }
           if (chartRef.current) {
             try {
-              chart.remove();
+              chartRef.current.remove();
               chartRef.current = null;
             } catch (error) {
               console.warn('Chart already disposed');
@@ -366,7 +378,48 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
         console.log('✅ Chart data updated successfully');
         
         if (chartRef.current) {
+          // Apply timeframe-specific options
+          chartRef.current.applyOptions({
+            timeScale: {
+              timeVisible: true,
+              secondsVisible: timeframe === '1D',
+              tickMarkFormatter: (time: number) => {
+                const date = new Date(time * 1000);
+                const format = (n: number) => n.toString().padStart(2, '0');
+                
+                switch (timeframe) {
+                  case '1D':
+                    return `${format(date.getHours())}:${format(date.getMinutes())}`;
+                  case '1W':
+                    return `${format(date.getDate())}/${format(date.getMonth() + 1)}`;
+                  case '1M':
+                    return `${format(date.getDate())}/${format(date.getMonth() + 1)}`;
+                  case '1Y':
+                    return `${format(date.getMonth() + 1)}/${date.getFullYear()}`;
+                  default:
+                    return '';
+                }
+              },
+            },
+          });
+
           chartRef.current.timeScale().fitContent();
+          
+          const currentRange = chartRef.current.timeScale().getVisibleRange();
+          if (currentRange) {
+            const timeBuffer = {
+              '1D': 0.02,
+              '1W': 0.03,
+              '1M': 0.04,
+              '1Y': 0.05
+            }[timeframe] || 0.02;
+
+            const buffer = (Number(currentRange.to) - Number(currentRange.from)) * timeBuffer;
+            baseVisibleRangeRef.current = {
+              from: (Number(currentRange.from) - buffer) as Time,
+              to: (Number(currentRange.to) + buffer) as Time
+            };
+          }
         }
 
         const startPrice = formattedData[0].value;
@@ -425,7 +478,7 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
                     selectedTimeframe === '1M' ? '30' : '365';
                     
         const baseUrl = `https://api.coingecko.com/api/v3/coins/${coinGeckoId}/market_chart`;
-        const url = `${baseUrl}?vs_currency=${currency.toLowerCase()}&days=${days}${selectedTimeframe !== '1D' ? '&interval=daily' : ''}`;
+        const url = `${baseUrl}?vs_currency=${currency.toLowerCase()}&days=${days}`;
 
         const response = await fetch(url, {
           headers: {
@@ -442,6 +495,8 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
           time: timestamp / 1000 as Time,
           value: price,
         }));
+
+        // Optimize data points based on timeframe
       } catch (error) {
         console.log('CoinGecko API failed, switching to CryptoCompare');
         usedFallbackApi = true;
@@ -527,6 +582,17 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
   }, [timeframe, fetchPriceHistory]);
 
   useEffect(() => {
+    if (seriesRef.current) {
+      seriesRef.current.applyOptions({
+        lineColor: intervalColors[timeframe].line,
+        topColor: intervalColors[timeframe].top,
+        bottomColor: intervalColors[timeframe].bottom,
+      });
+      resetBaseVisibleRange();
+    }
+  }, [timeframe, resetBaseVisibleRange]);
+
+  useEffect(() => {
     return () => {
       console.log('🧹 Component cleanup');
       if (seriesRef.current) {
@@ -542,6 +608,81 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
       }
     };
   }, []);
+
+  const chartOptions = useMemo<DeepPartial<ChartOptions>>(() => ({
+    layout: {
+      background: { type: ColorType.Solid, color: '#111111' },
+      textColor: '#9ca3af',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    },
+    grid: {
+      vertLines: { color: 'rgba(255, 255, 255, 0.05)' },
+      horzLines: { color: 'rgba(255, 255, 255, 0.05)' },
+    },
+    timeScale: {
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      timeVisible: true,
+      secondsVisible: false,
+      fixLeftEdge: true,
+      fixRightEdge: true,
+      tickMarkFormatter: (time: number) => {
+        const date = new Date(time * 1000);
+        const format = (n: number) => n.toString().padStart(2, '0');
+        
+        switch (timeframe) {
+          case '1D':
+            return `${format(date.getHours())}:${format(date.getMinutes())}`;
+          case '1W':
+            return `${format(date.getDate())}/${format(date.getMonth() + 1)}`;
+          case '1M':
+            return `${format(date.getDate())}/${format(date.getMonth() + 1)}`;
+          case '1Y':
+            return `${format(date.getMonth() + 1)}/${date.getFullYear()}`;
+          default:
+            return '';
+        }
+      },
+    },
+    crosshair: {
+      vertLine: {
+        color: 'rgba(139, 92, 246, 0.3)',
+        width: 1,
+        style: 1,
+        labelBackgroundColor: '#8b5cf6',
+      },
+      horzLine: {
+        color: 'rgba(139, 92, 246, 0.3)',
+        width: 1,
+        style: 1,
+        labelBackgroundColor: '#8b5cf6',
+      },
+    },
+    handleScale: {
+      mouseWheel: true,
+      pinch: true,
+      axisPressedMouseMove: {
+        time: true,
+        price: true,
+      },
+    },
+    handleScroll: {
+      mouseWheel: true,
+      pressedMouseMove: true,
+      horzTouchDrag: true,
+      vertTouchDrag: true,
+    },
+    rightPriceScale: {
+      borderVisible: false,
+      scaleMargins: {
+        top: 0.1,
+        bottom: 0.1,
+      },
+      autoScale: true,
+      alignLabels: true,
+      borderColor: 'rgba(255, 255, 255, 0.1)',
+      ticksVisible: true,
+    },
+  }), [timeframe]);
 
   return (
     <ErrorBoundary
@@ -609,3 +750,5 @@ export const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currenc
     </ErrorBoundary>
   );
 });
+
+export default CryptoChart;
