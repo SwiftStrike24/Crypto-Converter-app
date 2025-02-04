@@ -124,7 +124,7 @@ const ChartWrapper = styled.div`
 
 const ChartControls = styled.div`
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
   padding: 0.75rem;
@@ -134,8 +134,21 @@ const ChartControls = styled.div`
   backdrop-filter: blur(8px);
 
   @media (max-width: 768px) {
-    justify-content: center;
+    flex-direction: column;
+    gap: 1rem;
     padding: 0.5rem;
+  }
+`;
+
+const ControlsLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+
+  @media (max-width: 768px) {
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 0.5rem;
   }
 `;
 
@@ -229,12 +242,14 @@ const ChartPage: React.FC = () => {
           Back to Converter
         </BackButton>
         <HeaderContent>
-          <LivePrice cryptoId={cryptoId} currency={currency} />
           <Title>{cryptoId}/{currency} Price Chart</Title>
         </HeaderContent>
       </Header>
       <ChartWrapper>
         <ChartControls>
+          <ControlsLeft>
+            <LivePrice cryptoId={cryptoId} currency={currency} />
+          </ControlsLeft>
           <TimeframeButtons>
             {(['1D', '1W', '1M', '1Y'] as Timeframe[]).map((tf) => (
               <TimeButton

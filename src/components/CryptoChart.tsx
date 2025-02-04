@@ -111,6 +111,45 @@ const ErrorMessage = styled.div`
   padding: 1rem;
 `;
 
+const RetryButton = styled.button`
+  background: rgba(139, 92, 246, 0.1);
+  color: #fff;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  margin-top: 0.5rem;
+  transition: all 0.3s ease;
+
+  &:hover {
+    background: rgba(139, 92, 246, 0.2);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const NoDataMessage = styled(ErrorMessage)`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  border: 1px solid rgba(139, 92, 246, 0.1);
+`;
+
+const InfoText = styled.p`
+  color: #9ca3af;
+  font-size: 0.9rem;
+  text-align: center;
+  margin: 0;
+`;
+
 interface ChartDataPoint {
   time: Time;
   value: number;
@@ -144,6 +183,124 @@ const PURPLE_COLORS = {
   line: '#8B5CF6',
   top: 'rgba(139, 92, 246, 0.3)',
   bottom: 'rgba(139, 92, 246, 0.1)'
+};
+
+const validateChartData = (data: ChartDataPoint[]): ChartDataPoint[] => {
+  if (!Array.isArray(data)) {
+    console.warn('❌ Invalid data format received:', data);
+    return [];
+  }
+
+  // Log the raw data for debugging
+  console.log('📊 Raw data received:', data);
+
+  // First pass: Basic validation and data structure normalization
+  const normalizedData = data.map(point => {
+    try {
+      // Deep clone the point to avoid mutations
+      const rawPoint = JSON.parse(JSON.stringify(point));
+      
+      // Extract timestamp
+      let timestamp: number;
+      if (typeof rawPoint.time === 'string') {
+        timestamp = Math.floor(new Date(rawPoint.time).getTime() / 1000);
+      } else if (typeof rawPoint.time === 'number') {
+        timestamp = Math.floor(rawPoint.time);
+      } else {
+        console.warn('❌ Invalid timestamp format:', rawPoint.time);
+        return null;
+      }
+
+      // Validate timestamp
+      const now = Math.floor(Date.now() / 1000);
+      if (timestamp > now + 86400 || timestamp < 0) { // Allow 24h future buffer for different timezones
+        console.warn('❌ Invalid timestamp range:', timestamp);
+        return null;
+      }
+
+      // Extract and validate price/value
+      let value: number;
+      if (typeof rawPoint.value === 'number' && !isNaN(rawPoint.value)) {
+        value = rawPoint.value;
+      } else if (typeof rawPoint.price === 'number' && !isNaN(rawPoint.price)) {
+        value = rawPoint.price;
+      } else if (typeof rawPoint.value === 'string') {
+        value = parseFloat(rawPoint.value);
+      } else if (typeof rawPoint.price === 'string') {
+        value = parseFloat(rawPoint.price);
+      } else {
+        console.warn('❌ Invalid value format:', { value: rawPoint.value, price: rawPoint.price });
+        return null;
+      }
+
+      // Additional value validation
+      if (isNaN(value) || value < 0 || value > 1e15) { // Upper limit for sanity check
+        console.warn('❌ Value out of valid range:', value);
+        return null;
+      }
+
+      return {
+        time: timestamp as Time,
+        value
+      };
+    } catch (error) {
+      console.warn('❌ Error processing data point:', error, point);
+      return null;
+    }
+  }).filter((point): point is ChartDataPoint => point !== null);
+
+  // Sort by timestamp
+  const sortedData = normalizedData.sort((a, b) => Number(a.time) - Number(b.time));
+
+  // Second pass: Remove outliers and anomalies
+  if (sortedData.length >= 3) {
+    const cleanedData = sortedData.filter((point, index, array) => {
+      if (index === 0 || index === array.length - 1) return true;
+
+      const prev = array[index - 1];
+      const next = array[index + 1];
+
+      // Calculate percentage changes
+      const prevChange = Math.abs((point.value - prev.value) / prev.value);
+      const nextChange = Math.abs((next.value - point.value) / point.value);
+
+      // If both changes are more than 100%, likely an anomaly
+      if (prevChange > 1 && nextChange > 1) {
+        console.warn('❌ Detected price anomaly:', { point, prevChange, nextChange });
+        return false;
+      }
+
+      return true;
+    });
+
+    // If we have enough clean data points, use them
+    if (cleanedData.length >= 2) {
+      console.log('✅ Cleaned data points:', cleanedData.length);
+      return cleanedData;
+    }
+  }
+
+  // If we don't have enough clean data, try to recover with the original sorted data
+  if (sortedData.length >= 2) {
+    console.log('⚠️ Using original sorted data:', sortedData.length);
+    return sortedData;
+  }
+
+  // Last resort: Try to create synthetic data points if we have at least one valid point
+  if (sortedData.length === 1) {
+    console.log('⚠️ Creating synthetic data points from single point');
+    const point = sortedData[0];
+    const now = Math.floor(Date.now() / 1000);
+    const syntheticData = [
+      { time: (now - 3600) as Time, value: point.value }, // 1 hour ago
+      point,
+      { time: now as Time, value: point.value } // Current time
+    ];
+    return syntheticData;
+  }
+
+  console.warn('❌ No valid data points after validation');
+  return [];
 };
 
 const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency, timeframe }) => {
@@ -351,74 +508,118 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency, time
 
   const updateChartData = useCallback((data: ChartDataPoint[]) => {
     console.log('🔄 Updating chart data:', { dataPoints: data.length });
-    if (seriesRef.current && data.length > 0) {
-      try {
-        const formattedData = data.map(point => ({
-          time: typeof point.time === 'string' ? Math.floor(new Date(point.time).getTime() / 1000) as Time : point.time as Time,
-          value: Number(point.value || point.price)
-        }));
-        console.log('📊 Formatted data sample:', formattedData[0], '...', formattedData[formattedData.length - 1]);
+    if (!seriesRef.current) {
+      console.warn('⚠️ Series ref not available');
+      setError('Chart initialization failed');
+      setChartLoaded(false);
+      return;
+    }
 
-        seriesRef.current.setData(formattedData);
-        console.log('✅ Chart data updated successfully');
+    try {
+      const validData = validateChartData(data);
+      
+      if (validData.length === 0) {
+        throw new Error(`No valid price data available for ${cryptoId}. This might happen with newly listed tokens or tokens with limited market data.`);
+      }
 
-        if (chartRef.current) {
-          chartRef.current.applyOptions({
-            timeScale: {
-              timeVisible: true,
-              secondsVisible: timeframe === '1D',
-              tickMarkFormatter: (time: number) => {
-                const date = new Date(time * 1000);
-                const format = (n: number) => n.toString().padStart(2, '0');
-                switch (timeframe) {
-                  case '1D':
-                    return `${format(date.getHours())}:${format(date.getMinutes())}`;
-                  case '1W':
-                    return `${format(date.getDate())}/${format(date.getMonth() + 1)}`;
-                  case '1M':
-                    return `${format(date.getDate())}/${format(date.getMonth() + 1)}`;
-                  case '1Y':
-                    return `${format(date.getMonth() + 1)}/${date.getFullYear()}`;
-                  default:
-                    return '';
-                }
-              },
+      if (validData.length < 2) {
+        throw new Error(`Insufficient price data points available for ${cryptoId}. Please try again later or switch to a different timeframe.`);
+      }
+
+      console.log('📊 Validated data sample:', {
+        first: validData[0],
+        last: validData[validData.length - 1],
+        points: validData.length
+      });
+
+      // Apply smoothing for better visualization
+      const smoothedData = validData.map((point, index, array) => {
+        if (index === 0 || index === array.length - 1) return point;
+        
+        const prev = array[index - 1];
+        const next = array[index + 1];
+        const smoothedValue = (prev.value + point.value + next.value) / 3;
+        
+        return {
+          time: point.time,
+          value: smoothedValue
+        };
+      });
+
+      seriesRef.current.setData(smoothedData);
+      console.log('✅ Chart data updated successfully');
+
+      if (chartRef.current) {
+        const options: DeepPartial<ChartOptions> = {
+          timeScale: {
+            timeVisible: true,
+            secondsVisible: timeframe === '1D',
+            tickMarkFormatter: (time: number) => {
+              const date = new Date(time * 1000);
+              const format = (n: number) => n.toString().padStart(2, '0');
+              switch (timeframe) {
+                case '1D':
+                  return `${format(date.getHours())}:${format(date.getMinutes())}`;
+                case '1W':
+                case '1M':
+                  return `${format(date.getDate())}/${format(date.getMonth() + 1)}`;
+                case '1Y':
+                  return `${format(date.getMonth() + 1)}/${date.getFullYear()}`;
+                default:
+                  return '';
+              }
             },
-          });
+            rightOffset: timeframe === '1D' ? 5 : 12,
+            barSpacing: timeframe === '1D' ? 8 : 6,
+            minBarSpacing: timeframe === '1D' ? 4 : 3,
+          },
+        };
 
+        chartRef.current.applyOptions(options);
+
+        if (validData.length > 0) {
           chartRef.current.timeScale().fitContent();
-          const currentRange = chartRef.current.timeScale().getVisibleRange();
-          if (currentRange) {
-            const timeBuffer = {
-              '1D': 0.02,
-              '1W': 0.03,
-              '1M': 0.04,
-              '1Y': 0.05
-            }[timeframe] || 0.02;
+          
+          // Special handling for 1D timeframe
+          if (timeframe === '1D') {
+            const now = Math.floor(Date.now() / 1000);
+            const oneDayAgo = now - 24 * 60 * 60;
+            chartRef.current.timeScale().setVisibleRange({
+              from: oneDayAgo as Time,
+              to: (now + 60 * 15) as Time // Add 15 minutes buffer
+            });
+          } else {
+            const currentRange = chartRef.current.timeScale().getVisibleRange();
+            if (currentRange) {
+              const timeBuffer = {
+                '1W': 0.03,
+                '1M': 0.04,
+                '1Y': 0.05
+              }[timeframe] || 0.02;
 
-            const buffer = (Number(currentRange.to) - Number(currentRange.from)) * timeBuffer;
-            baseVisibleRangeRef.current = {
-              from: (Number(currentRange.from) - buffer) as Time,
-              to: (Number(currentRange.to) + buffer) as Time
-            };
+              const buffer = (Number(currentRange.to) - Number(currentRange.from)) * timeBuffer;
+              baseVisibleRangeRef.current = {
+                from: (Number(currentRange.from) - buffer) as Time,
+                to: (Number(currentRange.to) + buffer) as Time
+              };
+            }
           }
         }
+      }
 
-        const startPrice = formattedData[0].value;
-        const endPrice = formattedData[formattedData.length - 1].value;
+      if (validData.length >= 2) {
+        const startPrice = validData[0].value;
+        const endPrice = validData[validData.length - 1].value;
         const changePercent = ((endPrice - startPrice) / startPrice) * 100;
         setPriceChange(changePercent);
-
-        seriesRef.current.applyOptions({
-          lineColor: PURPLE_COLORS.line,
-          topColor: PURPLE_COLORS.top,
-          bottomColor: PURPLE_COLORS.bottom,
-        });
-      } catch (error) {
-        console.error('❌ Error updating chart data:', error);
       }
-    } else {
-      console.warn('⚠️ Series ref not available or empty data');
+
+      setChartLoaded(true);
+      setError(null);
+    } catch (error) {
+      console.error('❌ Error updating chart data:', error);
+      setError(error instanceof Error ? error.message : 'Failed to update chart data');
+      setChartLoaded(false);
     }
   }, [timeframe]);
 
@@ -436,19 +637,26 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency, time
       
       const data = await getHistoricalPriceData(cryptoId, currency, selectedTimeframe);
       
+      if (!data || data.length === 0) {
+        throw new Error(`No historical data available for ${cryptoId}`);
+      }
+
       updateChartData(data);
       setRetryCount(0);
-      setChartLoaded(true);
     } catch (error) {
       console.error('❌ Error in fetchPriceHistory:', error);
-      setError(error instanceof Error ? error.message : 'Failed to fetch price data');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch price data';
+      setError(errorMessage);
 
       if (retryCount < MAX_RETRIES) {
         const nextRetry = CHART_RETRY_DELAY * Math.pow(2, retryCount);
+        console.log(`🔄 Retrying in ${nextRetry/1000} seconds... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
         fetchTimeout.current = setTimeout(() => {
           fetchPriceHistory(selectedTimeframe);
         }, nextRetry);
         setRetryCount(prev => prev + 1);
+      } else {
+        console.log('❌ Max retries reached');
       }
     } finally {
       setLoading(false);
@@ -525,13 +733,23 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency, time
   return (
     <ErrorBoundary
       FallbackComponent={({ error, resetErrorBoundary }) => (
-        <ErrorMessage>
-          <h3>Something went wrong</h3>
+        <NoDataMessage>
+          <h3>Chart Error</h3>
           <p>{error.message}</p>
-          <button onClick={resetErrorBoundary}>Try again</button>
-        </ErrorMessage>
+          <InfoText>
+            This might happen if the token is newly listed or has limited trading history.
+            Try a different timeframe or check back later.
+          </InfoText>
+          <RetryButton onClick={resetErrorBoundary}>
+            Try again {retryCount > 0 ? `(${retryCount}/${MAX_RETRIES})` : ''}
+          </RetryButton>
+        </NoDataMessage>
       )}
-      onReset={() => fetchPriceHistory(timeframe)}
+      onReset={() => {
+        setRetryCount(0);
+        setError(null);
+        fetchPriceHistory(timeframe);
+      }}
     >
       <ChartContainer>
         <ChartHeader>
@@ -553,12 +771,25 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency, time
         )}
 
         {(error || contextError) && (
-          <ErrorMessage>
-            {error || contextError}
+          <NoDataMessage>
+            <p>{error || contextError}</p>
+            <InfoText>
+              This might happen if the token is newly listed or has limited trading history.
+              Try a different timeframe or check back later.
+            </InfoText>
             {retryCount > 0 && retryCount < MAX_RETRIES && (
               <div>Retrying... ({retryCount}/{MAX_RETRIES})</div>
             )}
-          </ErrorMessage>
+            {retryCount >= MAX_RETRIES && (
+              <RetryButton onClick={() => {
+                setRetryCount(0);
+                setError(null);
+                fetchPriceHistory(timeframe);
+              }}>
+                Try Again
+              </RetryButton>
+            )}
+          </NoDataMessage>
         )}
 
         <ChartContentDiv 
