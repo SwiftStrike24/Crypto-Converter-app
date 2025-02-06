@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { getTokenStats } from '../services';
 import { useCrypto } from '../context/CryptoContext';
@@ -54,11 +54,34 @@ const InfoIcon = styled.span`
   }
 `;
 
-const StatValue = styled.span`
-  color: #fff;
+const StatValue = styled.span<{ $isLimited?: boolean }>`
+  color: ${props => props.$isLimited ? '#9ca3af' : '#fff'};
   font-size: 1.25rem;
   font-weight: 600;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const DataSourceBadge = styled.span<{ $source: 'coingecko' | 'cryptocompare' }>`
+  font-size: 0.625rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  background: ${props => props.$source === 'coingecko' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(234, 179, 8, 0.1)'};
+  color: ${props => props.$source === 'coingecko' ? 'rgb(139, 92, 246)' : 'rgb(234, 179, 8)'};
+  border: 1px solid ${props => props.$source === 'coingecko' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(234, 179, 8, 0.2)'};
+`;
+
+const LimitedDataIndicator = styled.div`
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 0.5rem;
+  text-align: center;
+  padding: 0.5rem;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.1);
 `;
 
 const LoadingText = styled.div`
@@ -143,6 +166,39 @@ const StatContent = styled.div`
   flex-direction: column;
 `;
 
+const RetryOverlay = styled(LoadingText)`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  border: 1px solid rgba(139, 92, 246, 0.1);
+  color: #9ca3af;
+`;
+
+const RetryProgress = styled.div`
+  width: 100%;
+  max-width: 200px;
+  height: 4px;
+  background: rgba(139, 92, 246, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+`;
+
+const RetryBar = styled.div<{ $progress: number }>`
+  width: ${props => props.$progress}%;
+  height: 100%;
+  background: #8b5cf6;
+  transition: width 0.3s ease;
+`;
+
+const RETRY_DELAY = 5000; // 5 seconds
+const MAX_RETRIES = 3;
+const RETRY_BACKOFF_MULTIPLIER = 1.5;
+
 interface TokenStatsProps {
   cryptoId: string;
   currency: string;
@@ -155,6 +211,8 @@ interface TokenStatsData {
   circulatingSupply: number;
   totalSupply: number;
   maxSupply: number | null;
+  dataSource: 'coingecko' | 'cryptocompare';
+  hasFullData: boolean;
 }
 
 const formatNumber = (num: number): string => {
@@ -226,12 +284,46 @@ export const TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) =>
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [retryProgress, setRetryProgress] = useState(0);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const { getCryptoId } = useCrypto();
+
+  const clearTimeouts = useCallback(() => {
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+  }, []);
+
+  const startRetryProgress = useCallback((duration: number) => {
+    setRetryProgress(0);
+    const startTime = Date.now();
+    
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
+    
+    progressIntervalRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const progress = Math.min((elapsed / duration) * 100, 100);
+      setRetryProgress(progress);
+      
+      if (progress >= 100 && progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
+    }, 100);
+  }, []);
 
   const fetchStats = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+      clearTimeouts();
       
       const coingeckoId = getCryptoId(cryptoId);
       if (!coingeckoId) {
@@ -245,26 +337,39 @@ export const TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) =>
         fdv: formatNumber(data.fdv),
         circulatingSupply: data.circulatingSupply,
         totalSupply: data.totalSupply,
-        maxSupply: data.maxSupply
+        maxSupply: data.maxSupply,
+        dataSource: data.dataSource,
+        hasFullData: data.hasFullData
       });
+      setRetryCount(0);
+      setRetryProgress(0);
     } catch (error) {
+      console.error('Error fetching token stats:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch stats';
       setError(errorMessage);
-      console.error('Error fetching token stats:', error);
+
+      if (retryCount < MAX_RETRIES) {
+        const nextRetryDelay = RETRY_DELAY * Math.pow(RETRY_BACKOFF_MULTIPLIER, retryCount);
+        console.log(`Retrying in ${nextRetryDelay/1000} seconds... (Attempt ${retryCount + 1}/${MAX_RETRIES})`);
+        
+        startRetryProgress(nextRetryDelay);
+        retryTimeoutRef.current = setTimeout(() => {
+          setRetryCount(prev => prev + 1);
+          fetchStats();
+        }, nextRetryDelay);
+      }
     } finally {
       setLoading(false);
     }
-  }, [cryptoId, currency, getCryptoId]);
+  }, [cryptoId, currency, getCryptoId, clearTimeouts, startRetryProgress, retryCount]);
 
   useEffect(() => {
     fetchStats();
-    const interval = setInterval(fetchStats, 30000); // Update every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [fetchStats]);
+    return () => clearTimeouts();
+  }, [fetchStats, clearTimeouts]);
 
   const handleRetry = () => {
-    setRetryCount(prev => prev + 1);
+    setRetryCount(0);
     fetchStats();
   };
 
@@ -275,13 +380,23 @@ export const TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) =>
   if (error) {
     return (
       <StatsContainer>
-        <ErrorText>
-          {error}
-          <br />
-          <RetryButton onClick={handleRetry}>
-            Retry {retryCount > 0 ? `(${retryCount})` : ''}
-          </RetryButton>
-        </ErrorText>
+        {retryCount < MAX_RETRIES ? (
+          <RetryOverlay>
+            <div>{error}</div>
+            <div>Retrying automatically... ({retryCount + 1}/{MAX_RETRIES})</div>
+            <RetryProgress>
+              <RetryBar $progress={retryProgress} />
+            </RetryProgress>
+          </RetryOverlay>
+        ) : (
+          <ErrorText>
+            {error}
+            <br />
+            <RetryButton onClick={handleRetry}>
+              Retry {retryCount > 0 ? `(${retryCount})` : ''}
+            </RetryButton>
+          </ErrorText>
+        )}
       </StatsContainer>
     );
   }
@@ -304,7 +419,12 @@ export const TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) =>
             Market Cap
             <InfoIcon title={`Total value of all currently circulating tokens (${stats?.circulatingSupply?.toLocaleString()} / ${(stats?.maxSupply || stats?.totalSupply)?.toLocaleString()})`}>ⓘ</InfoIcon>
           </StatLabel>
-          <StatValue>{stats?.marketCap || 'N/A'}</StatValue>
+          <StatValue $isLimited={!stats?.hasFullData}>
+            {stats?.marketCap || 'N/A'}
+            {stats && <DataSourceBadge $source={stats.dataSource}>
+              {stats.dataSource === 'coingecko' ? 'CoinGecko' : 'CryptoCompare'}
+            </DataSourceBadge>}
+          </StatValue>
         </StatContent>
         <CircularProgressIndicator percentage={calculateSupplyPercentage()} />
       </StatCardWithProgress>
@@ -313,15 +433,24 @@ export const TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) =>
           24h Volume
           <InfoIcon title="Total trading volume in the last 24 hours">ⓘ</InfoIcon>
         </StatLabel>
-        <StatValue>{stats?.volume24h || 'N/A'}</StatValue>
+        <StatValue $isLimited={!stats?.hasFullData}>
+          {stats?.volume24h || 'N/A'}
+        </StatValue>
       </StatCard>
       <StatCard>
         <StatLabel>
           FDV
           <InfoIcon title="Fully Diluted Valuation - Total market cap if maximum token supply was in circulation">ⓘ</InfoIcon>
         </StatLabel>
-        <StatValue>{stats?.fdv || 'N/A'}</StatValue>
+        <StatValue $isLimited={!stats?.hasFullData}>
+          {stats?.fdv || 'N/A'}
+        </StatValue>
       </StatCard>
+      {stats && !stats.hasFullData && (
+        <LimitedDataIndicator>
+          Limited data available for this token. Some metrics may not be displayed.
+        </LimitedDataIndicator>
+      )}
     </StatsContainer>
   );
 }; 
