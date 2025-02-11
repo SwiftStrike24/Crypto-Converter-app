@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
 import { useNavigate } from 'react-router-dom';
+import { FaMagnifyingGlassChart } from 'react-icons/fa6';
 
 const ConverterContainer = styled.div`
   display: flex;
@@ -169,10 +170,88 @@ interface ConverterProps {
   defaultFiat: string;
 }
 
-const ChartButton = styled.button`
+const Tooltip = styled.div`
+  position: absolute;
+  bottom: calc(100% + 12px);
+  padding: 8px 12px;
+  background: rgba(17, 17, 17, 0.95);
+  color: white;
+  font-size: 13px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 1000;
+
+  /* Right button tooltip */
+  .right-button & {
+    left: auto;
+    right: 0;
+    transform: translateY(4px);
+    
+    &::after {
+      left: auto;
+      right: 18px;
+    }
+  }
+
+  /* Left button tooltip */
+  .left-button & {
+    left: 0;
+    right: auto;
+    transform: translateY(4px);
+    
+    &::after {
+      left: 18px;
+      right: auto;
+    }
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    border-width: 6px;
+    border-style: solid;
+    border-color: rgba(17, 17, 17, 0.95) transparent transparent transparent;
+  }
+`;
+
+const ButtonWrapper = styled.div`
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+
+  &.right-button:hover ${Tooltip} {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  &.left-button:hover ${Tooltip} {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (max-width: 768px) {
+    &.right-button {
+      right: 16px;
+      bottom: 16px;
+    }
+    &.left-button {
+      left: 16px;
+      bottom: 16px;
+    }
+  }
+`;
+
+const ChartButton = styled.button`
+  position: relative;
   background: transparent;
   color: #8b5cf6;
   border: 2px solid rgba(139, 92, 246, 0.3);
@@ -185,7 +264,6 @@ const ChartButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 100;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   transform-origin: center;
   
@@ -216,8 +294,6 @@ const ChartButton = styled.button`
   @media (max-width: 768px) {
     width: 42px;
     height: 42px;
-    bottom: 16px;
-    right: 16px;
 
     svg {
       width: 20px;
@@ -225,6 +301,8 @@ const ChartButton = styled.button`
     }
   }
 `;
+
+const AnalysisButton = styled(ChartButton)``;
 
 const ChartIcon = () => (
   <svg 
@@ -242,6 +320,10 @@ const ChartIcon = () => (
     <circle cx="11" cy="12" r="1" />
     <circle cx="7" cy="16" r="1" />
   </svg>
+);
+
+const AnalysisIcon = () => (
+  <FaMagnifyingGlassChart />
 );
 
 const Converter: React.FC<ConverterProps> = ({ 
@@ -537,14 +619,29 @@ const Converter: React.FC<ConverterProps> = ({
         </ResultBox>
       )}
 
-      <ChartButton onClick={() => navigate('/chart', { 
-        state: { 
-          cryptoId: selectedCrypto, 
-          currency: selectedFiat 
-        }
-      })}>
-        <ChartIcon />
-      </ChartButton>
+      <ButtonWrapper className="right-button" style={{ bottom: '20px', right: '20px' }}>
+        <ChartButton onClick={() => navigate('/chart', { 
+          state: { 
+            cryptoId: selectedCrypto, 
+            currency: selectedFiat 
+          }
+        })}>
+          <ChartIcon />
+        </ChartButton>
+        <Tooltip>View Price Chart</Tooltip>
+      </ButtonWrapper>
+
+      <ButtonWrapper className="left-button" style={{ bottom: '20px', left: '20px' }}>
+        <AnalysisButton onClick={() => navigate('/analysis', { 
+          state: { 
+            cryptoId: selectedCrypto, 
+            currency: selectedFiat 
+          }
+        })}>
+          <AnalysisIcon />
+        </AnalysisButton>
+        <Tooltip>Technical Analysis</Tooltip>
+      </ButtonWrapper>
     </ConverterContainer>
   );
 };

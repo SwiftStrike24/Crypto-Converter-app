@@ -7,6 +7,7 @@ import Footer from './components/Footer';
 import AddTokens from './pages/AddTokens';
 import ManageTokens from './pages/ManageTokens';
 import ChartPage from './pages/ChartPage';
+import TechnicalAnalysisPage from './pages/TechnicalAnalysisPage';
 import { CryptoProvider } from './context/CryptoContext';
 import { CryptoCompareProvider } from './context/CryptoCompareContext';
 import InstanceDialog from './pages/InstanceDialog';
@@ -37,7 +38,8 @@ const AppContent: React.FC = () => {
   const location = useLocation();
   const isFullScreen = location.pathname === '/add-tokens' || 
                       location.pathname === '/chart' || 
-                      location.pathname === '/manage-tokens';
+                      location.pathname === '/manage-tokens' ||
+                      location.pathname === '/analysis';
   const [selectedCrypto, setSelectedCrypto] = useState('BTC');
   const [selectedFiat, setSelectedFiat] = useState('USD');
 
@@ -46,6 +48,8 @@ const AppContent: React.FC = () => {
     const { ipcRenderer } = window.require('electron');
     if (location.pathname === '/chart') {
       ipcRenderer.send('set-window-size', { width: 1200, height: 800, isFullScreen: true });
+    } else if (location.pathname === '/analysis') {
+      ipcRenderer.send('set-window-size', { width: 800, height: 600, isFullScreen: true });
     } else if (isFullScreen) {
       ipcRenderer.send('set-window-size', { width: 800, height: 600, isFullScreen: true });
     } else {
@@ -58,6 +62,7 @@ const AppContent: React.FC = () => {
       <Route path="/add-tokens" element={<AddTokens />} />
       <Route path="/manage-tokens" element={<ManageTokens />} />
       <Route path="/chart" element={<ChartPage />} />
+      <Route path="/analysis" element={<TechnicalAnalysisPage />} />
       <Route path="/" element={
         <AppContainer isFullScreen={false}>
           <Header selectedCrypto={selectedCrypto} selectedFiat={selectedFiat} />
