@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LivePrice } from '../components/LivePrice';
 import { TokenStats } from '../components/TokenStats';
 import TradingViewWidget from '../components/TradingViewWidget';
 
@@ -53,24 +52,6 @@ const HeaderContent = styled.div`
     gap: 1rem;
     width: 100%;
     align-items: center;
-  }
-`;
-
-const Title = styled.h1`
-  color: #fff;
-  font-size: 1.5rem;
-  font-weight: 600;
-  margin: 0;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  
-  @media (max-width: 768px) {
-    font-size: 1.25rem;
-    flex-direction: column;
-    gap: 0.5rem;
-    align-items: flex-start;
   }
 `;
 
@@ -184,7 +165,7 @@ const ChartWrapper = styled.div`
 
 const ChartControls = styled.div`
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   padding: 0.5rem 0.75rem;
   background: rgba(26, 26, 26, 0.6);
@@ -194,22 +175,8 @@ const ChartControls = styled.div`
   height: 50px;
 
   @media (max-width: 768px) {
-    flex-direction: column;
     height: auto;
-    gap: 0.5rem;
     padding: 0.5rem;
-  }
-`;
-
-const ControlsLeft = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-
-  @media (max-width: 768px) {
-    width: 100%;
-    justify-content: center;
-    margin-bottom: 0.5rem;
   }
 `;
 
@@ -310,7 +277,7 @@ interface LocationState {
 const ChartPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const [selectedMarket, setSelectedMarket] = useState<Market>('BINANCE');
+  const [selectedMarket, setSelectedMarket] = useState<Market>('PYTH');
 
   const { cryptoId, currency } = location.state as LocationState || {
     cryptoId: 'BTC',
@@ -334,24 +301,18 @@ const ChartPage: React.FC = () => {
           Back to Converter
         </BackButton>
         <HeaderContent>
-          <Title>
-            {cryptoId}/USDT Price Chart
-            <CurrencyBadge>
-              <CurrencyIcon />
-              {currency} View
-            </CurrencyBadge>
-          </Title>
+          <CurrencyBadge>
+            <CurrencyIcon />
+            {currency} View
+          </CurrencyBadge>
         </HeaderContent>
       </Header>
       <ChartWrapper>
         <ChartControls>
-          <ControlsLeft>
-            <LivePrice cryptoId={cryptoId} currency={currency} />
-          </ControlsLeft>
           <ControlsRight>
             <MarketLabel>Exchange View</MarketLabel>
             <MarketButtons>
-              {(['BINANCE', 'MEXC', 'PYTH'] as Market[]).map((market) => (
+              {(['PYTH', 'BINANCE', 'MEXC'] as Market[]).map((market) => (
                 <MarketButton
                   key={market}
                   $active={selectedMarket === market}

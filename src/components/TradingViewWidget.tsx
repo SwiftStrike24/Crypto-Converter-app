@@ -79,7 +79,7 @@ interface TradingViewWidgetProps {
   currency?: string;
 }
 
-function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'BINANCE', currency = 'USD' }: TradingViewWidgetProps) {
+function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', currency = 'USD' }: TradingViewWidgetProps) {
   const container = useRef<HTMLDivElement>(null);
   const scriptRef = useRef<HTMLScriptElement | null>(null);
   const [error, setError] = useState<string | null>(null);

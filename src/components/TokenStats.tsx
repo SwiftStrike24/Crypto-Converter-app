@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { getTokenStats } from '../services';
 import { useCrypto } from '../context/CryptoContext';
 
@@ -123,11 +123,6 @@ const CircleContainer = styled.div`
   width: 40px;
   height: 40px;
   margin-left: auto;
-`;
-
-const rotate = keyframes`
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 `;
 
 const CircleBackground = styled.circle`
