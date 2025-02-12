@@ -48,7 +48,7 @@ const RefContainer = styled.div`
 
 interface TechnicalAnalysisWidgetProps {
   cryptoId: string;
-  market?: 'BINANCE' | 'MEXC' | 'PYTH';
+  market?: 'MEXC' | 'CRYPTO' | 'BINANCE' | 'PYTH';
   interval?: '1m' | '5m' | '15m' | '30m' | '1h' | '2h' | '4h' | '1D' | '1W' | '1M';
   currency?: string;
 }
@@ -83,6 +83,8 @@ function TechnicalAnalysisWidget({
       let symbol;
       if (market === 'PYTH') {
         symbol = `BINANCE:${cryptoId}USDT`; // Using BINANCE for better compatibility
+      } else if (market === 'CRYPTO') {
+        symbol = `CRYPTO:${cryptoId}${currency}`;
       } else {
         symbol = `${market}:${cryptoId}USDT`;
       }

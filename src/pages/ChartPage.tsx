@@ -254,7 +254,7 @@ const MarketButton = styled.button<TimeButtonProps>`
   }
 `;
 
-type Market = 'BINANCE' | 'MEXC' | 'PYTH';
+type Market = 'BINANCE' | 'MEXC' | 'PYTH' | 'CRYPTO';
 
 const BackIcon = () => (
   <svg 
@@ -312,7 +312,7 @@ const ChartPage: React.FC = () => {
           <ControlsRight>
             <MarketLabel>Exchange View</MarketLabel>
             <MarketButtons>
-              {(['PYTH', 'BINANCE', 'MEXC'] as Market[]).map((market) => (
+              {(['PYTH', 'CRYPTO', 'BINANCE', 'MEXC'] as Market[]).map((market) => (
                 <MarketButton
                   key={market}
                   $active={selectedMarket === market}

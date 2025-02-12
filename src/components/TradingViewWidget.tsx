@@ -75,7 +75,7 @@ const ErrorMessage = styled.div`
 interface TradingViewWidgetProps {
   cryptoId: string;
   timeframe?: string;
-  market?: 'BINANCE' | 'MEXC' | 'PYTH';
+  market?: 'BINANCE' | 'MEXC' | 'PYTH' | 'CRYPTO';
   currency?: string;
 }
 
@@ -122,6 +122,8 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
     let symbol;
     if (market === 'PYTH') {
       symbol = `PYTH:${cryptoId}USD|${timeframe}|${currency}`;
+    } else if (market === 'CRYPTO') {
+      symbol = `CRYPTO:${cryptoId}USD|${timeframe}|${currency}`;
     } else {
       symbol = `${market}:${cryptoId}USDT|${timeframe}|${currency}`;
     }
