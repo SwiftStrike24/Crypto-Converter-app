@@ -1,31 +1,37 @@
-import chalk from 'chalk';
 import ora, { Ora } from 'ora';
-import os from 'os';
-import si from 'systeminformation';
+import chalk from 'chalk';
+import { cpus, totalmem, freemem, platform, release, arch } from 'os';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
 class BuildLogger {
   private startTime: number = 0;
   private spinner: Ora = ora();
-
+  
   private emojis = {
     start: '🚀',
     vite: '⚡',
-    modules: '📦',
     electron: '🔌',
-    assets: '🎨',
+    modules: '📦',
+    assets: '📄',
+    success: '✅',
     config: '⚙️',
     package: '📥',
-    success: '✨',
-    time: '⏱️',
-    build: '🛠️',
     done: '🎉',
-    error: '❌',
-    info: 'ℹ️',
+    time: '⏱️',
     cpu: '💻',
     memory: '🧠',
     os: '🖥️',
     gpu: '🎮',
-    cleanup: '🧹'
+    cleanup: '🧹',
+    complete: '🎉',
+    sparkles: '✨',
+    error: '❌',
+    info: 'ℹ️',
+    build: '🛠️',
+    portable: '📦',
+    installer: '💿',
+    both: '🔥'
   };
 
   constructor() {
@@ -36,124 +42,93 @@ class BuildLogger {
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     let size = bytes;
     let unitIndex = 0;
+    
     while (size >= 1024 && unitIndex < units.length - 1) {
       size /= 1024;
       unitIndex++;
     }
+    
     return `${size.toFixed(2)} ${units[unitIndex]}`;
   }
 
   private async getSystemSpecs(): Promise<string> {
-    const cpuModel = os.cpus()[0].model.replace(/\(R\)|\(TM\)|CPU|@ /g, '').trim();
-    const totalMemory = this.formatBytes(os.totalmem());
-    const freeMemory = this.formatBytes(os.freemem());
-    const platform = os.platform();
-    const release = os.release();
-    const arch = os.arch();
-
-    // Get GPU information with better error handling
-    let gpuModel = 'N/A';
-    let vram = 'N/A';
+    const execAsync = promisify(exec);
+    
+    let gpuInfo = 'Unknown';
     try {
-      const gpuInfo = await si.graphics();
-      const mainGPU = gpuInfo.controllers.find(gpu => 
-        gpu.vendor && 
-        (gpu.vendor.toLowerCase().includes('nvidia') || 
-         gpu.vendor.toLowerCase().includes('amd') ||
-         gpu.vendor.toLowerCase().includes('intel'))
-      );
-      
-      if (mainGPU) {
-        gpuModel = mainGPU.model
-          .replace(/\(R\)|\(TM\)|GPU/g, '')
-          .replace(/NVIDIA|AMD|Intel/i, '')
-          .trim();
-        vram = mainGPU.vram ? `${mainGPU.vram} MB` : 'N/A';
+      if (process.platform === 'win32') {
+        const { stdout } = await execAsync('wmic path win32_VideoController get name');
+        const lines = stdout.split('\n').filter(line => line.trim() && !line.toLowerCase().includes('name'));
+        if (lines.length > 0) {
+          gpuInfo = lines[0].trim();
+        }
       }
     } catch (error) {
-      console.error('Failed to get GPU info:', error);
+      gpuInfo = 'Detection failed';
     }
-
-    // Calculate padding for the box (increased width)
-    const boxWidth = 75;
-    const contentWidth = boxWidth - 8; // Account for borders and spacing
-    const headerText = 'System Information';
-    const headerPadding = Math.floor((boxWidth - headerText.length - 2) / 2);
-
-    // Format each line with proper padding
+    
+    const cpuModel = cpus()[0]?.model || 'Unknown CPU';
+    const memoryTotal = this.formatBytes(totalmem());
+    const memoryFree = this.formatBytes(freemem());
+    const osInfo = `${platform()} ${release()} (${arch()})`;
+    
     const formatLine = (label: string, value: string) => {
-      const paddedValue = value.padEnd(contentWidth - label.length - 1);
-      return `${chalk.blue('│')}  ${chalk.cyan(label)} ${chalk.white(paddedValue)} ${chalk.blue('│')}`;
+      return `       │  ${label} ${value.padEnd(60 - label.length, ' ')}│`;
     };
-
-    return `
-       ${chalk.blue('╭' + '─'.repeat(headerPadding) + ' ')}${chalk.cyan.bold(headerText)}${chalk.blue(' ' + '─'.repeat(boxWidth - headerPadding - headerText.length - 4) + '╮')}
-       ${chalk.blue('│')}${' '.repeat(boxWidth - 2)}${chalk.blue('│')}
-       ${formatLine(`${this.emojis.cpu} CPU:     `, cpuModel)}
-       ${formatLine(`${this.emojis.gpu} GPU:     `, `${gpuModel}${vram !== 'N/A' ? ` (${vram})` : ''}`)}
-       ${formatLine(`${this.emojis.memory} Memory:  `, `${freeMemory} free of ${totalMemory}`)}
-       ${formatLine(`${this.emojis.os} System:  `, `${platform} ${release} (${arch})`)}
-       ${chalk.blue('│')}${' '.repeat(boxWidth - 2)}${chalk.blue('│')}
-       ${chalk.blue('╰' + '─'.repeat(boxWidth - 2) + '╯')}
-    `;
+    
+    return `       ╭─────────────────────────── System Information ──────────────────────────╮
+       │                                                                         │
+${formatLine(this.emojis.cpu + ' CPU:     ', cpuModel)}
+${formatLine(this.emojis.gpu + ' GPU:     ', gpuInfo)}
+${formatLine(this.emojis.memory + ' Memory:  ', `${memoryFree} free of ${memoryTotal}`)}
+${formatLine(this.emojis.os + ' System:  ', osInfo)}
+       │                                                                         │
+       ╰─────────────────────────────────────────────────────────────────────────╯`;
   }
 
   private getElapsedTime(): string {
-    const elapsed = Date.now() - this.startTime;
-    return (elapsed / 1000).toFixed(2);
+    const elapsed = (Date.now() - this.startTime) / 1000;
+    return `${elapsed.toFixed(2)}s`;
   }
 
   private formatElectronMessage(message: string): string {
-    if (message.includes('•')) {
-      // Get text after the bullet
-      const bulletIndex = message.indexOf('•');
-      let content = message.substring(bulletIndex + 1).trim();
-
-      // Clean up labels
-      content = content.replace(/electron-builder\s+/i, '');
-      content = content.replace(/loaded configuration/i, 'config');
-      content = content.replace(/writing effective config/i, 'writing');
-
-      // Special handling for packaging/building messages
-      if (content.startsWith('packaging') || content.startsWith('building')) {
-        const parts: { [key: string]: string } = {};
-        const matches = content.match(/(\w+)=([^\s]+)/g) || [];
-        matches.forEach(match => {
-          const [key, value] = match.split('=');
-          parts[key] = value;
-        });
-
-        if (content.startsWith('packaging')) {
-          const line1 = chalk.dim(
-            `       ${chalk.blue('•')} ${chalk.cyan('packaging'.padEnd(12))} ${chalk.dim(
-              `platform=${parts.platform || ''} arch=${parts.arch || ''} electron=${parts.electron || ''}`
-            )}`
-          );
-          const line2 = chalk.dim(
-            `       ${chalk.blue('•')} ${chalk.cyan('output'.padEnd(12))} ${chalk.dim(parts.appOutDir || '')}`
-          );
-          return line1 + '\n' + line2;
-        } else if (content.startsWith('building')) {
-          return chalk.dim(
-            `       ${chalk.blue('•')} ${chalk.cyan('building'.padEnd(12))} ${chalk.dim(parts.file || '')}`
-          );
-        }
-      }
-
-      // Default formatting for other messages
-      const partsArr = content.split(/\s{2,}/);
-      const key = partsArr[0] || '';
-      const value = partsArr.slice(1).join(' ') || '';
-      const paddedKey = key.padEnd(12, ' ');
-      return chalk.dim(`       ${chalk.blue('•')} ${chalk.cyan(paddedKey)} ${chalk.dim(value)}`);
+    // Clean up electron-builder output
+    message = message.replace(/•/g, '•');
+    
+    // Add color to important parts
+    if (message.includes('version=')) {
+      message = message.replace(/version=([^ ]+)/, `version=${chalk.green('$1')}`);
     }
+    
+    if (message.includes('platform=')) {
+      message = message.replace(/platform=([^ ]+)/, `platform=${chalk.cyan('$1')}`);
+    }
+    
+    if (message.includes('arch=')) {
+      message = message.replace(/arch=([^ ]+)/, `arch=${chalk.yellow('$1')}`);
+    }
+    
+    if (message.includes('file=')) {
+      message = message.replace(/file=([^ ]+)/, `file=${chalk.green('$1')}`);
+    }
+    
     return message;
   }
 
-  async start() {
+  async start(buildType?: 'portable' | 'installer' | 'both') {
     console.clear();
     console.log('\n');
-    console.log(chalk.cyan.bold(`${this.emojis.start} Starting Crypto Converter Build Process ${this.emojis.start}`));
+    
+    let buildTypeText = '';
+    if (buildType === 'portable') {
+      buildTypeText = 'Portable';
+    } else if (buildType === 'installer') {
+      buildTypeText = 'Installer';
+    } else if (buildType === 'both') {
+      buildTypeText = 'Complete (Portable + Installer)';
+    }
+    
+    console.log(chalk.cyan.bold(`${this.emojis.start} Starting CryptoVertX ${buildTypeText} Build Process ${this.emojis.start}`));
     console.log(chalk.dim('━'.repeat(65)));
     console.log(await this.getSystemSpecs());
     console.log(chalk.dim('━'.repeat(65)));
@@ -194,6 +169,21 @@ class BuildLogger {
     this.spinner.text = chalk.blue(`${this.emojis.package} Packaging application for Windows...`);
   }
 
+  startBuildType(type: 'portable' | 'installer') {
+    const emoji = type === 'portable' ? this.emojis.portable : this.emojis.installer;
+    const typeName = type === 'portable' ? 'Portable Executable' : 'Installer Package';
+    
+    console.log(chalk.dim('━'.repeat(50)));
+    this.spinner.start(chalk.blue(`${emoji} Building ${typeName}...`));
+  }
+
+  buildTypeComplete(type: 'portable' | 'installer') {
+    const emoji = type === 'portable' ? this.emojis.portable : this.emojis.installer;
+    const typeName = type === 'portable' ? 'Portable Executable' : 'Installer Package';
+    
+    this.spinner.succeed(chalk.green(`${emoji} ${typeName} built successfully!`));
+  }
+
   electronMessage(message: string) {
     // Stop spinner to show message cleanly
     this.spinner.stop();
@@ -203,24 +193,43 @@ class BuildLogger {
     this.spinner.start(chalk.blue(`${this.emojis.package} Packaging application for Windows...`));
   }
 
-  buildComplete() {
+  buildComplete(buildType?: 'portable' | 'installer' | 'both') {
     this.spinner.stop();
-    console.log(chalk.green(`${this.emojis.package} Application packaged successfully`));
-    console.log('');
+    
+    const isInstallerBuild = buildType === 'installer';
+    const isPortableBuild = buildType === 'portable';
+    const isBothBuild = buildType === 'both';
+    
+    const elapsedTime = this.getElapsedTime();
+    
     console.log(chalk.dim('━'.repeat(65)));
-    console.log(chalk.magenta.bold(`${this.emojis.done} Build Complete! ${this.emojis.done}`));
-    console.log(chalk.magenta(`${this.emojis.time} Total build time: ${this.getElapsedTime()}s`));
+    console.log(chalk.green.bold(`${this.emojis.complete} Build Complete! ${this.emojis.complete}`));
+    console.log(chalk.yellow(`${this.emojis.time} Total build time: ${elapsedTime}`));
     console.log('');
-    console.log(chalk.green.bold(`${this.emojis.success} Your app is ready in the release folder! ${this.emojis.success}`));
+    
+    if (isBothBuild) {
+      console.log(chalk.cyan(`${this.emojis.sparkles} Your portable executable and installer are ready in the release folder! ${this.emojis.sparkles}`));
+    } else if (isInstallerBuild) {
+      console.log(chalk.cyan(`${this.emojis.sparkles} Your installer is ready in the release folder! ${this.emojis.sparkles}`));
+    } else {
+      console.log(chalk.cyan(`${this.emojis.sparkles} Your portable executable is ready in the release folder! ${this.emojis.sparkles}`));
+    }
+    
     console.log('');
   }
 
   error(message: string) {
     this.spinner.fail(chalk.red(`${this.emojis.error} Error: ${message}`));
+    console.log('');
   }
 
   cleanupStep() {
-    this.spinner.start(chalk.blue(`${this.emojis.cleanup} Cleaning up previous build artifacts...`));
+    this.spinner.start(chalk.blue(`${this.emojis.cleanup} Cleaning up before build...`));
+    this.spinner.succeed();
+  }
+  
+  log(message: string) {
+    this.spinner.info(chalk.blue(`${this.emojis.info} ${message}`));
   }
 }
 

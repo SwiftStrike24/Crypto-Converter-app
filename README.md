@@ -1,8 +1,8 @@
-# Crypto Converter App
+# CryptoVertX
 
 <div align="center">
-  <img src="src/assets/icon.ico" alt="Crypto Converter Icon" width="120" />
-  <h1>🪙 Crypto Converter</h1>
+  <img src="src/assets/icon.ico" alt="CryptoVertX Icon" width="120" />
+  <h1>🪙 CryptoVertX</h1>
   <p>A sleek and powerful desktop application for real-time cryptocurrency conversion and tracking</p>
 </div>
 
@@ -85,14 +85,42 @@ The app uses an optimized build process leveraging:
 - Disabled sourcemaps in production
 - Efficient asset compression
 
-Build commands:
-```bash
-# Create optimized portable executable
-pnpm electron:build
+### Interactive Build System
 
-# Create installer with optimized settings
-pnpm electron:build-installer
+CryptoVertX features an interactive build system that allows you to choose what type of build you want to create:
+
+```bash
+# Interactive build (recommended)
+pnpm build-app
 ```
+
+This will present you with a menu to choose between:
+- 📦 Portable Executable - Standalone .exe file
+- 💿 Installer Package - Windows installer (.exe)
+- 🔥 Both - Build both portable and installer
+
+When selecting the "Both" option, you'll get a cool build summary with performance metrics showing:
+- Build time for each package type
+- Visual progress bars comparing build times
+- Performance statistics
+- Which build was faster and by what percentage
+
+### Direct Build Commands
+
+You can also use these direct commands to skip the interactive menu:
+
+```bash
+# Build portable executable only
+pnpm build-app --portable
+
+# Build installer only
+pnpm build-app --installer
+
+# Build both portable and installer with performance summary
+pnpm build-app --both
+```
+
+All build outputs are placed in the `release/${version}` directory.
 
 ## 🔧 Advanced Features
 

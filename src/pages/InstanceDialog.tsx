@@ -28,7 +28,7 @@ const InstanceDialog: React.FC = () => {
           App Already Running
         </Typography>
         <Typography variant="body1" sx={{ mb: 2 }}>
-          An instance of Crypto Converter is already running. Click below to restart the app.
+          An instance of CryptoVertX is already running. Click below to restart the app.
         </Typography>
         <ButtonContainer>
           <Button

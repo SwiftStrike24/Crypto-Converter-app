@@ -1,5 +1,6 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import path from 'path';
+import fs from 'fs';
 
 // Disable GPU acceleration to prevent crashes
 app.disableHardwareAcceleration();
@@ -8,7 +9,7 @@ app.commandLine.appendSwitch('disable-software-rasterizer');
 
 // Set app user model id for Windows
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.crypto.converter');
+  app.setAppUserModelId('com.cryptovertx.app');
 }
 
 const IS_DEV = process.env.NODE_ENV === 'development';
@@ -19,6 +20,31 @@ const APP_PATH = app.getPath('exe');
 const DIST_PATH = IS_DEV 
   ? path.join(__dirname, '../dist')
   : path.join(process.resourcesPath, 'app.asar/dist');
+
+// Get icon path based on environment
+const getIconPath = () => {
+  if (IS_DEV) {
+    return path.join(__dirname, '../src/assets/icon.ico');
+  } else {
+    // In production, check multiple possible locations
+    const possiblePaths = [
+      path.join(process.resourcesPath, 'assets/icon.ico'),
+      path.join(app.getAppPath(), '../assets/icon.ico'),
+      path.join(app.getPath('exe'), '../resources/assets/icon.ico'),
+      path.join(app.getPath('exe'), '../icon.ico')
+    ];
+    
+    for (const iconPath of possiblePaths) {
+      if (fs.existsSync(iconPath)) {
+        console.log(`Using icon from: ${iconPath}`);
+        return iconPath;
+      }
+    }
+    
+    // Fallback to development path if no production icon found
+    return path.join(__dirname, '../src/assets/icon.ico');
+  }
+};
 
 let mainWindow: BrowserWindow | null = null;
 let dialogWindow: BrowserWindow | null = null;
@@ -131,10 +157,11 @@ function createDialogWindow() {
     x: Math.round(workArea.x + (workArea.width - 450) / 2),
     y: Math.round(workArea.y + (workArea.height - 250) / 2),
     alwaysOnTop: true,
-    skipTaskbar: true,
+    skipTaskbar: false,
     resizable: false,
     maximizable: false,
     minimizable: false,
+    icon: getIconPath(),
   });
 
   const url = VITE_DEV_SERVER_URL 
@@ -220,6 +247,7 @@ function createWindow() {
     minWidth: 400,
     minHeight: 300,
     backgroundColor: '#111111',
+    icon: getIconPath(),
   });
 
   // Enable DevTools in development

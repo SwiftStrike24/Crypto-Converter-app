@@ -1,5 +1,5 @@
 {
-  "name": "crypto-converter-app",
+  "name": "cryptovertx",
   "version": "1.0.0",
   "description": "A sleek cryptocurrency converter desktop app",
   "main": "./dist-electron/main.js",
@@ -11,7 +11,10 @@
     "start": "electron .",
     "electron:dev": "vite --mode development && electron .",
     "electron:build": "cross-env NODE_ENV=production tsx scripts/build.ts",
-    "electron:build-installer": "cross-env NODE_ENV=production vite build && electron-builder --win nsis -c.compression=store -c.win.signAndEditExecutable=false --config.win.signDlls=false"
+    "electron:build-installer": "cross-env NODE_ENV=production tsx scripts/build.ts --installer",
+    "electron:build-portable": "cross-env NODE_ENV=production tsx scripts/build.ts --portable",
+    "electron:build-all": "cross-env NODE_ENV=production tsx scripts/build.ts --both",
+    "build-app": "cross-env NODE_ENV=production tsx scripts/build.ts"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -53,6 +56,8 @@
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.4",
     "ora": "^7.0.1",
+    "prompts": "^2.4.2",
+    "rcedit": "^4.0.1",
     "tsx": "^4.6.0",
     "typescript": "^5.3.2",
     "vite": "^5.0.2",
@@ -68,8 +73,8 @@
   "author": "",
   "license": "ISC",
   "build": {
-    "appId": "com.cryptoconverter.app",
-    "productName": "Crypto Converter",
+    "appId": "com.cryptovertx.app",
+    "productName": "CryptoVertX",
     "asar": true,
     "compression": "store",
     "directories": {
@@ -80,6 +85,13 @@
       "dist-electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "src/assets",
+        "to": "assets"
+      }
+    ],
+    "executableName": "CryptoVertX",
     "win": {
       "target": [
         {
@@ -87,12 +99,29 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "src/assets/icon.ico",
-      "artifactName": "${productName}-Portable-${version}.${ext}",
+      "artifactName": "${productName}-${version}.${ext}",
       "signAndEditExecutable": false,
       "signDlls": false
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CryptoVertX",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "electronVersion": "27.1.2",
     "buildDependenciesFromSource": false,

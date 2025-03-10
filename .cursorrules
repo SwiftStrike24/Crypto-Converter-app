@@ -83,7 +83,7 @@ pnpm test           # Run tests
 pnpm lint           # Run linter
 
 File Structure
-CRYPTO-CONVERTER-APP
+CRYPTOVERTX
 ├── dist                  # Production build output
 ├── dist-electron        # Electron build output
 ├── release             # Packaged app releases

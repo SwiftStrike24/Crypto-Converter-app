@@ -30,7 +30,7 @@ const defaultCryptoIds: { [key: string]: string } = {
   XRP: 'ripple'
 };
 
-const STORAGE_KEY = 'crypto-converter-tokens';
+const STORAGE_KEY = 'cryptovertx-tokens';
 
 // CoinGecko API configuration
 const API_BASE = 'https://api.coingecko.com/api/v3';
