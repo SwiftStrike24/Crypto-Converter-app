@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
 import { useNavigate } from 'react-router-dom';
 import { FaMagnifyingGlassChart } from 'react-icons/fa6';
@@ -326,6 +326,25 @@ const AnalysisIcon = () => (
   <FaMagnifyingGlassChart />
 );
 
+const pulse = keyframes`
+  0% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+`;
+
+const PendingIndicator = styled.span`
+  animation: ${pulse} 1.5s infinite ease-in-out;
+  color: #8b5cf6;
+  font-size: 12px;
+  margin-left: 8px;
+`;
+
 const Converter: React.FC<ConverterProps> = ({ 
   onCryptoChange, 
   onFiatChange,
@@ -339,7 +358,7 @@ const Converter: React.FC<ConverterProps> = ({
   const [error, setError] = useState<string>('');
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [lastEditedField, setLastEditedField] = useState<'crypto' | 'fiat'>('crypto');
-  const { prices, availableCryptos } = useCrypto();
+  const { prices, availableCryptos, isPending } = useCrypto();
   const cryptoInputRef = useRef<HTMLInputElement>(null);
   const fiatInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -376,6 +395,13 @@ const Converter: React.FC<ConverterProps> = ({
   }, [selectedCrypto, selectedFiat]);
 
   const getRate = (crypto: string, fiat: string): number => {
+    // If the token is pending, return a placeholder rate instead of 0
+    if (isPending(crypto)) {
+      // Return a placeholder rate based on the token
+      // This is just an estimate until the real rate is fetched
+      return 1; // Default placeholder (will be improved with estimated values)
+    }
+    
     if (!prices[crypto] || !prices[crypto][fiat.toLowerCase()]) {
       return 0;
     }
@@ -557,6 +583,9 @@ const Converter: React.FC<ConverterProps> = ({
     }
   }, [selectedCrypto, selectedFiat, availableCryptos]);
 
+  // Check if the selected crypto is pending
+  const isSelectedCryptoPending = isPending(selectedCrypto);
+
   return (
     <ConverterContainer>
       <InputGroup>
@@ -568,6 +597,7 @@ const Converter: React.FC<ConverterProps> = ({
           onChange={handleCryptoAmountChange}
           onPaste={(e) => handlePaste(e, true)}
           placeholder="0.00"
+          ref={cryptoInputRef}
         />
         <Select
           value={selectedCrypto}
@@ -575,7 +605,7 @@ const Converter: React.FC<ConverterProps> = ({
         >
           {availableCryptos.map((crypto) => (
             <option key={crypto} value={crypto}>
-              {crypto}
+              {crypto} {isPending(crypto) ? '(Loading...)' : ''}
             </option>
           ))}
         </Select>
@@ -590,6 +620,7 @@ const Converter: React.FC<ConverterProps> = ({
           onChange={handleFiatAmountChange}
           onPaste={(e) => handlePaste(e, false)}
           placeholder="0.00"
+          ref={fiatInputRef}
         />
         <Select
           value={selectedFiat}
@@ -603,9 +634,10 @@ const Converter: React.FC<ConverterProps> = ({
         </Select>
       </InputGroup>
 
-      {error && <ErrorMessage>{error}</ErrorMessage>}
+      {error && !isSelectedCryptoPending && <ErrorMessage>{error}</ErrorMessage>}
+      {isSelectedCryptoPending && <ErrorMessage>Loading price data for {selectedCrypto}...</ErrorMessage>}
       
-      {(cryptoAmount || fiatAmount) && !error && (
+      {(cryptoAmount || fiatAmount) && (!error || isSelectedCryptoPending) && (
         <ResultBox 
           onClick={handleCopy} 
           className={copyFeedback ? 'copied' : ''}
@@ -615,6 +647,7 @@ const Converter: React.FC<ConverterProps> = ({
             {lastEditedField === 'crypto' 
               ? `${selectedFiat} ${formatNumber(fiatAmount, false)}`
               : `${selectedCrypto} ${formatNumber(cryptoAmount, true)}`}
+            {isSelectedCryptoPending && <PendingIndicator>(Estimated)</PendingIndicator>}
           </Amount>
         </ResultBox>
       )}

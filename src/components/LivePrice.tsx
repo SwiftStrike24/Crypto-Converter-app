@@ -1,5 +1,5 @@
 import React from 'react';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
 
 const PriceContainer = styled.div`
@@ -32,6 +32,23 @@ const Symbol = styled.span`
   font-size: 1.25rem;
 `;
 
+const pulse = keyframes`
+  0% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+`;
+
+const PendingPrice = styled.span`
+  animation: ${pulse} 1.5s infinite ease-in-out;
+  color: #8b5cf6;
+`;
+
 interface LivePriceProps {
   cryptoId: string;
   currency: string;
@@ -60,14 +77,40 @@ const getCurrencySymbol = (currency: string): string => {
   }
 };
 
+// Format price with appropriate decimal places
+const formatPrice = (price: number): string => {
+  if (price >= 1000) {
+    return price.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+  } else if (price >= 1) {
+    return price.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4
+    });
+  } else if (price >= 0.01) {
+    return price.toLocaleString(undefined, {
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 6
+    });
+  } else {
+    return price.toLocaleString(undefined, {
+      minimumFractionDigits: 6,
+      maximumFractionDigits: 8
+    });
+  }
+};
+
 export const LivePrice: React.FC<LivePriceProps> = ({ cryptoId, currency }) => {
-  const { prices } = useCrypto();
+  const { prices, isPending } = useCrypto();
   
   const currentPrice = prices[cryptoId]?.[currency.toLowerCase()];
-  const formattedPrice = currentPrice?.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 6
-  });
+  const isPendingPrice = isPending(cryptoId);
+  
+  const formattedPrice = currentPrice !== undefined 
+    ? formatPrice(currentPrice)
+    : undefined;
 
   const currencySymbol = getCurrencySymbol(currency);
 
@@ -76,7 +119,11 @@ export const LivePrice: React.FC<LivePriceProps> = ({ cryptoId, currency }) => {
       <Symbol>{cryptoId}</Symbol>
       <Price>
         <CurrencySymbol>{currencySymbol}</CurrencySymbol>
-        {formattedPrice || '...'}
+        {isPendingPrice ? (
+          <PendingPrice>{formattedPrice || 'Loading...'}</PendingPrice>
+        ) : (
+          formattedPrice || '...'
+        )}
       </Price>
     </PriceContainer>
   );

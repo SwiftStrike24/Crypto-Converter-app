@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import styled from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
 import debounce from 'lodash/debounce';
-import { FiCheck } from 'react-icons/fi';
+import { FiCheck, FiAlertTriangle } from 'react-icons/fi';
 
 const ModalOverlay = styled.div`
   position: fixed;
@@ -235,6 +235,55 @@ const LoadingSpinner = styled.div`
   }
 `;
 
+const ErrorMessage = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(220, 38, 38, 0.1);
+  color: #ef4444;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+
+  svg {
+    flex-shrink: 0;
+  }
+`;
+
+const PopularTokensSection = styled.div`
+  margin-top: 8px;
+  
+  h3 {
+    font-size: 1rem;
+    color: #888;
+    margin-bottom: 12px;
+    font-weight: 500;
+  }
+  
+  .tokens-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+  }
+`;
+
+const PopularTokenChip = styled.div<{ isSelected: boolean }>`
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: ${props => props.isSelected ? 'rgba(139, 92, 246, 0.15)' : '#2a2a2a'};
+  border: 1px solid ${props => props.isSelected ? 'rgba(139, 92, 246, 0.3)' : 'transparent'};
+  color: ${props => props.isSelected ? '#8b5cf6' : '#fff'};
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: ${props => props.isSelected ? 'rgba(139, 92, 246, 0.2)' : '#333'};
+  }
+`;
+
 interface CryptoResult {
   id: string;
   symbol: string;
@@ -247,50 +296,126 @@ interface AddCryptoModalProps {
   onClose: () => void;
 }
 
+// Popular tokens to show for quick selection
+const POPULAR_TOKENS: CryptoResult[] = [
+  { id: 'bitcoin', symbol: 'BTC', name: 'Bitcoin', image: 'https://assets.coingecko.com/coins/images/1/thumb/bitcoin.png' },
+  { id: 'ethereum', symbol: 'ETH', name: 'Ethereum', image: 'https://assets.coingecko.com/coins/images/279/thumb/ethereum.png' },
+  { id: 'solana', symbol: 'SOL', name: 'Solana', image: 'https://assets.coingecko.com/coins/images/4128/thumb/solana.png' },
+  { id: 'cardano', symbol: 'ADA', name: 'Cardano', image: 'https://assets.coingecko.com/coins/images/975/thumb/cardano.png' },
+  { id: 'ripple', symbol: 'XRP', name: 'XRP', image: 'https://assets.coingecko.com/coins/images/44/thumb/xrp-symbol-white-128.png' },
+  { id: 'polkadot', symbol: 'DOT', name: 'Polkadot', image: 'https://assets.coingecko.com/coins/images/12171/thumb/polkadot.png' },
+  { id: 'dogecoin', symbol: 'DOGE', name: 'Dogecoin', image: 'https://assets.coingecko.com/coins/images/5/thumb/dogecoin.png' },
+  { id: 'shiba-inu', symbol: 'SHIB', name: 'Shiba Inu', image: 'https://assets.coingecko.com/coins/images/11939/thumb/shiba.png' }
+];
+
+// API rate limit configuration
+const SEARCH_DEBOUNCE_DELAY = 300; // ms
+const MIN_SEARCH_INTERVAL = 2000; // ms
+const MAX_RETRIES = 2;
+
 const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState<CryptoResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedCryptos, setSelectedCryptos] = useState<Set<string>>(new Set());
-  const { addCrypto } = useCrypto();
+  const [error, setError] = useState<string | null>(null);
+  const [addingTokens, setAddingTokens] = useState(false);
+  
+  const { addCryptos } = useCrypto();
+  
+  const lastSearchTime = useRef<number>(0);
+  const retryCount = useRef<number>(0);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Enhanced search with rate limit handling
   const searchCryptos = async (query: string) => {
     if (!query.trim()) {
       setResults([]);
+      setError(null);
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLastSearch = now - lastSearchTime.current;
+    
+    // Respect rate limits
+    if (timeSinceLastSearch < MIN_SEARCH_INTERVAL) {
+      const delayTime = MIN_SEARCH_INTERVAL - timeSinceLastSearch;
+      
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+      
+      searchTimeoutRef.current = setTimeout(() => searchCryptos(query), delayTime);
       return;
     }
 
     try {
       setLoading(true);
+      setError(null);
+      
       const response = await fetch(
-        `https://api.coingecko.com/api/v3/search?query=${query}`
+        `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query)}`
       );
       
+      lastSearchTime.current = Date.now();
+      
+      if (response.status === 429) {
+        // Rate limit hit
+        const retryAfter = response.headers.get('retry-after');
+        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : MIN_SEARCH_INTERVAL * 2;
+        
+        setError('Rate limit reached. Please wait a moment before searching again.');
+        
+        if (retryCount.current < MAX_RETRIES) {
+          retryCount.current++;
+          if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+          }
+          searchTimeoutRef.current = setTimeout(() => searchCryptos(query), waitTime);
+        }
+        return;
+      }
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch cryptocurrencies');
+        throw new Error(`Failed to fetch cryptocurrencies: ${response.status}`);
       }
 
       const data = await response.json();
-      setResults(data.coins.slice(0, 10).map((coin: any) => ({
+      
+      // Reset retry count on success
+      retryCount.current = 0;
+      
+      setResults(data.coins.slice(0, 15).map((coin: any) => ({
         id: coin.id,
         symbol: coin.symbol.toUpperCase(),
         name: coin.name,
         image: coin.thumb
       })));
+    } catch (err) {
+      console.error('Search error:', err);
+      setError('Failed to search cryptocurrencies. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   const debouncedSearch = useCallback(
-    debounce((term: string) => searchCryptos(term), 300),
+    debounce((term: string) => searchCryptos(term), SEARCH_DEBOUNCE_DELAY),
     []
   );
 
   useEffect(() => {
-    debouncedSearch(searchTerm);
-    return () => debouncedSearch.cancel();
-  }, [searchTerm, debouncedSearch]);
+    if (isOpen) {
+      debouncedSearch(searchTerm);
+    }
+    return () => {
+      debouncedSearch.cancel();
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchTerm, debouncedSearch, isOpen]);
 
   const toggleCryptoSelection = (crypto: CryptoResult) => {
     setSelectedCryptos(prev => {
@@ -304,19 +429,50 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
     });
   };
 
-  const handleAddSelected = () => {
-    selectedCryptos.forEach(cryptoId => {
-      const crypto = results.find(r => r.id === cryptoId);
-      if (crypto) {
-        addCrypto(crypto.symbol, crypto.id);
-      }
-    });
-    onClose();
+  // Batch add selected tokens
+  const handleAddSelected = async () => {
+    if (selectedCryptos.size === 0) return;
+    
+    setAddingTokens(true);
+    
+    try {
+      // Prepare tokens for batch addition
+      const tokensToAdd = Array.from(selectedCryptos)
+        .map(cryptoId => {
+          // First check search results
+          const fromResults = results.find(r => r.id === cryptoId);
+          if (fromResults) {
+            return { symbol: fromResults.symbol, id: fromResults.id };
+          }
+          
+          // Then check popular tokens
+          const fromPopular = POPULAR_TOKENS.find(t => t.id === cryptoId);
+          if (fromPopular) {
+            return { symbol: fromPopular.symbol, id: fromPopular.id };
+          }
+          
+          return null;
+        })
+        .filter(Boolean) as { symbol: string; id: string }[];
+      
+      // Use batch addition
+      await addCryptos(tokensToAdd);
+      
+      // Close modal after successful addition
+      handleClose();
+    } catch (err) {
+      console.error('Error adding tokens:', err);
+      setError('Failed to add tokens. Please try again.');
+    } finally {
+      setAddingTokens(false);
+    }
   };
 
   const handleClose = () => {
     setSearchTerm('');
     setSelectedCryptos(new Set());
+    setError(null);
+    setResults([]);
     onClose();
   };
 
@@ -326,6 +482,13 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
     <ModalOverlay onClick={handleClose}>
       <ModalContent onClick={e => e.stopPropagation()}>
         <h2>Add Cryptocurrencies</h2>
+        
+        {error && (
+          <ErrorMessage>
+            <FiAlertTriangle size={16} />
+            {error}
+          </ErrorMessage>
+        )}
         
         <SearchInput
           type="text"
@@ -340,6 +503,21 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
             {selectedCryptos.size} token{selectedCryptos.size !== 1 ? 's' : ''} selected
           </SelectedCount>
         )}
+
+        <PopularTokensSection>
+          <h3>Popular Tokens</h3>
+          <div className="tokens-grid">
+            {POPULAR_TOKENS.map(token => (
+              <PopularTokenChip
+                key={token.id}
+                isSelected={selectedCryptos.has(token.id)}
+                onClick={() => toggleCryptoSelection(token)}
+              >
+                {token.symbol}
+              </PopularTokenChip>
+            ))}
+          </div>
+        </PopularTokensSection>
 
         <ResultsContainer>
           {loading ? (
@@ -381,9 +559,9 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
           <Button
             variant="primary"
             onClick={handleAddSelected}
-            disabled={selectedCryptos.size === 0}
+            disabled={selectedCryptos.size === 0 || addingTokens}
           >
-            Add {selectedCryptos.size > 0 ? `${selectedCryptos.size} Token${selectedCryptos.size !== 1 ? 's' : ''}` : 'Tokens'}
+            {addingTokens ? 'Adding...' : selectedCryptos.size > 0 ? `Add ${selectedCryptos.size} Token${selectedCryptos.size !== 1 ? 's' : ''}` : 'Add Tokens'}
           </Button>
         </ButtonsContainer>
       </ModalContent>

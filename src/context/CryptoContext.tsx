@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
+import debounce from 'lodash/debounce';
 
 interface CryptoContextType {
   prices: Record<string, Record<string, number>>;
@@ -12,6 +13,7 @@ interface CryptoContextType {
   deleteCrypto: (symbol: string) => void;
   availableCryptos: string[];
   getCryptoId: (symbol: string) => string | undefined;
+  isPending: (symbol: string) => boolean;
 }
 
 interface CacheData {
@@ -30,6 +32,15 @@ const defaultCryptoIds: { [key: string]: string } = {
   XRP: 'ripple'
 };
 
+// Approximate conversion rates for estimating prices
+const CONVERSION_RATES: Record<string, Record<string, number>> = {
+  BTC: { usd: 65000, eur: 59800, cad: 88400 },
+  ETH: { usd: 3500, eur: 3220, cad: 4760 },
+  SOL: { usd: 145, eur: 133, cad: 197 },
+  USDC: { usd: 1, eur: 0.92, cad: 1.36 },
+  XRP: { usd: 0.52, eur: 0.48, cad: 0.71 }
+};
+
 const STORAGE_KEY = 'cryptovertx-tokens';
 
 // CoinGecko API configuration
@@ -40,8 +51,9 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
 const MIN_API_INTERVAL = 60 * 1000; // 60 seconds between API calls (free tier limit)
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 5000; // 5 seconds base delay for retries
-const DEBOUNCE_DELAY = 500; // 500ms debounce delay
-const BATCH_WINDOW = 2000; // 2 seconds batch window
+const DEBOUNCE_DELAY = 300; // 300ms debounce delay (reduced from 500ms)
+const BATCH_WINDOW = 1000; // 1 second batch window (reduced from 2s)
+const MAX_BATCH_SIZE = 25; // Maximum number of tokens to request in a single batch
 
 // Add request queue interface
 interface RequestQueue {
@@ -49,6 +61,14 @@ interface RequestQueue {
   isProcessing: boolean;
   lastProcessed: number;
   batchTimer: NodeJS.Timeout | null;
+}
+
+// API response tracking
+interface ApiStatus {
+  coinGeckoAvailable: boolean;
+  cryptoCompareAvailable: boolean;
+  coinGeckoResetTime: number | null;
+  cryptoCompareResetTime: number | null;
 }
 
 export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -82,6 +102,15 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     lastProcessed: 0,
     batchTimer: null
   });
+  const apiStatus = useRef<ApiStatus>({
+    coinGeckoAvailable: true,
+    cryptoCompareAvailable: true,
+    coinGeckoResetTime: null,
+    cryptoCompareResetTime: null
+  });
+  
+  // Track which symbols are pending price updates
+  const pendingPriceUpdates = useRef<Set<string>>(new Set());
 
   const clearUpdateTimeout = () => {
     if (updateTimeout.current) {
@@ -95,6 +124,22 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       clearTimeout(debounceTimer.current);
       debounceTimer.current = null;
     }
+  };
+
+  // Check if a symbol is pending price update
+  const isPending = useCallback((symbol: string) => {
+    return pendingPriceUpdates.current.has(symbol);
+  }, []);
+
+  // Get estimated price for a symbol based on similar tokens
+  const getEstimatedPrice = (symbol: string): Record<string, number> => {
+    // Use default values for known tokens
+    if (CONVERSION_RATES[symbol]) {
+      return CONVERSION_RATES[symbol];
+    }
+    
+    // For unknown tokens, use USDC as a placeholder (stable coin value)
+    return CONVERSION_RATES.USDC;
   };
 
   const getCachedPrices = () => {
@@ -128,17 +173,51 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return cryptoIds[symbol];
   }, [cryptoIds]);
 
+  // Parse retry-after header to get milliseconds to wait
+  const getMillisToWait = (retryAfterHeader: string | null): number => {
+    if (!retryAfterHeader) return MIN_API_INTERVAL;
+    
+    let millisToWait = Math.round(parseFloat(retryAfterHeader) * 1000);
+    if (isNaN(millisToWait)) {
+      millisToWait = Math.max(0, new Date(retryAfterHeader).getTime() - Date.now());
+    }
+    return millisToWait > 0 ? millisToWait : MIN_API_INTERVAL;
+  };
+
   // Enhanced error handling with exponential backoff
-  const handleApiError = useCallback((err: any) => {
-    console.error('API Error:', err);
+  const handleApiError = useCallback((err: any, apiName: 'coinGecko' | 'cryptoCompare') => {
+    console.error(`${apiName} API Error:`, err);
     let errorMessage = 'Failed to fetch prices. Retrying...';
     let retryDelay = RETRY_DELAY;
     
     if (axios.isAxiosError(err)) {
       if (err.response?.status === 429) {
+        const retryAfter = err.response.headers['retry-after'];
+        const resetTime = err.response.headers['x-ratelimit-reset'];
+        
         errorMessage = 'Rate limit exceeded. Please wait...';
-        retryDelay = MIN_API_INTERVAL * 2; // Double the minimum interval on rate limit
-        lastApiCall.current = Date.now(); // Update last API call time
+        retryDelay = getMillisToWait(retryAfter);
+        
+        // Update API status
+        if (apiName === 'coinGecko') {
+          apiStatus.current.coinGeckoAvailable = false;
+          apiStatus.current.coinGeckoResetTime = resetTime ? parseInt(resetTime) * 1000 : Date.now() + retryDelay;
+          
+          // Schedule reset of availability
+          setTimeout(() => {
+            apiStatus.current.coinGeckoAvailable = true;
+            apiStatus.current.coinGeckoResetTime = null;
+          }, retryDelay);
+        } else {
+          apiStatus.current.cryptoCompareAvailable = false;
+          apiStatus.current.cryptoCompareResetTime = resetTime ? parseInt(resetTime) * 1000 : Date.now() + retryDelay;
+          
+          // Schedule reset of availability
+          setTimeout(() => {
+            apiStatus.current.cryptoCompareAvailable = true;
+            apiStatus.current.cryptoCompareResetTime = null;
+          }, retryDelay);
+        }
       } else if (err.code === 'ECONNABORTED') {
         errorMessage = 'Connection timeout. Check your internet.';
       } else if (err.response?.status === 403 || err.response?.status === 401) {
@@ -155,15 +234,10 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setPrices(cachedPrices);
     }
 
-    // Implement exponential backoff for retries
-    if (retryCount.current < MAX_RETRIES) {
-      retryCount.current++;
-      const backoffDelay = retryDelay * Math.pow(2, retryCount.current - 1);
-      setTimeout(() => processBatchRequests(), backoffDelay);
-    }
+    return retryDelay;
   }, []);
 
-  // Enhanced batch processing
+  // Enhanced batch processing with smart API selection
   const processBatchRequests = useCallback(async () => {
     if (requestQueue.current.isProcessing || requestQueue.current.pendingSymbols.size === 0) {
       return;
@@ -185,37 +259,61 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setLoading(true);
       setError(null);
 
-      // Process all pending symbols in one batch
-      const symbolsToProcess = Array.from(requestQueue.current.pendingSymbols);
+      // Process all pending symbols in one batch, but limit batch size
+      const allPendingSymbols = Array.from(requestQueue.current.pendingSymbols);
+      const symbolsToProcess = allPendingSymbols.slice(0, MAX_BATCH_SIZE);
+      
+      // Remove processed symbols from the queue
+      symbolsToProcess.forEach(symbol => requestQueue.current.pendingSymbols.delete(symbol));
+      
+      // Add symbols to pending updates set
+      symbolsToProcess.forEach(symbol => pendingPriceUpdates.current.add(symbol));
+      
       const relevantIds = symbolsToProcess
         .map(symbol => cryptoIds[symbol])
         .filter(Boolean);
 
       if (relevantIds.length === 0) {
-        requestQueue.current.pendingSymbols.clear();
+        symbolsToProcess.forEach(symbol => pendingPriceUpdates.current.delete(symbol));
         return;
       }
 
       let priceData: Record<string, any> = {};
       let usedFallbackApi = false;
 
-      try {
-        // Try CoinGecko first
-        const response = await axios.get(`${API_BASE}/simple/price`, {
-          params: {
-            ids: relevantIds.join(','),
-            vs_currencies: 'usd,eur,cad',
-            precision: 18
-          },
-          timeout: 15000
-        });
-        priceData = response.data;
-      } catch (coinGeckoError) {
-        console.log('CoinGecko API failed, switching to CryptoCompare');
-        
+      // Try CoinGecko if available
+      if (apiStatus.current.coinGeckoAvailable) {
         try {
-          // Use CryptoCompare as fallback
-          const fallbackResponses = await Promise.all(
+          const response = await axios.get(`${API_BASE}/simple/price`, {
+            params: {
+              ids: relevantIds.join(','),
+              vs_currencies: 'usd,eur,cad',
+              precision: 18
+            },
+            timeout: 15000
+          });
+          priceData = response.data;
+          lastApiCall.current = now;
+        } catch (coinGeckoError) {
+          console.log('CoinGecko API failed, switching to CryptoCompare');
+          const retryDelay = handleApiError(coinGeckoError, 'coinGecko');
+          
+          // If we need to wait too long, try the fallback API
+          if (retryDelay > 10000 && apiStatus.current.cryptoCompareAvailable) {
+            usedFallbackApi = true;
+          } else {
+            throw coinGeckoError; // Re-throw to trigger the catch block
+          }
+        }
+      } else {
+        // CoinGecko not available, use fallback
+        usedFallbackApi = true;
+      }
+      
+      // Use CryptoCompare as fallback if needed
+      if (usedFallbackApi && apiStatus.current.cryptoCompareAvailable) {
+        try {
+          const fallbackResponses = await Promise.allSettled(
             symbolsToProcess.map(async (symbol) => {
               try {
                 const response = await axios.get('https://data-api.cryptocompare.com/spot/v1/historical/hours', {
@@ -228,7 +326,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                     apply_mapping: 'true',
                     response_format: 'JSON',
                     api_key: 'dafaa8324f143887025dcb9fbeddfeef656d306ec8158f851ab5007e6c93cef3'
-                  }
+                  },
+                  timeout: 15000
                 });
 
                 if (response.data.Data?.[0]) {
@@ -253,21 +352,17 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           // Convert fallback responses to CoinGecko format
           priceData = fallbackResponses.reduce((acc, curr) => {
-            if (curr) {
-              acc[cryptoIds[curr.symbol]] = curr.prices;
+            if (curr.status === 'fulfilled' && curr.value) {
+              acc[cryptoIds[curr.value.symbol]] = curr.value.prices;
             }
             return acc;
           }, {} as Record<string, any>);
 
-          usedFallbackApi = true;
+          lastApiCall.current = now;
         } catch (fallbackError) {
-          console.error('Both APIs failed:', fallbackError);
+          handleApiError(fallbackError, 'cryptoCompare');
           throw fallbackError;
         }
-      }
-
-      if (!priceData || Object.keys(priceData).length === 0) {
-        throw new Error('No price data received from either API');
       }
 
       // Update prices with merged data
@@ -283,14 +378,14 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             cad: priceData[id].cad
           };
         }
+        // Remove from pending updates
+        pendingPriceUpdates.current.delete(symbol);
       });
 
       setPrices(newPrices);
       setCachePrices(newPrices);
       setLastUpdated(new Date());
-      lastApiCall.current = now;
       retryCount.current = 0;
-      requestQueue.current.pendingSymbols.clear();
 
       // Only set error if using fallback API and there's a specific issue
       if (usedFallbackApi && Object.keys(newPrices).length < symbolsToProcess.length) {
@@ -299,20 +394,54 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setError(null);
       }
 
+      // Process remaining symbols if any
+      if (requestQueue.current.pendingSymbols.size > 0) {
+        // Schedule next batch with appropriate delay
+        updateTimeout.current = setTimeout(() => {
+          requestQueue.current.isProcessing = false;
+          processBatchRequests();
+        }, MIN_API_INTERVAL);
+      } else {
+        requestQueue.current.isProcessing = false;
+      }
+
     } catch (err) {
-      handleApiError(err);
+      // If both APIs failed, wait and retry
+      const retryDelay = Math.min(
+        MIN_API_INTERVAL * 2,
+        RETRY_DELAY * Math.pow(2, retryCount.current)
+      );
+      
+      retryCount.current++;
+      
+      if (retryCount.current <= MAX_RETRIES) {
+        updateTimeout.current = setTimeout(() => {
+          requestQueue.current.isProcessing = false;
+          processBatchRequests();
+        }, retryDelay);
+      } else {
+        // Max retries reached, clear queue and reset
+        // But don't clear pending symbols, just mark as not processing
+        const failedSymbols = Array.from(requestQueue.current.pendingSymbols);
+        failedSymbols.forEach(symbol => pendingPriceUpdates.current.delete(symbol));
+        requestQueue.current.isProcessing = false;
+        retryCount.current = 0;
+        setError('Failed to fetch prices after multiple attempts. Please try again later.');
+      }
     } finally {
       setLoading(false);
-      requestQueue.current.isProcessing = false;
       requestQueue.current.lastProcessed = Date.now();
     }
   }, [cryptoIds, handleApiError]);
 
   // Enhanced queue management with smart batching
   const queuePriceUpdate = useCallback((symbols: string[]) => {
+    if (!symbols.length) return;
+    
     clearDebounceTimer();
     clearUpdateTimeout();
     
+    // Add symbols to the queue
     symbols.forEach(symbol => requestQueue.current.pendingSymbols.add(symbol));
     
     // Clear existing batch timer
@@ -328,6 +457,12 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }, BATCH_WINDOW);
     
   }, [processBatchRequests]);
+
+  // Debounced version of queuePriceUpdate for UI interactions
+  const debouncedQueueUpdate = useCallback(
+    debounce((symbols: string[]) => queuePriceUpdate(symbols), DEBOUNCE_DELAY),
+    [queuePriceUpdate]
+  );
 
   // Modified updatePrices to use the queue system with proper debouncing
   const updatePrices = useCallback(async (force: boolean = false) => {
@@ -346,13 +481,11 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    // Use debounced queue update
-    updateTimeout.current = setTimeout(() => {
-      queuePriceUpdate(Object.keys(cryptoIds));
-    }, DEBOUNCE_DELAY);
+    // Queue all tokens for update
+    queuePriceUpdate(Object.keys(cryptoIds));
   }, [cryptoIds, queuePriceUpdate]);
 
-  // Modified addCrypto to use the queue system
+  // Modified addCrypto to use the queue system with debouncing and immediate placeholder values
   const addCrypto = useCallback(async (symbol: string, id?: string) => {
     if (!id) {
       console.warn(`No CoinGecko ID provided for symbol ${symbol}`);
@@ -362,6 +495,15 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const upperSymbol = symbol.toUpperCase();
     const lowerId = id.toLowerCase();
 
+    // Check if token already exists
+    if (cryptoIds[upperSymbol] === lowerId) {
+      return; // Token already exists with same ID
+    }
+
+    // Add to pending updates
+    pendingPriceUpdates.current.add(upperSymbol);
+
+    // Update state with the new token
     setCryptoIds(prev => {
       const newIds = { ...prev, [upperSymbol]: lowerId };
       // Save to localStorage, but preserve default tokens
@@ -383,15 +525,31 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return prev;
     });
 
-    // Queue only the new symbol for update
-    queuePriceUpdate([upperSymbol]);
-  }, [queuePriceUpdate]);
+    // Add placeholder price immediately to prevent "NA" display
+    setPrices(prev => {
+      // Only add placeholder if no price exists yet
+      if (!prev[upperSymbol]) {
+        const estimatedPrice = getEstimatedPrice(upperSymbol);
+        return {
+          ...prev,
+          [upperSymbol]: estimatedPrice
+        };
+      }
+      return prev;
+    });
 
-  // Modified addCryptos to use the queue system
+    // Use debounced queue update for single token additions
+    debouncedQueueUpdate([upperSymbol]);
+  }, [cryptoIds, debouncedQueueUpdate]);
+
+  // Modified addCryptos to use the queue system with batching and immediate placeholder values
   const addCryptos = useCallback(async (tokens: { symbol: string; id: string }[]) => {
+    if (!tokens.length) return;
+    
     const newCryptoIds = { ...cryptoIds };
     const newSymbols: string[] = [];
     const storageIds = { ...cryptoIds };
+    const newPrices = { ...prices };
 
     // Remove default tokens from storage object
     Object.keys(defaultCryptoIds).forEach(key => {
@@ -400,10 +558,29 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     tokens.forEach(({ symbol, id }) => {
       const upperSymbol = symbol.toUpperCase();
-      newCryptoIds[upperSymbol] = id.toLowerCase();
-      storageIds[upperSymbol] = id.toLowerCase();
-      newSymbols.push(upperSymbol);
+      const lowerId = id.toLowerCase();
+      
+      // Only add if it's a new token or has a different ID
+      if (newCryptoIds[upperSymbol] !== lowerId) {
+        newCryptoIds[upperSymbol] = lowerId;
+        storageIds[upperSymbol] = lowerId;
+        newSymbols.push(upperSymbol);
+        
+        // Add to pending updates
+        pendingPriceUpdates.current.add(upperSymbol);
+        
+        // Add placeholder price
+        if (!newPrices[upperSymbol]) {
+          newPrices[upperSymbol] = getEstimatedPrice(upperSymbol);
+        }
+      }
     });
+    
+    // If no new tokens, return early
+    if (newSymbols.length === 0) return;
+    
+    // Update prices with placeholders
+    setPrices(newPrices);
     
     // Save only custom tokens to localStorage
     localStorage.setItem(STORAGE_KEY, JSON.stringify(storageIds));
@@ -418,13 +595,16 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Queue only the new symbols for update
     queuePriceUpdate(newSymbols);
-  }, [cryptoIds, queuePriceUpdate]);
+  }, [cryptoIds, prices, queuePriceUpdate]);
 
   const deleteCrypto = useCallback((symbol: string) => {
     // Don't allow deletion of default tokens
     if (Object.keys(defaultCryptoIds).includes(symbol)) {
       return;
     }
+
+    // Remove from pending updates if present
+    pendingPriceUpdates.current.delete(symbol);
 
     setCryptoIds(prev => {
       const newCryptoIds = { ...prev };
@@ -441,6 +621,13 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     setAvailableCryptos(prev => prev.filter(s => s !== symbol));
+    
+    // Also remove from prices
+    setPrices(prev => {
+      const newPrices = { ...prev };
+      delete newPrices[symbol];
+      return newPrices;
+    });
   }, []);
 
   // Update the useEffect to use the queue system
@@ -464,6 +651,9 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       clearInterval(interval);
       clearUpdateTimeout();
       clearDebounceTimer();
+      if (requestQueue.current.batchTimer) {
+        clearTimeout(requestQueue.current.batchTimer);
+      }
     };
   }, [updatePrices]);
 
@@ -478,7 +668,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       addCryptos,
       deleteCrypto,
       availableCryptos,
-      getCryptoId
+      getCryptoId,
+      isPending
     }}>
       {children}
     </CryptoContext.Provider>
