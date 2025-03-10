@@ -50,6 +50,8 @@ const AppContent: React.FC = () => {
       ipcRenderer.send('set-window-size', { width: 1200, height: 800, isFullScreen: true });
     } else if (location.pathname === '/analysis') {
       ipcRenderer.send('set-window-size', { width: 800, height: 600, isFullScreen: true });
+    } else if (location.pathname === '/add-tokens') {
+      ipcRenderer.send('set-window-size', { width: 800, height: 830, isFullScreen: true });
     } else if (isFullScreen) {
       ipcRenderer.send('set-window-size', { width: 800, height: 600, isFullScreen: true });
     } else {
