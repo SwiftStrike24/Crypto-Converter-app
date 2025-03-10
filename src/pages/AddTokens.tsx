@@ -1,10 +1,11 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
 import debounce from 'lodash/debounce';
-import { FiCheck, FiArrowLeft, FiX, FiSearch, FiPlus, FiInfo } from 'react-icons/fi';
+import { FiCheck, FiArrowLeft, FiX, FiSearch, FiPlus, FiInfo, FiAlertTriangle, FiRefreshCw } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
+import axios from 'axios';
 
 const PageContainer = styled.div`
   min-height: 600px;
@@ -594,11 +595,30 @@ const SectionHeader = styled.div`
   width: 100%;
 `;
 
+// Enhanced interface with additional fields for better type safety
 interface CryptoResult {
   id: string;
   symbol: string;
   name: string;
   image: string;
+  market_cap_rank?: number;
+}
+
+// API configuration
+const API_CONFIG = {
+  COINGECKO_BASE_URL: 'https://api.coingecko.com/api/v3',
+  BACKUP_API_URL: 'https://api.coincap.io/v2',
+  CACHE_DURATION: 5 * 60 * 1000, // 5 minutes
+  RETRY_ATTEMPTS: 3,
+  RETRY_DELAY: 1000,
+  SEARCH_DEBOUNCE: 300,
+};
+
+// Cache interface
+interface SearchCache {
+  query: string;
+  results: CryptoResult[];
+  timestamp: number;
 }
 
 const AddTokens: React.FC = () => {
@@ -607,34 +627,215 @@ const AddTokens: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [selectedCryptos, setSelectedCryptos] = useState<Map<string, CryptoResult>>(new Map());
   const [isSearching, setIsSearching] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [usingFallbackApi, setUsingFallbackApi] = useState(false);
+  
   const { addCryptos } = useCrypto();
   const navigate = useNavigate();
+  
+  // Refs for caching and API state
+  const searchCache = useRef<Map<string, SearchCache>>(new Map());
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const retryCount = useRef<number>(0);
+  const lastApiCall = useRef<number>(0);
 
+  // Clear any pending requests when component unmounts
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Check cache for existing results
+  const getCachedResults = (query: string): CryptoResult[] | null => {
+    const cached = searchCache.current.get(query);
+    if (!cached) return null;
+    
+    const now = Date.now();
+    if (now - cached.timestamp > API_CONFIG.CACHE_DURATION) {
+      searchCache.current.delete(query);
+      return null;
+    }
+    
+    return cached.results;
+  };
+
+  // Cache search results
+  const cacheResults = (query: string, results: CryptoResult[]) => {
+    if (!query.trim()) return;
+    
+    searchCache.current.set(query, {
+      query,
+      results,
+      timestamp: Date.now()
+    });
+    
+    // Limit cache size to 20 entries
+    if (searchCache.current.size > 20) {
+      const oldestKey = Array.from(searchCache.current.keys())[0];
+      searchCache.current.delete(oldestKey);
+    }
+  };
+
+  // Convert CoinCap API results to our format
+  const convertCoinCapResults = (data: any[]): CryptoResult[] => {
+    return data.slice(0, 5).map(asset => ({
+      id: asset.id,
+      symbol: asset.symbol.toUpperCase(),
+      name: asset.name,
+      image: `https://assets.coincap.io/assets/icons/${asset.symbol.toLowerCase()}@2x.png`,
+      market_cap_rank: parseInt(asset.rank)
+    }));
+  };
+
+  // Search using fallback API (CoinCap)
+  const searchWithFallbackApi = async (query: string): Promise<CryptoResult[]> => {
+    try {
+      const response = await axios.get(`${API_CONFIG.BACKUP_API_URL}/assets`, {
+        params: { search: query, limit: 10 },
+        signal: abortControllerRef.current?.signal
+      });
+      
+      if (!response.data || !response.data.data) {
+        throw new Error('Invalid response from fallback API');
+      }
+      
+      return convertCoinCapResults(response.data.data);
+    } catch (error) {
+      console.error('Fallback API error:', error);
+      throw new Error('Both primary and fallback APIs failed');
+    }
+  };
+
+  // Enhanced search function with retries, caching, and fallback
   const searchCryptos = async (query: string) => {
     if (!query.trim()) {
       setResults([]);
+      setApiError(null);
       return;
     }
+
+    // Check cache first
+    const cachedResults = getCachedResults(query);
+    if (cachedResults) {
+      setResults(cachedResults);
+      setLoading(false);
+      setIsSearching(false);
+      setApiError(null);
+      return;
+    }
+
+    // Cancel any ongoing requests
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
 
     try {
       setLoading(true);
       setIsSearching(true);
+      setApiError(null);
       
-      const response = await fetch(
-        `https://api.coingecko.com/api/v3/search?query=${query}`
-      );
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch cryptocurrencies');
+      // Rate limiting check
+      const now = Date.now();
+      const timeSinceLastCall = now - lastApiCall.current;
+      if (timeSinceLastCall < 1000) { // Ensure at least 1 second between calls
+        await new Promise(resolve => setTimeout(resolve, 1000 - timeSinceLastCall));
       }
-
-      const data = await response.json();
-      setResults(data.coins.slice(0, 5).map((coin: any) => ({
-        id: coin.id,
-        symbol: coin.symbol.toUpperCase(),
-        name: coin.name,
-        image: coin.thumb
-      })));
+      
+      lastApiCall.current = Date.now();
+      
+      let results: CryptoResult[] = [];
+      
+      try {
+        // Try CoinGecko first
+        if (!usingFallbackApi) {
+          const response = await axios.get(
+            `${API_CONFIG.COINGECKO_BASE_URL}/search`,
+            {
+              params: { query },
+              signal: abortControllerRef.current.signal,
+              timeout: 5000 // 5 second timeout
+            }
+          );
+          
+          if (response.status === 200 && response.data && response.data.coins) {
+            results = response.data.coins.slice(0, 5).map((coin: any) => ({
+              id: coin.id,
+              symbol: coin.symbol.toUpperCase(),
+              name: coin.name,
+              image: coin.thumb,
+              market_cap_rank: coin.market_cap_rank
+            }));
+            
+            // Reset retry count on success
+            retryCount.current = 0;
+            setUsingFallbackApi(false);
+          } else {
+            throw new Error('Invalid response from CoinGecko');
+          }
+        } else {
+          // Use fallback API directly if we know CoinGecko is having issues
+          results = await searchWithFallbackApi(query);
+        }
+      } catch (error: any) {
+        // If CoinGecko fails, try fallback API
+        if (!usingFallbackApi) {
+          console.warn('CoinGecko API failed, using fallback:', error.message);
+          setUsingFallbackApi(true);
+          results = await searchWithFallbackApi(query);
+        } else {
+          // Both APIs failed
+          throw error;
+        }
+      }
+      
+      // Cache and set results
+      cacheResults(query, results);
+      setResults(results);
+      setApiError(null);
+      
+    } catch (error: any) {
+      console.error('Search error:', error);
+      
+      // Handle specific error cases
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 429) {
+          setApiError('Rate limit exceeded. Please try again in a minute.');
+        } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+          setApiError('Connection timeout. Check your internet connection.');
+        } else if (error.response?.status === 403 || error.response?.status === 401) {
+          setApiError('API access denied. Using alternative data source.');
+        } else {
+          setApiError('Failed to fetch tokens. Please try again.');
+        }
+      } else if (error.name === 'AbortError') {
+        // Request was aborted, no need to show error
+        return;
+      } else {
+        setApiError('An unexpected error occurred. Please try again.');
+      }
+      
+      // Retry logic with exponential backoff
+      if (retryCount.current < API_CONFIG.RETRY_ATTEMPTS) {
+        retryCount.current++;
+        const delay = API_CONFIG.RETRY_DELAY * Math.pow(2, retryCount.current - 1);
+        
+        setTimeout(() => {
+          searchCryptos(query);
+        }, delay);
+      } else {
+        // After max retries, show cached results if available
+        const cachedResults = getCachedResults(query);
+        if (cachedResults && cachedResults.length > 0) {
+          setResults(cachedResults);
+          setApiError('Showing cached results due to API issues.');
+        } else {
+          setResults([]);
+        }
+      }
     } finally {
       setLoading(false);
       setTimeout(() => {
@@ -644,7 +845,7 @@ const AddTokens: React.FC = () => {
   };
 
   const debouncedSearch = useCallback(
-    debounce((term: string) => searchCryptos(term), 300),
+    debounce((term: string) => searchCryptos(term), API_CONFIG.SEARCH_DEBOUNCE),
     []
   );
 
@@ -657,6 +858,13 @@ const AddTokens: React.FC = () => {
     }
     
     debouncedSearch(value);
+  };
+
+  const retrySearch = () => {
+    retryCount.current = 0;
+    setUsingFallbackApi(false);
+    setApiError(null);
+    searchCryptos(searchTerm);
   };
 
   const toggleCryptoSelection = (crypto: CryptoResult) => {
@@ -718,6 +926,46 @@ const AddTokens: React.FC = () => {
       setResults([]);
     }
   }, [searchTerm]);
+
+  // Add this new component for API error display
+  const ApiErrorMessage = styled.div`
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 87, 87, 0.1);
+    border: 1px solid rgba(255, 87, 87, 0.3);
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-top: 8px;
+    
+    .error-icon {
+      color: #ff5757;
+      flex-shrink: 0;
+    }
+    
+    .error-text {
+      font-size: 0.9rem;
+      color: #ff9494;
+      flex: 1;
+    }
+    
+    .retry-button {
+      background: none;
+      border: none;
+      color: #8b5cf6;
+      cursor: pointer;
+      padding: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      transition: all 0.2s ease;
+      
+      &:hover {
+        background: rgba(139, 92, 246, 0.1);
+      }
+    }
+  `;
 
   return (
     <PageContainer>
@@ -807,6 +1055,34 @@ const AddTokens: React.FC = () => {
           />
         </SearchContainer>
 
+        {apiError && (
+          <ApiErrorMessage>
+            <FiAlertTriangle className="error-icon" size={20} />
+            <span className="error-text">{apiError}</span>
+            <button 
+              className="retry-button"
+              onClick={retrySearch}
+              title="Retry search"
+              aria-label="Retry search"
+            >
+              <FiRefreshCw size={16} />
+            </button>
+          </ApiErrorMessage>
+        )}
+
+        {usingFallbackApi && !apiError && (
+          <InfoBanner
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+          >
+            <FiInfo className="info-icon" size={20} />
+            <span className="info-text">
+              Using alternative data source. Some tokens may not be available.
+            </span>
+          </InfoBanner>
+        )}
+
         <ResultsContainer>
           {loading ? (
             <>
@@ -857,7 +1133,14 @@ const AddTokens: React.FC = () => {
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <img src={crypto.image} alt={crypto.name} />
+                  <img 
+                    src={crypto.image} 
+                    alt={crypto.name}
+                    onError={(e) => {
+                      // Fallback image if token image fails to load
+                      (e.target as HTMLImageElement).src = `https://via.placeholder.com/40/404040/8b5cf6?text=${crypto.symbol.charAt(0)}`;
+                    }}
+                  />
                   <div className="crypto-info">
                     <div className="crypto-name">{crypto.name}</div>
                     <div className="crypto-symbol">{crypto.symbol}</div>
