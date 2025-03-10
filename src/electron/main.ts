@@ -21,6 +21,40 @@ const DIST_PATH = IS_DEV
   ? path.join(__dirname, '../dist')
   : path.join(process.resourcesPath, 'app.asar/dist');
 
+// Load app configuration
+const loadAppConfig = () => {
+  try {
+    // In production, check for config file
+    if (!IS_DEV) {
+      const configPath = path.join(process.resourcesPath, 'config', 'app-config.json');
+      if (fs.existsSync(configPath)) {
+        const configData = fs.readFileSync(configPath, 'utf8');
+        return JSON.parse(configData);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load app config:', error);
+  }
+  
+  // Default config if not found
+  return {
+    appId: 'com.cryptovertx.app',
+    iconPath: 'icon.ico',
+    appName: 'CryptoVertX',
+    appCompany: 'CryptoVertX',
+    appDescription: 'Cryptocurrency Converter',
+    version: '1.0.0'
+  };
+};
+
+// Load app configuration
+const appConfig = loadAppConfig();
+
+// Set app user model id for Windows
+if (process.platform === 'win32') {
+  app.setAppUserModelId(appConfig.appId || 'com.cryptovertx.app');
+}
+
 // Get icon path based on environment
 const getIconPath = () => {
   if (IS_DEV) {
@@ -28,7 +62,11 @@ const getIconPath = () => {
   } else {
     // In production, check multiple possible locations
     const possiblePaths = [
+      // First check config-specified path
+      path.join(process.resourcesPath, 'config', appConfig.iconPath || 'icon.ico'),
+      // Then check other common locations
       path.join(process.resourcesPath, 'assets/icon.ico'),
+      path.join(process.resourcesPath, 'config/icon.ico'),
       path.join(app.getAppPath(), '../assets/icon.ico'),
       path.join(app.getPath('exe'), '../resources/assets/icon.ico'),
       path.join(app.getPath('exe'), '../icon.ico')

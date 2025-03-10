@@ -13,6 +13,7 @@ const execAsync = promisify(exec);
 const copyFileAsync = promisify(fs.copyFile);
 const mkdirAsync = promisify(fs.mkdir);
 const existsAsync = promisify(fs.exists);
+const readdirAsync = promisify(fs.readdir);
 
 // Build types
 type BuildType = 'portable' | 'installer' | 'both';
@@ -28,8 +29,57 @@ const TEMP_DIR = path.join(__dirname, '../temp-build-assets');
 const TEMP_ICON_PATH = path.join(TEMP_DIR, 'icon.ico');
 
 // Output directories
-const OUTPUT_DIR = path.join(__dirname, '../release/1.0.0');
-const WIN_UNPACKED_DIR = path.join(OUTPUT_DIR, 'win-unpacked');
+const RELEASE_DIR = path.join(__dirname, '../release');
+let OUTPUT_DIR = path.join(RELEASE_DIR, '1.0.0');
+let WIN_UNPACKED_DIR = path.join(OUTPUT_DIR, 'win-unpacked');
+
+// Get current version from package.json
+async function getCurrentVersion(): Promise<string> {
+  try {
+    const packageJsonPath = path.join(__dirname, '../package.json');
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    return packageJson.version || '1.0.0';
+  } catch (error) {
+    console.error('Error reading package.json:', error);
+    return '1.0.0';
+  }
+}
+
+// Check for existing versions in the release directory
+async function checkExistingVersions(): Promise<string[]> {
+  try {
+    if (!await existsAsync(RELEASE_DIR)) {
+      return [];
+    }
+    
+    const dirs = await readdirAsync(RELEASE_DIR);
+    return dirs.filter(dir => {
+      // Filter for semantic version directories (e.g., 1.0.0, 2.1.3)
+      return /^\d+\.\d+\.\d+$/.test(dir);
+    });
+  } catch (error) {
+    console.error('Error checking existing versions:', error);
+    return [];
+  }
+}
+
+// Update version in package.json
+async function updateVersionInPackageJson(version: string): Promise<void> {
+  try {
+    const packageJsonPath = path.join(__dirname, '../package.json');
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    
+    // Update version
+    packageJson.version = version;
+    
+    // Write updated package.json
+    fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
+    
+    buildLogger.log(`Updated package.json version to ${version}`);
+  } catch (error) {
+    buildLogger.error(`Failed to update package.json version: ${error.message}`);
+  }
+}
 
 async function cleanupProcesses() {
   if (process.platform === 'win32') {
@@ -98,6 +148,70 @@ async function getBuildType(): Promise<BuildType> {
   });
 
   return response.buildType;
+}
+
+// Handle version management
+async function handleVersionManagement(): Promise<string> {
+  // Get current version from package.json
+  const currentVersion = await getCurrentVersion();
+  
+  // Check for existing versions
+  const existingVersions = await checkExistingVersions();
+  
+  // If current version exists in release directory
+  if (existingVersions.includes(currentVersion)) {
+    console.log(chalk.yellow(`⚠️ Version ${currentVersion} already exists in the release directory.`));
+    
+    const { action } = await prompts({
+      type: 'select',
+      name: 'action',
+      message: 'What would you like to do?',
+      choices: [
+        { title: '🔄 Overwrite existing version', description: `Replace version ${currentVersion}`, value: 'overwrite' },
+        { title: '🆕 Create new version', description: 'Specify a new version number', value: 'new' }
+      ],
+      initial: 0
+    });
+    
+    if (action === 'overwrite') {
+      console.log(chalk.cyan(`🔄 Will overwrite version ${currentVersion}`));
+      return currentVersion;
+    } else {
+      // Prompt for new version
+      const { newVersion } = await prompts({
+        type: 'text',
+        name: 'newVersion',
+        message: 'Enter new version number (e.g., 1.0.1):',
+        initial: incrementVersion(currentVersion),
+        validate: value => 
+          /^\d+\.\d+\.\d+$/.test(value) 
+            ? true 
+            : 'Please enter a valid semantic version (e.g., 1.0.1)'
+      });
+      
+      if (!newVersion) {
+        console.log(chalk.red('❌ Version input cancelled. Using current version.'));
+        return currentVersion;
+      }
+      
+      // Update package.json with new version
+      await updateVersionInPackageJson(newVersion);
+      
+      console.log(chalk.green(`✅ Will build version ${newVersion}`));
+      return newVersion;
+    }
+  }
+  
+  // If no existing version, just use current version
+  console.log(chalk.green(`📝 Building version ${currentVersion}`));
+  return currentVersion;
+}
+
+// Helper function to increment version
+function incrementVersion(version: string): string {
+  const parts = version.split('.').map(Number);
+  parts[2] += 1; // Increment patch version
+  return parts.join('.');
 }
 
 async function buildPortable() {
@@ -173,6 +287,9 @@ async function buildInstaller() {
 
 async function fixExecutableIcon() {
   try {
+    // Get current version
+    const version = await getCurrentVersion();
+    
     // Check if win-unpacked directory exists
     if (await existsAsync(WIN_UNPACKED_DIR)) {
       const exePath = path.join(WIN_UNPACKED_DIR, 'CryptoVertX.exe');
@@ -201,8 +318,8 @@ async function fixExecutableIcon() {
             LegalCopyright: `Copyright © ${new Date().getFullYear()}`,
             OriginalFilename: 'CryptoVertX.exe',
           },
-          'file-version': '1.0.0',
-          'product-version': '1.0.0'
+          'file-version': version,
+          'product-version': version
         });
         
         buildLogger.log('Executable icon fixed successfully');
@@ -243,48 +360,82 @@ async function ensureWindowsRegistryIcon() {
   if (process.platform !== 'win32') return;
   
   try {
-    buildLogger.log('Ensuring Windows registry icon settings...');
+    // Get current version
+    const version = await getCurrentVersion();
     
-    // Create a registry script
-    const regScriptPath = path.join(__dirname, '../temp-registry-script.reg');
-    const appId = 'com.cryptovertx.app';
-    const exePath = path.join(WIN_UNPACKED_DIR, 'CryptoVertX.exe').replace(/\\/g, '\\\\');
-    const iconPath = path.join(WIN_UNPACKED_DIR, 'icon.ico').replace(/\\/g, '\\\\');
+    buildLogger.log('Setting up application icon configuration...');
     
-    const regContent = `Windows Registry Editor Version 5.00
+    // Instead of modifying registry, create a config file in the app directory
+    const appConfigDir = path.join(WIN_UNPACKED_DIR, 'resources', 'config');
+    const appConfigPath = path.join(appConfigDir, 'app-config.json');
+    const iconPath = path.join(WIN_UNPACKED_DIR, 'icon.ico');
+    
+    // Create config directory if it doesn't exist
+    if (!fs.existsSync(appConfigDir)) {
+      fs.mkdirSync(appConfigDir, { recursive: true });
+    }
+    
+    // Create or update the config file with icon information
+    const appConfig = {
+      appId: 'com.cryptovertx.app',
+      iconPath: 'icon.ico', // Relative path from app root
+      appName: 'CryptoVertX',
+      appCompany: 'CryptoVertX',
+      appDescription: 'Cryptocurrency Converter',
+      version: version
+    };
+    
+    // Write the config file
+    fs.writeFileSync(appConfigPath, JSON.stringify(appConfig, null, 2));
+    
+    // Copy icon to resources directory for easy access
+    if (fs.existsSync(iconPath)) {
+      const resourcesIconPath = path.join(appConfigDir, 'icon.ico');
+      fs.copyFileSync(iconPath, resourcesIconPath);
+    }
+    
+    buildLogger.log('Application icon configuration created successfully');
+    
+    // Create a README file explaining how to manually set up registry if needed
+    const readmePath = path.join(WIN_UNPACKED_DIR, 'resources', 'ICON-SETUP.md');
+    const readmeContent = `# CryptoVertX v${version} Icon Setup
 
-[HKEY_CURRENT_USER\\Software\\Classes\\AppUserModelId\\${appId}]
-"IconResource"="${iconPath},0"
-"IconPath"="${iconPath}"
-"IconIndex"=dword:00000000
-"ApplicationIcon"="${iconPath}"
-"ApplicationName"="CryptoVertX"
-"ApplicationCompany"="CryptoVertX"
-"ApplicationDescription"="Cryptocurrency Converter"
+If you want to manually set up the application icon in Windows registry, you can run the following command:
+
+\`\`\`
+reg add "HKCU\\Software\\Classes\\AppUserModelId\\com.cryptovertx.app" /v IconResource /t REG_SZ /d "%~dp0\\icon.ico,0" /f
+reg add "HKCU\\Software\\Classes\\AppUserModelId\\com.cryptovertx.app" /v ApplicationName /t REG_SZ /d "CryptoVertX" /f
+\`\`\`
+
+This is optional and only needed if you want to customize the app icon appearance in Windows.
 `;
     
-    // Write the registry script
-    fs.writeFileSync(regScriptPath, regContent);
+    fs.writeFileSync(readmePath, readmeContent);
     
-    // Execute the registry script
-    buildLogger.log('Applying registry settings...');
-    await execAsync(`regedit /s "${regScriptPath}"`);
-    
-    // Clean up
-    fs.unlinkSync(regScriptPath);
-    
-    buildLogger.log('Windows registry icon settings applied successfully');
+    buildLogger.log('Icon setup documentation created');
   } catch (error) {
-    buildLogger.error(`Failed to set Windows registry icon: ${error.message}`);
+    buildLogger.error(`Failed to set up application icon configuration: ${error.message}`);
   }
 }
 
 async function runBuild() {
   try {
+    // Display cool version management header
+    console.log('\n');
+    console.log(chalk.cyan.bold('🔢 CryptoVertX Version Management 🔢'));
+    console.log(chalk.dim('━'.repeat(50)));
+    
+    // Handle version management
+    const version = await handleVersionManagement();
+    
+    // Update output directories with selected version
+    OUTPUT_DIR = path.join(RELEASE_DIR, version);
+    WIN_UNPACKED_DIR = path.join(OUTPUT_DIR, 'win-unpacked');
+    
     // Get build type preference
     const buildType = await getBuildType();
     
-    await buildLogger.start(buildType);
+    await buildLogger.start(buildType, version);
 
     // Cleanup before build
     buildLogger.cleanupStep();
@@ -339,12 +490,16 @@ async function runBuild() {
     // Clean up temp assets
     await cleanupTempAssets();
     
-    // Ensure Windows registry icon settings if on Windows
+    // Set up app configuration instead of modifying registry
     if (process.platform === 'win32') {
       await ensureWindowsRegistryIcon();
     }
 
     buildLogger.buildComplete(buildType);
+    
+    // Display version information at the end
+    console.log(chalk.green.bold(`🏁 Build completed for CryptoVertX v${version}`));
+    console.log(chalk.cyan(`📁 Output directory: ${OUTPUT_DIR}`));
   } catch (error) {
     // Clean up temp assets even if build fails
     await cleanupTempAssets();
