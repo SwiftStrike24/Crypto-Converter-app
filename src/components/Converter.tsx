@@ -332,12 +332,6 @@ const Amount = styled.div`
   font-weight: 500;
 `;
 
-const TokenNameWrapper = styled.span`
-  color: #888;
-  margin-left: 4px;
-  font-size: 12px;
-`;
-
 const VirtualScrollSpacer = styled.div<{ height: number }>`
   ${props => css`
     height: ${props.height}px;
@@ -524,8 +518,6 @@ const Converter: React.FC<ConverterProps> = ({
   const [cryptoDropdownOpen, setCryptoDropdownOpen] = useState(false);
   const [fiatDropdownOpen, setFiatDropdownOpen] = useState(false);
   const [cryptoSearchTerm, setCryptoSearchTerm] = useState('');
-  const [fiatSearchTerm, setFiatSearchTerm] = useState('');
-  const [showCopyTooltip, setShowCopyTooltip] = useState(false);
   const [preloadedIcons, setPreloadedIcons] = useState<Set<string>>(new Set());
   
   // Refs for handling outside clicks and scrolling
@@ -698,6 +690,45 @@ const Converter: React.FC<ConverterProps> = ({
     }
   }, [selectedCrypto, selectedFiat, availableCryptos]);
 
+  // Listen for token update events to immediately refresh dropdown
+  useEffect(() => {
+    const handleTokensUpdated = (e: CustomEvent) => {
+      console.log('Token update event received:', e.detail);
+      // Force a refresh of the dropdown contents
+      setCryptoDropdownOpen(false);
+      
+      // Reset dropdown position
+      if (dropdownRef.current) {
+        dropdownRef.current.scrollTop = 0;
+      }
+      
+      // Force a re-render of the dropdown items
+      setVisibleStartIndex(0);
+      
+      // Pre-load icons for new tokens
+      if (e.detail?.tokens && Array.isArray(e.detail.tokens)) {
+        e.detail.tokens.forEach((symbol: string) => {
+          // Add to preloaded set to trigger background loading
+          setPreloadedIcons(prev => new Set([...prev, symbol]));
+        });
+      }
+    };
+    
+    const handleMetadataUpdated = () => {
+      // Force a refresh of token metadata in the dropdown
+      setPreloadedIcons(prev => new Set([...prev]));
+    };
+
+    // Add event listeners for token updates
+    window.addEventListener('cryptoTokensUpdated', handleTokensUpdated as EventListener);
+    window.addEventListener('cryptoMetadataUpdated', handleMetadataUpdated);
+    
+    return () => {
+      window.removeEventListener('cryptoTokensUpdated', handleTokensUpdated as EventListener);
+      window.removeEventListener('cryptoMetadataUpdated', handleMetadataUpdated);
+    };
+  }, []);
+
   // Check for missing icons when component mounts and when available cryptos change
   useEffect(() => {
     // Check for missing icons on mount and when available cryptos change
@@ -716,10 +747,16 @@ const Converter: React.FC<ConverterProps> = ({
       checkMissingIcons();
     }, 10 * 60 * 1000);
     
+    // Ensure dropdown reflects latest options when available cryptos change
+    if (selectedCrypto && !availableCryptos.includes(selectedCrypto)) {
+      setSelectedCrypto(availableCryptos[0]);
+      onCryptoChange(availableCryptos[0]);
+    }
+    
     return () => {
       clearInterval(iconCheckInterval);
     };
-  }, [availableCryptos, checkAndUpdateMissingIcons]);
+  }, [availableCryptos, checkAndUpdateMissingIcons, onCryptoChange, selectedCrypto]);
 
   const getRate = (crypto: string, fiat: string): number => {
     // If the token is pending, return a placeholder rate instead of 0
@@ -868,6 +905,12 @@ const Converter: React.FC<ConverterProps> = ({
     onCryptoChange(crypto);
     setCryptoDropdownOpen(false);
     setCryptoSearchTerm('');
+    
+    // Force price update for the new selection to ensure we have the latest data
+    // Especially important for newly added tokens
+    if (isPending(crypto)) {
+      updatePrices(true);
+    }
   };
 
   // Handle fiat selection change
@@ -931,15 +974,6 @@ const Converter: React.FC<ConverterProps> = ({
     }
     
     return null;
-  };
-
-  // Get token name with better display
-  const getTokenName = (symbol: string): string => {
-    const id = getCryptoId(symbol);
-    if (id && tokenMetadata[id]?.name) {
-      return `${symbol} - ${tokenMetadata[id].name}`;
-    }
-    return symbol;
   };
 
   // Enhanced handleImageError with better fallback and recovery

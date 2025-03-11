@@ -1184,17 +1184,54 @@ const AddTokens: React.FC = () => {
       // Add loading state
       setLoading(true);
       
-      // Pre-cache all token icons to ensure they're available immediately
+      // First, dispatch a pre-add event to notify components of upcoming tokens
+      // This helps the UI prepare for the new tokens before they're actually added
+      window.dispatchEvent(new CustomEvent('cryptoTokensPreAdd', {
+        detail: {
+          tokens: tokensToAdd.map(t => t.symbol.toUpperCase())
+        }
+      }));
+      
+      // Optimize the icon caching process for instant display
       const iconCachingPromises = Array.from(selectedCryptos.values()).map(async crypto => {
         if (crypto.image) {
           try {
-            // Cache with symbol
-            const iconCacheKey = `token-icon-${crypto.symbol.toLowerCase()}`;
+            // Use the correct cache key format to match what CryptoContext expects
+            const iconCacheKey = `crypto_icon_${crypto.symbol.toLowerCase()}`;
             localStorage.setItem(iconCacheKey, crypto.image);
             
             // Also cache with ID for redundancy
-            const idIconCacheKey = `token-icon-id-${crypto.id.toLowerCase()}`;
+            const idIconCacheKey = `crypto_icon_id-${crypto.id.toLowerCase()}`;
             localStorage.setItem(idIconCacheKey, crypto.image);
+            
+            // Generate and cache a canvas fallback immediately
+            try {
+              // Create canvas fallback for faster initial display even when image URL is available
+              const canvas = document.createElement('canvas');
+              canvas.width = 32;
+              canvas.height = 32;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                // Only create if we don't have a valid image yet
+                if (!localStorage.getItem(iconCacheKey)) {
+                  ctx.fillStyle = '#8b5cf6';
+                  ctx.beginPath();
+                  ctx.arc(16, 16, 16, 0, Math.PI * 2);
+                  ctx.fill();
+                  
+                  ctx.fillStyle = 'white';
+                  ctx.font = 'bold 14px Arial';
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'middle';
+                  ctx.fillText(crypto.symbol.charAt(0).toUpperCase(), 16, 16);
+                  
+                  const placeholderIcon = canvas.toDataURL();
+                  localStorage.setItem(iconCacheKey, placeholderIcon);
+                }
+              }
+            } catch (canvasError) {
+              console.error('Error creating canvas fallback:', canvasError);
+            }
             
             // Preload the image to ensure it's in browser cache
             return new Promise<void>((resolve) => {
@@ -1203,18 +1240,50 @@ const AddTokens: React.FC = () => {
               img.onerror = () => resolve(); // Continue even if image fails to load
               img.src = crypto.image;
               
-              // Set a timeout to resolve anyway after 2 seconds
-              setTimeout(resolve, 2000);
+              // Set a timeout to resolve anyway after 1 second (reduced from 2 seconds)
+              setTimeout(resolve, 500);
             });
           } catch (error) {
             console.error('Error caching token icon before adding:', error);
+          }
+        } else {
+          // For tokens without images, create a canvas placeholder immediately
+          const symbol = crypto.symbol.toUpperCase();
+          const iconCacheKey = `crypto_icon_${symbol.toLowerCase()}`;
+          
+          try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 32;
+            canvas.height = 32;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.fillStyle = '#8b5cf6';
+              ctx.beginPath();
+              ctx.arc(16, 16, 16, 0, Math.PI * 2);
+              ctx.fill();
+              
+              ctx.fillStyle = 'white';
+              ctx.font = 'bold 14px Arial';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(symbol.charAt(0), 16, 16);
+              
+              const placeholderIcon = canvas.toDataURL();
+              localStorage.setItem(iconCacheKey, placeholderIcon);
+            }
+          } catch (canvasError) {
+            console.error('Error creating canvas fallback for token without image:', canvasError);
           }
         }
         return Promise.resolve();
       });
       
-      // Wait for all icons to be cached
-      await Promise.all(iconCachingPromises);
+      // Wait for all icons to be cached with a maximum timeout
+      const cachePromise = Promise.all(iconCachingPromises);
+      const timeoutPromise = new Promise<void>(resolve => setTimeout(resolve, 500));
+      
+      // Use Promise.race to continue after all icons are cached or timeout is reached
+      await Promise.race([cachePromise, timeoutPromise]);
 
       // Add all tokens at once
       await addCryptos(tokensToAdd);
@@ -1225,14 +1294,21 @@ const AddTokens: React.FC = () => {
         setTimeout(async () => {
           await checkAndUpdateMissingIcons();
           
-          // Schedule another check after a longer delay to catch any stragglers
-          setTimeout(checkAndUpdateMissingIcons, 5000);
-        }, 1000);
+          // Dispatch a token update completed event
+          window.dispatchEvent(new CustomEvent('cryptoTokensAddComplete', {
+            detail: {
+              tokens: tokensToAdd.map(t => t.symbol.toUpperCase())
+            }
+          }));
+          
+          // Schedule another check after a shorter delay to catch any stragglers
+          setTimeout(checkAndUpdateMissingIcons, 2000);
+        }, 500);
       } catch (error) {
         console.error('Error scheduling icon check:', error);
       }
 
-      // Navigate back to main page
+      // Navigate back to main page after a short delay to allow updates to propagate
       navigate('/');
     } catch (error) {
       console.error('Failed to add tokens:', error);

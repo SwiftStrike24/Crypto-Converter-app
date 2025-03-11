@@ -1144,6 +1144,14 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const newPrices = { ...prices };
     const highPrioritySymbols: string[] = [];
     const newTokenIds: string[] = [];
+    
+    // Create a dispatch event to notify all components of token additions
+    const tokenUpdateEvent = new CustomEvent('cryptoTokensUpdated', {
+      detail: { 
+        action: 'add',
+        tokens: tokens.map(t => t.symbol.toUpperCase())
+      }
+    });
 
     // Remove default tokens from storage object
     Object.keys(defaultCryptoIds).forEach(key => {
@@ -1171,25 +1179,77 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         
         // Add to high priority list for immediate update
         highPrioritySymbols.push(upperSymbol);
+        
+        // Cache a minimal icon placeholder for immediate display
+        const iconCacheKey = `${ICON_CACHE_PREFIX}${upperSymbol.toLowerCase()}`;
+        if (!localStorage.getItem(iconCacheKey)) {
+          // Create a simple data URI for the token's first letter
+          const canvas = document.createElement('canvas');
+          canvas.width = 32;
+          canvas.height = 32;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = '#8b5cf6';
+            ctx.beginPath();
+            ctx.arc(16, 16, 16, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(upperSymbol.charAt(0).toUpperCase(), 16, 16);
+            
+            const placeholderIcon = canvas.toDataURL();
+            localStorage.setItem(iconCacheKey, placeholderIcon);
+          }
+        }
       }
     });
     
     // If no new tokens, return early
     if (newSymbols.length === 0) return;
     
-    // Update prices with placeholders
+    // Update prices with placeholders immediately
     setPrices(newPrices);
     
     // Save only custom tokens to localStorage
     localStorage.setItem(STORAGE_KEY, JSON.stringify(storageIds));
+    
+    // Immediately update cryptoIds and availableCryptos
     setCryptoIds(newCryptoIds);
 
     const defaultTokens = Object.keys(defaultCryptoIds);
+    
+    // Optimistic update for availableCryptos to ensure immediate UI update
     setAvailableCryptos(prev => {
+      // Ensure we don't add duplicates and maintain sorting order
       const existingCustomTokens = prev.filter(token => !defaultTokens.includes(token));
-      const allTokens = [...new Set([...defaultTokens, ...existingCustomTokens, ...newSymbols])];
-      return allTokens;
+      const allCustomTokens = [...new Set([...existingCustomTokens, ...newSymbols])].sort();
+      return [...defaultTokens, ...allCustomTokens];
     });
+
+    // Pre-populate metadata with basic info for immediate UI display
+    const updatedMetadata = { ...tokenMetadata };
+    tokens.forEach(({ symbol, id }) => {
+      const upperSymbol = symbol.toUpperCase();
+      const lowerId = id.toLowerCase();
+      
+      // Add minimal metadata if we don't have any yet
+      if (!updatedMetadata[lowerId]) {
+        updatedMetadata[lowerId] = {
+          symbol: upperSymbol,
+          name: upperSymbol, // Use symbol as fallback name until we fetch real data
+          icon_fetching: true // Flag to indicate we're fetching the icon
+        };
+      }
+    });
+    
+    // Update metadata state with a batched update
+    setTokenMetadata(updatedMetadata);
+
+    // Dispatch token update event to notify components
+    window.dispatchEvent(tokenUpdateEvent);
 
     // Immediately try to fetch metadata for new tokens with high priority
     if (newTokenIds.length > 0) {
@@ -1201,15 +1261,44 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (missingTokenIds.length > 0) {
           // Prioritize fetching metadata for these tokens
           fetchTokenMetadata(missingTokenIds);
+          
+          // Also force an immediate check for icons
+          setTimeout(checkAndUpdateMissingIcons, 50);
         }
       } catch (error) {
         console.error('Error pre-fetching token metadata:', error);
       }
     }
 
-    // Queue high priority update for the new symbols
+    // Queue high priority update for the new symbols with higher priority
     queuePriceUpdate(highPrioritySymbols, true);
-  }, [cryptoIds, prices, queuePriceUpdate, fetchTokenMetadata, tokenMetadata]);
+    
+    // Start a micro-batch of immediate UI updates to ensure dropdown reflects new tokens
+    setTimeout(() => {
+      // Force a metadata update for UI without waiting for API
+      setTokenMetadata(currentMetadata => {
+        const updatedMetadata = { ...currentMetadata };
+        newTokenIds.forEach((id, index) => {
+          if (updatedMetadata[id]) {
+            // Ensure the metadata has required fields for UI rendering
+            updatedMetadata[id] = {
+              ...updatedMetadata[id],
+              symbol: newSymbols[index],
+              name: updatedMetadata[id].name || newSymbols[index],
+              image: updatedMetadata[id].image || null
+            };
+          }
+        });
+        return updatedMetadata;
+      });
+      
+      // Dispatch another update event after metadata is updated
+      window.dispatchEvent(new CustomEvent('cryptoMetadataUpdated'));
+      
+      // Trigger a price update after minimal delay
+      updatePrices(true);
+    }, 100);
+  }, [cryptoIds, prices, queuePriceUpdate, fetchTokenMetadata, tokenMetadata, checkAndUpdateMissingIcons, updatePrices]);
 
   const deleteCrypto = useCallback((symbol: string) => {
     // Don't allow deletion of default tokens
