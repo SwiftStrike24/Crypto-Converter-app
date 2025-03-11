@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled, { keyframes, css } from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
 import { useNavigate } from 'react-router-dom';
 import { FaMagnifyingGlassChart } from 'react-icons/fa6';
+
+// Constants
+const ICON_CACHE_PREFIX = 'crypto_icon_';
 
 const ConverterContainer = styled.div`
   display: flex;
@@ -38,25 +41,6 @@ const Input = styled.input`
     cursor: not-allowed;
   }
 `;
-
-const Select = styled.select`
-  padding: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: white;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-
-  &:focus {
-    outline: none;
-    border-color: #8b5cf6;
-  }
-
-  option {
-    background: #1a1a1a;
-  }
-` as React.FC<React.SelectHTMLAttributes<HTMLSelectElement>>;
 
 const Label = styled.label`
   position: absolute;
@@ -155,13 +139,210 @@ const ResultBox = styled.div`
   }
 `;
 
+// Define shimmer animation
+const shimmer = keyframes`
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
+`;
+
+// Enhanced Select component with custom dropdown
+const SelectContainer = styled.div`
+  position: relative;
+  min-width: 100px;
+  -webkit-app-region: no-drag;
+`;
+
+const SelectButton = styled.button<{ isOpen?: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  width: 100%;
+  -webkit-app-region: no-drag;
+  transition: all 0.2s ease;
+  
+  &:focus, &:hover {
+    outline: none;
+    border-color: #8b5cf6;
+    background: rgba(255, 255, 255, 0.15);
+  }
+  
+  .token-icon, .token-fallback-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #2a2a2a;
+    object-fit: cover;
+  }
+  
+  .token-text {
+    flex: 1;
+    text-align: left;
+    font-size: 14px;
+    white-space: nowrap;
+  }
+  
+  .loading-indicator {
+    font-size: 12px;
+    color: #8b5cf6;
+    margin-left: 4px;
+  }
+  
+  .dropdown-arrow {
+    margin-left: 4px;
+    transition: transform 0.2s ease;
+    transform: ${props => props.isOpen ? 'rotate(180deg)' : 'rotate(0deg)'};
+  }
+`;
+
+const DropdownMenu = styled.div<{ isOpen: boolean }>`
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  max-height: 200px; /* Limit height to show ~4 items */
+  overflow-y: auto;
+  background: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  z-index: 1000; /* Ensure it's above other elements */
+  display: ${props => props.isOpen ? 'block' : 'none'};
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #1a1a1a;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+    
+    &:hover {
+      background: #444;
+    }
+  }
+`;
+
+const DropdownItem = styled.button<{ isSelected: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  width: 100%;
+  background: ${props => props.isSelected ? 'rgba(139, 92, 246, 0.15)' : 'transparent'};
+  border: none;
+  color: white;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  
+  .token-icon, .token-fallback-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #2a2a2a;
+    object-fit: cover;
+  }
+  
+  .token-text {
+    flex: 1;
+    font-size: 14px;
+  }
+  
+  .loading-indicator {
+    font-size: 12px;
+    color: #8b5cf6;
+  }
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  padding: 8px 12px;
+  background: #2a2a2a;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 14px;
+  
+  &:focus {
+    outline: none;
+  }
+  
+  &::placeholder {
+    color: #666;
+  }
+`;
+
+const NoResults = styled.div`
+  padding: 12px;
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+`;
+
+const TokenIcon = styled.img`
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #2a2a2a;
+  object-fit: cover;
+  position: relative;
+  
+  &.loading {
+    background: linear-gradient(90deg, #333 0%, #444 50%, #333 100%);
+    background-size: 200% 100%;
+    animation: ${shimmer} 1.5s infinite;
+  }
+`;
+
+const TokenFallbackIcon = styled.div`
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #8b5cf6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: bold;
+  color: white;
+  position: relative;
+`;
+
 const Amount = styled.div`
   font-size: 20px;
   color: white;
   font-weight: 500;
 `;
 
-const fiats = ['USD', 'CAD', 'EUR'];
+const TokenNameWrapper = styled.span`
+  color: #888;
+  margin-left: 4px;
+  font-size: 12px;
+`;
+
+const VirtualScrollSpacer = styled.div<{ height: number }>`
+  ${props => css`
+    height: ${props.height}px;
+  `}
+`;
 
 interface ConverterProps {
   onCryptoChange: (crypto: string) => void;
@@ -223,30 +404,11 @@ const Tooltip = styled.div`
 
 const ButtonWrapper = styled.div`
   position: fixed;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-
-  &.right-button:hover ${Tooltip} {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  &.left-button:hover ${Tooltip} {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  @media (max-width: 768px) {
-    &.right-button {
-      right: 16px;
-      bottom: 16px;
-    }
-    &.left-button {
-      left: 16px;
-      bottom: 16px;
-    }
+  z-index: 10; /* Lower z-index than dropdown */
+  transition: all 0.3s ease;
+  
+  &:hover {
+    transform: translateY(-2px);
   }
 `;
 
@@ -351,48 +513,213 @@ const Converter: React.FC<ConverterProps> = ({
   defaultCrypto,
   defaultFiat
 }) => {
-  const [cryptoAmount, setCryptoAmount] = useState<string>('');
-  const [fiatAmount, setFiatAmount] = useState<string>('');
+  // State for the converter
   const [selectedCrypto, setSelectedCrypto] = useState(defaultCrypto);
   const [selectedFiat, setSelectedFiat] = useState(defaultFiat);
-  const [error, setError] = useState<string>('');
+  const [cryptoAmount, setCryptoAmount] = useState('');
+  const [fiatAmount, setFiatAmount] = useState('');
+  const [error, setError] = useState('');
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [lastEditedField, setLastEditedField] = useState<'crypto' | 'fiat'>('crypto');
-  const { prices, availableCryptos, isPending } = useCrypto();
+  const [cryptoDropdownOpen, setCryptoDropdownOpen] = useState(false);
+  const [fiatDropdownOpen, setFiatDropdownOpen] = useState(false);
+  const [cryptoSearchTerm, setCryptoSearchTerm] = useState('');
+  const [fiatSearchTerm, setFiatSearchTerm] = useState('');
+  const [showCopyTooltip, setShowCopyTooltip] = useState(false);
+  const [preloadedIcons, setPreloadedIcons] = useState<Set<string>>(new Set());
+  
+  // Refs for handling outside clicks and scrolling
+  const cryptoDropdownRef = useRef<HTMLDivElement>(null);
+  const fiatDropdownRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const cryptoInputRef = useRef<HTMLInputElement>(null);
   const fiatInputRef = useRef<HTMLInputElement>(null);
+  
+  // Track icon fetch attempts to avoid repeated requests
+  const iconFetchAttempts = useRef<Record<string, number>>({});
+  
+  // Add a ref to track icon update intervals
+  const iconUpdateInterval = useRef<NodeJS.Timeout | null>(null);
+  const lastIconCheck = useRef<number>(0);
+  const missingIconsCount = useRef<number>(0);
+  const iconUpdateAttempts = useRef<Record<string, number>>({});
+  
+  const { 
+    prices, 
+    availableCryptos, 
+    isPending, 
+    tokenMetadata, 
+    getCryptoId, 
+    updatePrices,
+    checkAndUpdateMissingIcons,
+    setTokenMetadata
+  } = useCrypto();
   const navigate = useNavigate();
-
-  // Enhanced focus handling
+  
+  const fiats = ['USD', 'EUR', 'CAD'];
+  
+  // Filter cryptos based on search term
+  const filteredCryptos = cryptoSearchTerm 
+    ? availableCryptos.filter(crypto => 
+        crypto.toLowerCase().includes(cryptoSearchTerm.toLowerCase()) ||
+        (tokenMetadata[getCryptoId(crypto) || '']?.name || '').toLowerCase().includes(cryptoSearchTerm.toLowerCase())
+      )
+    : availableCryptos;
+    
+  // Virtual list implementation - only render visible items
+  const [visibleStartIndex, setVisibleStartIndex] = useState(0);
+  const itemHeight = 40; // Approximate height of each dropdown item in pixels
+  const bufferItems = 5; // Number of items to render above and below visible area
+  const visibleItems = 10; // Approximate number of items visible in the dropdown
+  
+  // Handle dropdown scroll to update visible items
+  const handleDropdownScroll = () => {
+    if (dropdownRef.current) {
+      const scrollTop = dropdownRef.current.scrollTop;
+      const newStartIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - bufferItems);
+      setVisibleStartIndex(newStartIndex);
+    }
+  };
+  
+  // Calculate visible items range
+  const endIndex = Math.min(
+    visibleStartIndex + visibleItems + 2 * bufferItems,
+    filteredCryptos.length
+  );
+  
+  // Visible items to render
+  const visibleCryptos = filteredCryptos.slice(visibleStartIndex, endIndex);
+  
+  // Create spacer elements for virtual scrolling
+  const topSpacerHeight = visibleStartIndex * itemHeight;
+  const bottomSpacerHeight = Math.max(
+    0,
+    (filteredCryptos.length - endIndex) * itemHeight
+  );
+  
+  // Enhanced function to check for missing icons
+  const checkMissingIcons = async () => {
+    try {
+      // Don't check too frequently
+      const now = Date.now();
+      if (now - lastIconCheck.current < 30000) { // 30 seconds minimum between checks
+        return;
+      }
+      
+      lastIconCheck.current = now;
+      
+      // Check for missing icons
+      const count = await checkAndUpdateMissingIcons();
+      missingIconsCount.current = count;
+      
+      // If we found missing icons, schedule another check soon
+      if (count > 0) {
+        console.log(`Found ${count} tokens with missing icons, scheduling another check`);
+        // Schedule another check in 10 seconds
+        setTimeout(checkMissingIcons, 10000);
+      }
+    } catch (error) {
+      console.error('Error checking for missing icons:', error);
+    }
+  };
+  
+  // Enhanced useEffect for icon checking
   useEffect(() => {
-    const electron = window.require('electron');
-    const ipcRenderer = electron.ipcRenderer;
-
-    const handleWindowFocus = () => {
-      // Small delay to ensure window is fully focused
-      setTimeout(() => {
-        if (lastEditedField === 'crypto' && cryptoInputRef.current) {
-          cryptoInputRef.current.focus();
-        } else if (lastEditedField === 'fiat' && fiatInputRef.current) {
-          fiatInputRef.current.focus();
-        }
-      }, 50);
-    };
-
-    // Listen for focus events from main process
-    ipcRenderer.on('window-focused', handleWindowFocus);
-
+    // Initial check for missing icons
+    checkMissingIcons();
+    
+    // Set up periodic checks for missing icons
+    iconUpdateInterval.current = setInterval(() => {
+      checkMissingIcons();
+    }, 2 * 60 * 1000); // Check every 2 minutes
+    
     return () => {
-      ipcRenderer.removeListener('window-focused', handleWindowFocus);
+      // Clean up interval on unmount
+      if (iconUpdateInterval.current) {
+        clearInterval(iconUpdateInterval.current);
+      }
     };
-  }, [lastEditedField]);
+  }, []);
 
-  // Reset inputs when switching assets
+  // Close dropdowns when clicking outside
   useEffect(() => {
-    setCryptoAmount('');
-    setFiatAmount('');
-    setError('');
-  }, [selectedCrypto, selectedFiat]);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (cryptoDropdownRef.current && !cryptoDropdownRef.current.contains(event.target as Node)) {
+        setCryptoDropdownOpen(false);
+      }
+      if (fiatDropdownRef.current && !fiatDropdownRef.current.contains(event.target as Node)) {
+        setFiatDropdownOpen(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Ensure metadata is loaded for default tokens when the component mounts
+  useEffect(() => {
+    // Trigger an update to ensure metadata is loaded for default tokens
+    updatePrices(false);
+  }, [updatePrices]);
+
+  // Ensure token icons are refreshed when component mounts or selected crypto changes
+  useEffect(() => {
+    // Check if we have the icon for the current crypto
+    const id = getCryptoId(selectedCrypto);
+    if (id && !tokenMetadata[id]?.image) {
+      // Try to get from localStorage first
+      const iconCacheKey = `${ICON_CACHE_PREFIX}${selectedCrypto.toLowerCase()}`;
+      const cachedIcon = localStorage.getItem(iconCacheKey);
+      
+      if (!cachedIcon) {
+        // If not in localStorage, trigger a metadata update
+        updatePrices(true);
+      }
+    }
+  }, [selectedCrypto, getCryptoId, tokenMetadata, updatePrices]);
+  
+  // Reset state when crypto selection changes
+  useEffect(() => {
+    const resetState = () => {
+      setCryptoAmount('');
+      setFiatAmount('');
+      setError('');
+    };
+
+    // Reset state when crypto selection changes
+    resetState();
+    
+    // Update selected crypto if it's no longer available
+    if (!availableCryptos.includes(selectedCrypto)) {
+      setSelectedCrypto(availableCryptos[0]);
+      onCryptoChange(availableCryptos[0]);
+    }
+  }, [selectedCrypto, selectedFiat, availableCryptos]);
+
+  // Check for missing icons when component mounts and when available cryptos change
+  useEffect(() => {
+    // Check for missing icons on mount and when available cryptos change
+    const checkMissingIcons = async () => {
+      // Only run if we have cryptos available
+      if (availableCryptos.length > 0) {
+        await checkAndUpdateMissingIcons();
+      }
+    };
+    
+    // Run the check
+    checkMissingIcons();
+    
+    // Set up a periodic check for missing icons (every 10 minutes)
+    const iconCheckInterval = setInterval(() => {
+      checkMissingIcons();
+    }, 10 * 60 * 1000);
+    
+    return () => {
+      clearInterval(iconCheckInterval);
+    };
+  }, [availableCryptos, checkAndUpdateMissingIcons]);
 
   const getRate = (crypto: string, fiat: string): number => {
     // If the token is pending, return a placeholder rate instead of 0
@@ -536,17 +863,131 @@ const Converter: React.FC<ConverterProps> = ({
   };
 
   // Handle crypto selection change
-  const handleCryptoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newCrypto = e.target.value;
-    setSelectedCrypto(newCrypto);
-    onCryptoChange(newCrypto);
+  const handleCryptoChange = (crypto: string) => {
+    setSelectedCrypto(crypto);
+    onCryptoChange(crypto);
+    setCryptoDropdownOpen(false);
+    setCryptoSearchTerm('');
   };
 
   // Handle fiat selection change
-  const handleFiatChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newFiat = e.target.value;
-    setSelectedFiat(newFiat);
-    onFiatChange(newFiat);
+  const handleFiatChange = (fiat: string) => {
+    setSelectedFiat(fiat);
+    onFiatChange(fiat);
+    setFiatDropdownOpen(false);
+  };
+
+  // Enhanced getTokenIcon function with better error handling and fallbacks
+  const getTokenIcon = (symbol: string): string | null => {
+    if (!symbol) return null;
+    
+    const normalizedSymbol = symbol.toUpperCase();
+    
+    // Check if we already have the icon in metadata
+    const id = getCryptoId(normalizedSymbol);
+    if (id && tokenMetadata[id]?.image) {
+      return tokenMetadata[id].image;
+    }
+    
+    // Use a local icon cache to prevent repeated requests
+    const iconCacheKey = `${ICON_CACHE_PREFIX}${normalizedSymbol.toLowerCase()}`;
+    const cachedIcon = localStorage.getItem(iconCacheKey);
+    if (cachedIcon) {
+      // If we have a cached icon but no metadata, update the metadata
+      if (id && !tokenMetadata[id]?.image) {
+        // This will trigger a metadata update in the background
+        setTimeout(() => {
+          // Update the metadata with the cached icon
+          setTokenMetadata((prev: Record<string, any>) => ({
+            ...prev,
+            [id]: {
+              ...(prev[id] || {}),
+              image: cachedIcon,
+              symbol: normalizedSymbol
+            }
+          }));
+        }, 0);
+      }
+      return cachedIcon;
+    }
+    
+    // If we don't have an icon but we have an ID, trigger a background fetch
+    if (id && !isPending(normalizedSymbol)) {
+      // Debounce the fetch to avoid multiple requests for the same token
+      const now = Date.now();
+      const lastFetchAttempt = iconFetchAttempts.current[normalizedSymbol] || 0;
+      
+      // Only attempt to fetch if we haven't tried in the last 2 minutes (reduced from 5 minutes)
+      if (now - lastFetchAttempt > 2 * 60 * 1000) {
+        iconFetchAttempts.current[normalizedSymbol] = now;
+        iconUpdateAttempts.current[normalizedSymbol] = (iconUpdateAttempts.current[normalizedSymbol] || 0) + 1;
+        
+        // Trigger a background fetch for this token's metadata
+        setTimeout(() => {
+          // Use the checkAndUpdateMissingIcons function from context
+          checkMissingIcons();
+        }, 100);
+      }
+    }
+    
+    return null;
+  };
+
+  // Get token name with better display
+  const getTokenName = (symbol: string): string => {
+    const id = getCryptoId(symbol);
+    if (id && tokenMetadata[id]?.name) {
+      return `${symbol} - ${tokenMetadata[id].name}`;
+    }
+    return symbol;
+  };
+
+  // Enhanced handleImageError with better fallback and recovery
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>, symbol?: string) => {
+    const img = e.currentTarget;
+    img.onerror = null; // Prevent infinite error loops
+    
+    if (!symbol) return;
+    
+    // Set a default placeholder
+    img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzYyNjJGRiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSJ3aGl0ZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0cHgiPnt7c3ltYm9sfX08L3RleHQ+PC9zdmc+';
+    
+    // Try to replace the placeholder with the first letter of the symbol
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#6262FF';
+        ctx.beginPath();
+        ctx.arc(16, 16, 16, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(symbol.charAt(0).toUpperCase(), 16, 16);
+        
+        img.src = canvas.toDataURL();
+      }
+    } catch (error) {
+      console.error('Error creating fallback icon:', error);
+    }
+    
+    // Trigger a background fetch for this token's icon
+    const normalizedSymbol = symbol.toUpperCase();
+    const now = Date.now();
+    const lastFetchAttempt = iconFetchAttempts.current[normalizedSymbol] || 0;
+    
+    // Only attempt to fetch if we haven't tried in the last minute
+    if (now - lastFetchAttempt > 60 * 1000) {
+      iconFetchAttempts.current[normalizedSymbol] = now;
+      
+      // Schedule an immediate check for missing icons
+      setTimeout(checkMissingIcons, 100);
+    }
   };
 
   const handleCopy = async () => {
@@ -566,23 +1007,6 @@ const Converter: React.FC<ConverterProps> = ({
     }
   };
 
-  useEffect(() => {
-    const resetState = () => {
-      setCryptoAmount('');
-      setFiatAmount('');
-      setError('');
-    };
-
-    // Reset state when crypto selection changes
-    resetState();
-    
-    // Update selected crypto if it's no longer available
-    if (!availableCryptos.includes(selectedCrypto)) {
-      setSelectedCrypto(availableCryptos[0]);
-      onCryptoChange(availableCryptos[0]);
-    }
-  }, [selectedCrypto, selectedFiat, availableCryptos]);
-
   // Check if the selected crypto is pending
   const isSelectedCryptoPending = isPending(selectedCrypto);
 
@@ -599,16 +1023,160 @@ const Converter: React.FC<ConverterProps> = ({
           placeholder="0.00"
           ref={cryptoInputRef}
         />
-        <Select
-          value={selectedCrypto}
-          onChange={handleCryptoChange}
-        >
-          {availableCryptos.map((crypto) => (
-            <option key={crypto} value={crypto}>
-              {crypto} {isPending(crypto) ? '(Loading...)' : ''}
-            </option>
-          ))}
-        </Select>
+        <SelectContainer ref={cryptoDropdownRef}>
+          <SelectButton 
+            onClick={() => setCryptoDropdownOpen(!cryptoDropdownOpen)}
+            aria-label="Select cryptocurrency"
+            aria-expanded={cryptoDropdownOpen}
+            isOpen={cryptoDropdownOpen}
+          >
+            {getTokenIcon(selectedCrypto) ? (
+              <>
+                <TokenIcon 
+                  src={getTokenIcon(selectedCrypto) || ''} 
+                  alt={selectedCrypto}
+                  className="token-icon"
+                  onError={(e) => handleImageError(e, selectedCrypto)}
+                  loading="lazy"
+                  onLoad={() => {
+                    // Mark as successfully loaded
+                    setPreloadedIcons(prev => new Set([...prev, selectedCrypto]));
+                  }}
+                />
+                <TokenFallbackIcon 
+                  className="token-fallback-icon" 
+                  style={{ display: 'none' }}
+                >
+                  {selectedCrypto.charAt(0)}
+                </TokenFallbackIcon>
+              </>
+            ) : (
+              <>
+                <TokenFallbackIcon className="token-fallback-icon">
+                  {selectedCrypto.charAt(0)}
+                </TokenFallbackIcon>
+                {/* Trigger a background update for the selected token's icon */}
+                {(() => {
+                  const id = getCryptoId(selectedCrypto);
+                  if (id && !preloadedIcons.has(selectedCrypto)) {
+                    // Schedule an immediate check for this token's icon
+                    setTimeout(() => {
+                      // Mark as attempted
+                      setPreloadedIcons(prev => new Set([...prev, selectedCrypto]));
+                      // Try to fetch the icon with high priority
+                      checkMissingIcons();
+                    }, 100);
+                  }
+                  return null;
+                })()}
+              </>
+            )}
+            <span className="token-text">{selectedCrypto}</span>
+            {isPending(selectedCrypto) && (
+              <span className="loading-indicator">(Loading...)</span>
+            )}
+            <svg 
+              className="dropdown-arrow" 
+              width="12" 
+              height="6" 
+              viewBox="0 0 12 6" 
+              fill="none" 
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path d="M1 1L6 5L11 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </SelectButton>
+          <DropdownMenu 
+            isOpen={cryptoDropdownOpen} 
+            ref={dropdownRef as React.RefObject<HTMLDivElement>}
+            onScroll={handleDropdownScroll}
+          >
+            <SearchInput 
+              type="text" 
+              placeholder="Search" 
+              value={cryptoSearchTerm}
+              onChange={(e) => setCryptoSearchTerm(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+            />
+            {filteredCryptos.length > 0 ? (
+              <>
+                {/* Top spacer for virtual scrolling */}
+                {topSpacerHeight > 0 && <VirtualScrollSpacer height={topSpacerHeight} />}
+                
+                {/* Only render visible items */}
+                {visibleCryptos.map((crypto) => (
+                  <DropdownItem
+                    key={crypto}
+                    onClick={() => handleCryptoChange(crypto)}
+                    isSelected={crypto === selectedCrypto}
+                  >
+                    {getTokenIcon(crypto) ? (
+                      <>
+                        <TokenIcon 
+                          src={getTokenIcon(crypto) || ''} 
+                          alt={crypto}
+                          className="token-icon"
+                          onError={(e) => handleImageError(e, crypto)}
+                          loading="lazy"
+                          onLoad={() => {
+                            // Mark as successfully loaded
+                            setPreloadedIcons(prev => new Set([...prev, crypto]));
+                          }}
+                        />
+                        <TokenFallbackIcon 
+                          className="token-fallback-icon" 
+                          style={{ display: 'none' }}
+                        >
+                          {crypto.charAt(0)}
+                        </TokenFallbackIcon>
+                      </>
+                    ) : (
+                      <>
+                        <TokenFallbackIcon className="token-fallback-icon">
+                          {crypto.charAt(0)}
+                        </TokenFallbackIcon>
+                        {/* Enhanced background update for this token's icon */}
+                        {(() => {
+                          // Check if we've already tried to load this icon
+                          const hasAttempted = preloadedIcons.has(crypto);
+                          const id = getCryptoId(crypto);
+                          
+                          // If we haven't tried or it's been a while since our last attempt
+                          if (id && (!hasAttempted || 
+                              (iconUpdateAttempts.current[crypto] || 0) < 3)) {
+                            
+                            // Increment attempt counter
+                            iconUpdateAttempts.current[crypto] = 
+                              (iconUpdateAttempts.current[crypto] || 0) + 1;
+                            
+                            // Mark as attempted
+                            setPreloadedIcons(prev => new Set([...prev, crypto]));
+                            
+                            // Schedule an immediate check for this token's icon
+                            setTimeout(() => {
+                              // Try to fetch the icon with higher priority
+                              checkMissingIcons();
+                            }, 100);
+                          }
+                          return null;
+                        })()}
+                      </>
+                    )}
+                    <span>{crypto}</span>
+                    {isPending(crypto) && (
+                      <span className="loading-indicator">(Loading...)</span>
+                    )}
+                  </DropdownItem>
+                ))}
+                
+                {/* Bottom spacer for virtual scrolling */}
+                {bottomSpacerHeight > 0 && <VirtualScrollSpacer height={bottomSpacerHeight} />}
+              </>
+            ) : (
+              <NoResults>No tokens found</NoResults>
+            )}
+          </DropdownMenu>
+        </SelectContainer>
       </InputGroup>
 
       <InputGroup>
@@ -622,16 +1190,37 @@ const Converter: React.FC<ConverterProps> = ({
           placeholder="0.00"
           ref={fiatInputRef}
         />
-        <Select
-          value={selectedFiat}
-          onChange={handleFiatChange}
-        >
-          {fiats.map((fiat) => (
-            <option key={fiat} value={fiat}>
-              {fiat}
-            </option>
-          ))}
-        </Select>
+        <SelectContainer ref={fiatDropdownRef}>
+          <SelectButton 
+            onClick={() => setFiatDropdownOpen(!fiatDropdownOpen)}
+            aria-label="Select fiat currency"
+            aria-expanded={fiatDropdownOpen}
+            isOpen={fiatDropdownOpen}
+          >
+            <span className="token-text">{selectedFiat}</span>
+            <svg 
+              className="dropdown-arrow" 
+              width="12" 
+              height="6" 
+              viewBox="0 0 12 6" 
+              fill="none" 
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path d="M1 1L6 5L11 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </SelectButton>
+          <DropdownMenu isOpen={fiatDropdownOpen}>
+            {fiats.map((fiat) => (
+              <DropdownItem
+                key={fiat}
+                isSelected={fiat === selectedFiat}
+                onClick={() => handleFiatChange(fiat)}
+              >
+                <span className="token-text">{fiat}</span>
+              </DropdownItem>
+            ))}
+          </DropdownMenu>
+        </SelectContainer>
       </InputGroup>
 
       {error && !isSelectedCryptoPending && <ErrorMessage>{error}</ErrorMessage>}
