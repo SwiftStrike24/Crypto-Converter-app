@@ -170,6 +170,30 @@ The application uses environment variables for configuration:
 2. Add necessary API keys and configuration values
 3. See `.env.example` for required variables
 
+## Environment Variables
+
+This application uses environment variables for configuration. To set up your environment:
+
+1. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Fill in your API keys and credentials in the `.env` file:
+   - `VITE_COINGECKO_API_KEY`: Your CoinGecko API key
+   - `VITE_CRYPTOCOMPARE_API_KEY`: Your CryptoCompare API key
+   - `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`: Your Cloudflare R2 credentials (for update service)
+   - Other configuration variables as needed
+
+3. Never commit your `.env` file to version control. It's already added to `.gitignore`.
+
+## Security Notes
+
+- API keys and credentials are loaded from environment variables and passed to the renderer process securely.
+- No hardcoded credentials are used in the application.
+- For production builds, ensure all environment variables are properly set in your build environment.
+- When distributing the application, use a secure method to provide the necessary credentials.
+
 ## 🤝 Contributing
 
 1. Fork the repository

@@ -1,6 +1,11 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
 import path from 'path';
 import fs from 'fs';
+import { initUpdateHandlers } from './updateHandler';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config({ path: path.join(process.cwd(), '.env') });
 
 // Disable GPU acceleration to prevent crashes
 app.disableHardwareAcceleration();
@@ -260,6 +265,18 @@ app.whenReady().then(() => {
   }
 });
 
+// Get environment variables for R2
+const r2Env = {
+  CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || '',
+  R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || '',
+  R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '',
+  R2_ENDPOINT: process.env.R2_ENDPOINT || '',
+  R2_PUBLIC_URL: process.env.R2_PUBLIC_URL || '',
+  R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || 'cryptoconverter-downloads',
+  API_BASE_URL: process.env.API_BASE_URL || 'https://cryptovertx.com/api',
+  APP_VERSION: process.env.npm_package_version || '1.2.1'
+};
+
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
 
@@ -286,6 +303,9 @@ function createWindow() {
     icon: getIconPath(),
   });
 
+  // Initialize update handlers
+  initUpdateHandlers(mainWindow);
+
   // Enable DevTools in development
   if (IS_DEV) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
@@ -293,12 +313,41 @@ function createWindow() {
 
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);
+    
+    // In development, set environment variables after page load
+    mainWindow.webContents.on('did-finish-load', () => {
+      if (mainWindow) {
+        mainWindow.webContents.executeJavaScript(`
+          window.electron = window.electron || {};
+          window.electron.env = ${JSON.stringify(r2Env)};
+        `).then(() => {
+          console.log('Environment variables set in development mode');
+        }).catch(err => {
+          console.error('Error setting environment variables in development:', err);
+        });
+      }
+    });
   } else {
     const indexPath = path.join(DIST_PATH, 'index.html');
     mainWindow.loadFile(indexPath);
     
     mainWindow.webContents.on('did-finish-load', () => {
-      mainWindow?.webContents.send('navigate-to', '/');
+      // Pass environment variables to renderer process
+      if (mainWindow) {
+        mainWindow.webContents.executeJavaScript(`
+          window.electron = window.electron || {};
+          window.electron.env = ${JSON.stringify(r2Env)};
+          console.log('R2 environment variables loaded:', window.electron.env);
+        `).then(() => {
+          // Navigate to home page after setting environment variables
+          mainWindow?.webContents.send('navigate-to', '/');
+          console.log('Environment variables set and navigation triggered');
+        }).catch(err => {
+          console.error('Error setting environment variables:', err);
+          // Still try to navigate even if setting env vars fails
+          mainWindow?.webContents.send('navigate-to', '/');
+        });
+      }
     });
   }
 
