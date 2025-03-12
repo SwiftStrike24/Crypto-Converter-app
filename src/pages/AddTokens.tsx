@@ -30,8 +30,9 @@ const PageContainer = styled.div`
   
   @media (max-width: 768px) {
     padding: 16px;
-    width: 100vw;
+    width: 100%;
     left: 0;
+    right: 0;
     transform: none;
   }
 `;

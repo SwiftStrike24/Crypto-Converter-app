@@ -6,8 +6,8 @@ import { useCrypto } from '../context/CryptoContext';
 import { FiArrowLeft, FiTrash2, FiTrash } from 'react-icons/fi';
 
 const PageContainer = styled(motion.div)`
-  min-height: 100vh;
-  width: 100vw;
+  height: 100%;
+  width: 100%;
   background: linear-gradient(135deg, rgba(18, 18, 18, 0.97), rgba(26, 26, 28, 0.95));
   color: white;
   padding: 24px;
@@ -18,6 +18,8 @@ const PageContainer = styled(motion.div)`
   position: fixed;
   top: 0;
   left: 0;
+  right: 0;
+  bottom: 0;
   overflow: hidden;
 `;
 

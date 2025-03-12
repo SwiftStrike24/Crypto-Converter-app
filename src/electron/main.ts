@@ -279,11 +279,9 @@ function createWindow() {
     y: Math.round(workArea.y + (workArea.height - 300) / 2),
     alwaysOnTop: true,
     skipTaskbar: false,
-    resizable: true,
-    maximizable: true,
+    resizable: false,
+    maximizable: false,
     minimizable: true,
-    minWidth: 400,
-    minHeight: 300,
     backgroundColor: '#111111',
     icon: getIconPath(),
   });
@@ -349,9 +347,9 @@ function createWindow() {
       height 
     }, true);
 
-    // Update window properties based on isFullScreen
-    mainWindow.setResizable(true);
-    mainWindow.setMaximizable(isFullScreen);
+    // Update window properties based on isFullScreen while keeping the window non-resizable
+    mainWindow.setResizable(false);
+    mainWindow.setMaximizable(false);
     mainWindow.setAlwaysOnTop(!isFullScreen);
     mainWindow.setSkipTaskbar(!isFullScreen);
   });

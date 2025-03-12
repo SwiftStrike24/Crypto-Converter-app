@@ -5,19 +5,20 @@ import { TokenStats } from '../components/TokenStats';
 import TradingViewWidget from '../components/TradingViewWidget';
 
 const PageContainer = styled.div`
-  height: 850px;
-  width: 1200px;
+  height: 100%;
+  width: 100%;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   padding: 1rem;
   background: #111111;
   transition: all 0.3s ease;
-  
-  @media (max-width: 1200px) {
-    width: 100%;
-    height: 100vh;
-  }
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
 `;
 
 const Header = styled.div`
@@ -143,7 +144,7 @@ const BackButton = styled.button`
 const ChartWrapper = styled.div`
   flex: 1;
   width: 100%;
-  max-width: 1200px;
+  max-width: 100%;
   margin: 0 auto;
   background: rgba(26, 26, 26, 0.8);
   border-radius: 16px;
@@ -151,16 +152,12 @@ const ChartWrapper = styled.div`
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(139, 92, 246, 0.1);
   backdrop-filter: blur(20px);
-  height: calc(850px - 100px); // Account for header and padding
+  height: calc(100% - 80px); // Account for header and padding
   transition: all 0.3s ease;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  
-  @media (max-width: 1200px) {
-    height: calc(100vh - 100px);
-    min-height: 600px;
-  }
+  overflow: hidden;
 `;
 
 const ChartControls = styled.div`

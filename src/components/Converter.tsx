@@ -548,7 +548,7 @@ const Converter: React.FC<ConverterProps> = ({
   } = useCrypto();
   const navigate = useNavigate();
   
-  const fiats = ['USD', 'EUR', 'CAD'];
+  const fiats = ['USD','CAD', 'EUR'];
   
   // Filter cryptos based on search term
   const filteredCryptos = cryptoSearchTerm 
