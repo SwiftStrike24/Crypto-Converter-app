@@ -11,8 +11,9 @@ interface AWSError extends Error {
 // Bucket name - should be configured in .env
 export const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'cryptoconverter-downloads';
 
-// Current app version from package.json
-export const CURRENT_VERSION = process.env.APP_VERSION || '1.2.1';
+// Get package version dynamically - no hardcoded values
+// This will be overridden by the actual app version from electron main process
+export let CURRENT_VERSION = '';
 
 // Base URL for API endpoints
 export const API_BASE_URL = process.env.API_BASE_URL || 'https://cryptovertx.com/api';
@@ -159,8 +160,8 @@ export function extractVersionFromFilename(filename: string): string {
   const genericMatch = filename.match(/(\d+\.\d+\.\d+)/);
   if (genericMatch) return genericMatch[1];
   
-  // Default fallback
-  return CURRENT_VERSION;
+  // Default to empty string - will be handled by caller
+  return '';
 }
 
 /**
@@ -170,18 +171,25 @@ export function extractVersionFromFilename(filename: string): string {
  * @returns -1 if v1 < v2, 0 if v1 = v2, 1 if v1 > v2
  */
 export function compareVersions(v1: string, v2: string): number {
-  const v1Parts = v1.split('.').map(Number);
-  const v2Parts = v2.split('.').map(Number);
+  if (!v1 || !v2) return 0; // If either version is undefined, consider them equal
   
-  for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
-    const v1Part = v1Parts[i] || 0;
-    const v2Part = v2Parts[i] || 0;
+  try {
+    const v1Parts = v1.split('.').map(Number);
+    const v2Parts = v2.split('.').map(Number);
     
-    if (v1Part > v2Part) return 1;
-    if (v1Part < v2Part) return -1;
+    for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
+      const v1Part = v1Parts[i] || 0;
+      const v2Part = v2Parts[i] || 0;
+      
+      if (v1Part > v2Part) return 1;
+      if (v1Part < v2Part) return -1;
+    }
+    
+    return 0;
+  } catch (error) {
+    console.error('Error comparing versions:', error);
+    return 0; // In case of error, consider versions equal
   }
-  
-  return 0;
 }
 
 /**
@@ -190,6 +198,32 @@ export function compareVersions(v1: string, v2: string): number {
  */
 export async function checkForUpdates() {
   try {
+    // Make sure we have the latest version information
+    await initCurrentVersion();
+    
+    // Get the current version from the app
+    let appVersion = CURRENT_VERSION;
+    console.log(`Current app version: ${appVersion}`);
+    
+    // If we couldn't get a valid version, try to get it from process.env
+    if (!appVersion || appVersion === '0.0.0' || appVersion === '') {
+      // Try to get from process.env as fallback
+      appVersion = process.env.npm_package_version || '';
+      CURRENT_VERSION = appVersion;
+      console.log(`Using npm_package_version: ${appVersion}`);
+      
+      // If still no valid version, we can't proceed with version comparison
+      if (!appVersion) {
+        console.error('Could not determine current app version');
+        return { 
+          hasUpdate: false, 
+          message: 'Could not determine current app version',
+          currentVersion: '',
+          latestVersion: ''
+        };
+      }
+    }
+    
     // Get the latest version from R2
     const files = await getFileMetadata('latest/');
     
@@ -201,44 +235,28 @@ export async function checkForUpdates() {
     if (!windowsInstaller || !windowsInstaller.Key) {
       console.log('No Windows installer found in R2 bucket');
       
-      // Use current version + 0.0.1 as fallback latest version
-      const currentVersionParts = CURRENT_VERSION.split('.').map(Number);
-      currentVersionParts[2] += 1; // Increment patch version
-      const fallbackLatestVersion = currentVersionParts.join('.');
-      const fallbackKey = `latest/CryptoVertX-Setup-${fallbackLatestVersion}.exe`;
-      
-      // Compare with current version
-      const comparison = compareVersions(fallbackLatestVersion, CURRENT_VERSION);
-      
-      if (comparison > 0) {
-        return {
-          hasUpdate: true,
-          currentVersion: CURRENT_VERSION,
-          latestVersion: fallbackLatestVersion,
-          downloadUrl: getDownloadUrl(fallbackKey),
-          fileName: `CryptoVertX-Setup-${fallbackLatestVersion}.exe`,
-          fileSize: 0 // We don't know the file size
-        };
-      }
-      
       return { 
         hasUpdate: false, 
-        message: 'No Windows installer found' 
+        message: 'No Windows installer found',
+        currentVersion: appVersion,
+        latestVersion: appVersion
       };
     }
     
     // Extract version from filename
     const latestVersion = extractVersionFromFilename(windowsInstaller.Key);
+    console.log(`Latest version from R2: ${latestVersion}`);
     
     // Compare with current version
-    const comparison = compareVersions(latestVersion, CURRENT_VERSION);
+    const comparison = compareVersions(latestVersion, appVersion);
+    console.log(`Version comparison result: ${comparison}`);
     
     if (comparison > 0) {
       // Use the direct download link for the latest version
       const downloadKey = windowsInstaller.Key;
       return {
         hasUpdate: true,
-        currentVersion: CURRENT_VERSION,
+        currentVersion: appVersion,
         latestVersion,
         downloadUrl: getDownloadUrl(downloadKey),
         fileName: downloadKey.split('/').pop() || '',
@@ -248,44 +266,17 @@ export async function checkForUpdates() {
     
     return {
       hasUpdate: false,
-      currentVersion: CURRENT_VERSION,
+      currentVersion: appVersion,
       latestVersion
     };
   } catch (error) {
     console.error('Error checking for updates:', error);
     
-    // If we can't access the R2 bucket, provide a fallback
-    if ((error as Error).message.includes('Access Denied') || 
-        (error as Error).message.includes('Forbidden') ||
-        (error as Error).message.includes('401') ||
-        (error as Error).message.includes('403')) {
-      
-      console.log('R2 bucket access denied, using fallback update info');
-      
-      // Use current version + 0.0.1 as fallback latest version
-      const currentVersionParts = CURRENT_VERSION.split('.').map(Number);
-      currentVersionParts[2] += 1; // Increment patch version
-      const fallbackLatestVersion = currentVersionParts.join('.');
-      const fallbackKey = `latest/CryptoVertX-Setup-${fallbackLatestVersion}.exe`;
-      
-      // Compare with current version
-      const comparison = compareVersions(fallbackLatestVersion, CURRENT_VERSION);
-      
-      if (comparison > 0) {
-        return {
-          hasUpdate: true,
-          currentVersion: CURRENT_VERSION,
-          latestVersion: fallbackLatestVersion,
-          downloadUrl: getDownloadUrl(fallbackKey),
-          fileName: `CryptoVertX-Setup-${fallbackLatestVersion}.exe`,
-          fileSize: 0 // We don't know the file size
-        };
-      }
-    }
-    
     return {
       hasUpdate: false,
-      error: (error as Error).message || 'Unknown error'
+      error: (error as Error).message || 'Unknown error',
+      currentVersion: CURRENT_VERSION || '',
+      latestVersion: ''
     };
   }
 }
@@ -444,4 +435,35 @@ export async function installUpdate(filePath: string) {
       throw error;
     }
   }
-} 
+}
+
+/**
+ * Initialize the current version from the main process
+ */
+export async function initCurrentVersion() {
+  try {
+    if (typeof window !== 'undefined' && window.electron && window.electron.ipcRenderer) {
+      const version = await window.electron.ipcRenderer.invoke('get-app-version');
+      if (version && version !== '0.0.0' && version !== '') {
+        CURRENT_VERSION = version;
+        console.log(`Initialized app version from main process: ${CURRENT_VERSION}`);
+      } else {
+        // If we got an empty or placeholder version, try npm_package_version
+        CURRENT_VERSION = process.env.npm_package_version || '';
+        console.log(`Using npm_package_version: ${CURRENT_VERSION}`);
+      }
+    } else {
+      // If we're not in Electron, try npm_package_version
+      CURRENT_VERSION = process.env.npm_package_version || '';
+      console.log(`Using npm_package_version (not in Electron): ${CURRENT_VERSION}`);
+    }
+  } catch (error) {
+    console.error('Error initializing current version:', error);
+    // On error, try npm_package_version
+    CURRENT_VERSION = process.env.npm_package_version || '';
+    console.log(`Using npm_package_version (after error): ${CURRENT_VERSION}`);
+  }
+}
+
+// Call initCurrentVersion when this module is imported
+initCurrentVersion().catch(console.error); 

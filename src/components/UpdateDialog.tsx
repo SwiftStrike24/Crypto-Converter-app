@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiDownload, FiCheck, FiX, FiRefreshCw, FiArrowRight } from 'react-icons/fi';
@@ -34,6 +34,7 @@ const DialogContainer = styled(motion.div)`
   color: white;
   position: relative;
   overflow: hidden;
+  outline: none; /* Remove default focus outline as we'll handle it ourselves */
 `;
 
 const GlowEffect = styled(motion.div)`
@@ -59,27 +60,6 @@ const Title = styled.h2`
   display: flex;
   align-items: center;
   gap: 8px;
-`;
-
-const CloseButton = styled.button`
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  background: none;
-  border: none;
-  color: #8b5cf6;
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  transition: all 0.2s;
-
-  &:hover {
-    background: rgba(139, 92, 246, 0.1);
-    transform: scale(1.1);
-  }
 `;
 
 const Content = styled.div`
@@ -247,6 +227,13 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  
+  // Ensure we have valid version information
+  const currentVersion = updateInfo?.currentVersion && updateInfo.currentVersion !== '0.0.0' 
+    ? updateInfo.currentVersion 
+    : '';
+  const latestVersion = updateInfo?.latestVersion || '';
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -258,8 +245,40 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
       setInstalling(false);
       setError(null);
       setStatusMessage(null);
+      
+      // Focus the dialog when it opens
+      setTimeout(() => {
+        if (dialogRef.current) {
+          dialogRef.current.focus();
+        }
+      }, 100);
     }
   }, [isOpen]);
+
+  // Handle close with cleanup if needed
+  const handleClose = useCallback(() => {
+    // Cancel any pending operations if needed
+    if (downloading) {
+      setStatusMessage('Download canceled');
+      setDownloading(false);
+    }
+    
+    // Don't allow closing during installation unless there's an error
+    if (installing && !error) {
+      setStatusMessage('Installation in progress, please wait...');
+      return;
+    }
+    
+    // Call the parent's onClose function
+    onClose();
+  }, [downloading, installing, error, onClose]);
+
+  // Handle keyboard events
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      handleClose();
+    }
+  }, [handleClose]);
 
   const handleDownload = async () => {
     try {
@@ -345,14 +364,20 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={onClose}
+          onClick={handleClose}
         >
           <DialogContainer
+            ref={dialogRef}
+            tabIndex={-1} // Make the dialog focusable
+            onKeyDown={handleKeyDown}
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ type: 'spring', damping: 20, stiffness: 300 }}
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="update-dialog-title"
           >
             <GlowEffect 
               animate={{ 
@@ -365,20 +390,16 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
               }} 
             />
             
-            <Title>
+            <Title id="update-dialog-title">
               <FiRefreshCw size={20} />
               Update Available
             </Title>
-            
-            <CloseButton onClick={onClose}>
-              <FiX size={18} />
-            </CloseButton>
             
             <Content>
               <VersionInfo>
                 <VersionColumn>
                   <VersionLabel>Current</VersionLabel>
-                  <Version>{updateInfo.currentVersion}</Version>
+                  <Version>{currentVersion}</Version>
                 </VersionColumn>
                 
                 <VersionArrow
@@ -390,7 +411,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
                 
                 <VersionColumn>
                   <VersionLabel>Latest</VersionLabel>
-                  <Version $isLatest>{updateInfo.latestVersion}</Version>
+                  <Version $isLatest>{latestVersion}</Version>
                 </VersionColumn>
               </VersionInfo>
               
@@ -465,6 +486,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
                     <FiRefreshCw size={16} />
                   </motion.div>
                   Installing... App will restart
+                  {error ? null : <span style={{ marginLeft: '4px', fontSize: '11px' }}>(please wait)</span>}
                 </StatusMessage>
               )}
             </Content>
@@ -472,7 +494,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
             <ButtonContainer>
               {!downloadComplete && (
                 <>
-                  <Button onClick={onClose}>
+                  <Button onClick={handleClose}>
                     <FiX size={16} /> Later
                   </Button>
                   <Button 
@@ -502,7 +524,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
               
               {downloadComplete && !installing && (
                 <>
-                  <Button onClick={onClose}>
+                  <Button onClick={handleClose}>
                     <FiX size={16} /> Close
                   </Button>
                   {downloadedFilePath !== 'browser-download' && downloadedFilePath !== 'direct-download' && (
@@ -526,6 +548,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
                     <FiRefreshCw size={16} />
                   </motion.div>
                   Installing
+                  {error ? null : <span style={{ marginLeft: '4px', fontSize: '11px' }}>(please wait)</span>}
                 </Button>
               )}
             </ButtonContainer>

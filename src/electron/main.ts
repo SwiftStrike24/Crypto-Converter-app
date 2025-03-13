@@ -263,6 +263,9 @@ app.whenReady().then(() => {
     mainWindow.show();
     mainWindow.focus();
   }
+
+  // Set up IPC handlers
+  setupIpcHandlers();
 });
 
 // Get environment variables for R2
@@ -274,7 +277,7 @@ const r2Env = {
   R2_PUBLIC_URL: process.env.R2_PUBLIC_URL || '',
   R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || 'cryptoconverter-downloads',
   API_BASE_URL: process.env.API_BASE_URL || 'https://cryptovertx.com/api',
-  APP_VERSION: process.env.npm_package_version || '1.2.1'
+  APP_VERSION: app.getVersion() || process.env.npm_package_version || ''
 };
 
 function createWindow() {
@@ -422,7 +425,28 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  if (mainWindow === null) {
+  if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
+
+// Set up IPC handlers
+function setupIpcHandlers() {
+  // Handle get-app-version request
+  ipcMain.handle('get-app-version', () => {
+    // Get version directly from package.json to ensure it's always up-to-date
+    const version = app.getVersion() || process.env.npm_package_version || '';
+    console.log(`Providing app version: ${version}`);
+    return version;
+  });
+  
+  // Handle get-env-vars request
+  ipcMain.handle('get-env-vars', () => {
+    return r2Env;
+  });
+  
+  // Handle quit-app request
+  ipcMain.on('quit-app', () => {
+    app.quit();
+  });
+}

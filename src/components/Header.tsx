@@ -353,7 +353,8 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
         setIsUpdateDialogOpen(true);
       } else {
         // Show tooltip notification instead of desktop notification
-        showTooltip(`You're already using the latest version (${result.currentVersion}).`);
+        const versionToShow = result.latestVersion || result.currentVersion || '';
+        showTooltip(`You're already using the latest version (${versionToShow}).`);
       }
     } catch (error) {
       console.error('Error checking for updates:', error);
