@@ -277,8 +277,39 @@ const r2Env = {
   R2_PUBLIC_URL: process.env.R2_PUBLIC_URL || '',
   R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || 'cryptoconverter-downloads',
   API_BASE_URL: process.env.API_BASE_URL || 'https://cryptovertx.com/api',
-  APP_VERSION: app.getVersion() || process.env.npm_package_version || ''
+  APP_VERSION: ''
 };
+
+// Log environment variables for debugging (excluding secrets)
+console.log('Main process environment variables loaded:', {
+  CLOUDFLARE_ACCOUNT_ID: r2Env.CLOUDFLARE_ACCOUNT_ID ? 'Set' : 'Not Set',
+  R2_ACCESS_KEY_ID: r2Env.R2_ACCESS_KEY_ID ? 'Set' : 'Not Set', 
+  R2_SECRET_ACCESS_KEY: r2Env.R2_SECRET_ACCESS_KEY ? 'Set' : 'Not Set',
+  R2_ENDPOINT: r2Env.R2_ENDPOINT,
+  R2_PUBLIC_URL: r2Env.R2_PUBLIC_URL,
+  R2_BUCKET_NAME: r2Env.R2_BUCKET_NAME,
+  API_BASE_URL: r2Env.API_BASE_URL
+});
+
+// Get package.json version directly - this ensures we have the real app version
+let packageJsonVersion = '';
+try {
+  const packageJsonPath = path.join(app.getAppPath(), 'package.json');
+  if (fs.existsSync(packageJsonPath)) {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    packageJsonVersion = packageJson.version || '';
+    
+    // Update r2Env with the version from package.json (most accurate source)
+    if (packageJsonVersion) {
+      r2Env.APP_VERSION = packageJsonVersion;
+    }
+  }
+} catch (error) {
+  console.error('Error reading package.json version:', error);
+}
+
+// Log the version being used in main process
+console.log(`Electron main process using app version: ${r2Env.APP_VERSION}`);
 
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
@@ -320,9 +351,31 @@ function createWindow() {
     // In development, set environment variables after page load
     mainWindow.webContents.on('did-finish-load', () => {
       if (mainWindow) {
+        // Inject both the environment variables and a global app version
         mainWindow.webContents.executeJavaScript(`
           window.electron = window.electron || {};
           window.electron.env = ${JSON.stringify(r2Env)};
+          
+          // Add app version as a global variable too
+          window.__APP_VERSION__ = "${r2Env.APP_VERSION}";
+          
+          // Add package.json version as another source
+          window.__PACKAGE_JSON_VERSION__ = "${packageJsonVersion || r2Env.APP_VERSION}";
+          
+          // Set document title to include version
+          document.title = "CryptoVertX v${r2Env.APP_VERSION}";
+          
+          console.log('Development mode: App version set to:', window.__APP_VERSION__);
+          console.log('Package.json version:', window.__PACKAGE_JSON_VERSION__);
+          console.log('R2 environment variables loaded (dev mode):', {
+            hasCloudflareId: !!window.electron.env.CLOUDFLARE_ACCOUNT_ID,
+            hasAccessKeyId: !!window.electron.env.R2_ACCESS_KEY_ID,
+            hasSecretKey: !!window.electron.env.R2_SECRET_ACCESS_KEY,
+            endpoint: window.electron.env.R2_ENDPOINT || "(using default)",
+            publicUrl: window.electron.env.R2_PUBLIC_URL || "(using default)",
+            bucketName: window.electron.env.R2_BUCKET_NAME || "(using default)",
+            apiBaseUrl: window.electron.env.API_BASE_URL || "(using default)"
+          });
         `).then(() => {
           console.log('Environment variables set in development mode');
         }).catch(err => {
@@ -337,10 +390,33 @@ function createWindow() {
     mainWindow.webContents.on('did-finish-load', () => {
       // Pass environment variables to renderer process
       if (mainWindow) {
+        // In production, use multiple approaches to set the version
         mainWindow.webContents.executeJavaScript(`
+          // Set up electron environment
           window.electron = window.electron || {};
           window.electron.env = ${JSON.stringify(r2Env)};
-          console.log('R2 environment variables loaded:', window.electron.env);
+          
+          // Add app version directly to window as a backup method
+          window.__APP_VERSION__ = "${r2Env.APP_VERSION}";
+          
+          // Add package.json version as another source
+          window.__PACKAGE_JSON_VERSION__ = "${packageJsonVersion || r2Env.APP_VERSION}";
+          
+          // Set document title to include version
+          document.title = "CryptoVertX v${r2Env.APP_VERSION}";
+          
+          // Log what we're using
+          console.log('Production mode: App version set to:', window.__APP_VERSION__);
+          console.log('Package.json version:', window.__PACKAGE_JSON_VERSION__);
+          console.log('R2 environment variables loaded (production):', {
+            hasCloudflareId: !!window.electron.env.CLOUDFLARE_ACCOUNT_ID,
+            hasAccessKeyId: !!window.electron.env.R2_ACCESS_KEY_ID,
+            hasSecretKey: !!window.electron.env.R2_SECRET_ACCESS_KEY,
+            endpoint: window.electron.env.R2_ENDPOINT || "(using default)",
+            publicUrl: window.electron.env.R2_PUBLIC_URL || "(using default)",
+            bucketName: window.electron.env.R2_BUCKET_NAME || "(using default)",
+            apiBaseUrl: window.electron.env.API_BASE_URL || "(using default)"
+          });
         `).then(() => {
           // Navigate to home page after setting environment variables
           mainWindow?.webContents.send('navigate-to', '/');
@@ -436,13 +512,26 @@ function setupIpcHandlers() {
   ipcMain.handle('get-app-version', () => {
     // Get version directly from package.json to ensure it's always up-to-date
     const version = app.getVersion() || process.env.npm_package_version || '';
-    console.log(`Providing app version: ${version}`);
+    console.log(`Providing app version via IPC: ${version}`);
     return version;
   });
   
   // Handle get-env-vars request
   ipcMain.handle('get-env-vars', () => {
-    return r2Env;
+    // Create a safe object with only the environment variables we want to expose
+    const safeEnv = {
+      CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || '',
+      R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || '',
+      R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '',
+      R2_ENDPOINT: process.env.R2_ENDPOINT || '',
+      R2_PUBLIC_URL: process.env.R2_PUBLIC_URL || '',
+      R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || 'cryptoconverter-downloads',
+      APP_VERSION: app.getVersion() || process.env.npm_package_version || '',
+      NODE_ENV: process.env.NODE_ENV || 'production'
+    };
+    
+    console.log('Providing environment variables via IPC');
+    return safeEnv;
   });
   
   // Handle quit-app request

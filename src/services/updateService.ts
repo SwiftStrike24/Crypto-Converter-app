@@ -11,48 +11,90 @@ interface AWSError extends Error {
 // Bucket name - should be configured in .env
 export const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'cryptoconverter-downloads';
 
-// Get package version dynamically - no hardcoded values
-// This will be overridden by the actual app version from electron main process
-export let CURRENT_VERSION = '';
+import { currentVersion as CURRENT_VERSION, getAppVersion, updateCurrentVersion } from './versionManager';
+
+// Re-export for backward compatibility
+export { currentVersion as CURRENT_VERSION, updateCurrentVersion } from './versionManager';
+
+// Global flag to track if we're running in production Electron environment
+export const IS_ELECTRON_PRODUCTION = typeof window !== 'undefined' && 
+  window.electron && 
+  !process.env.NODE_ENV?.includes('development');
 
 // Base URL for API endpoints
 export const API_BASE_URL = process.env.API_BASE_URL || 'https://cryptovertx.com/api';
+
+// Cache for environment variables to avoid repeated lookups
+let cachedEnvVars: Record<string, string> | null = null;
 
 /**
  * Safely get environment variables with fallbacks
  */
 export const getEnvVars = () => {
+  // If we already have cached variables, return them
+  if (cachedEnvVars) {
+    return cachedEnvVars;
+  }
+
+  // Default empty values
+  const defaultValues = {
+    CLOUDFLARE_ACCOUNT_ID: '',
+    R2_ACCESS_KEY_ID: '',
+    R2_SECRET_ACCESS_KEY: '',
+    R2_ENDPOINT: '',
+    R2_PUBLIC_URL: '',
+    APP_VERSION: ''
+  };
+  
   try {
     // Check if window.electron exists and has env property
     if (typeof window !== 'undefined' && window.electron && window.electron.env) {
-      return {
-        CLOUDFLARE_ACCOUNT_ID: window.electron.env.CLOUDFLARE_ACCOUNT_ID || '',
-        R2_ACCESS_KEY_ID: window.electron.env.R2_ACCESS_KEY_ID || '',
-        R2_SECRET_ACCESS_KEY: window.electron.env.R2_SECRET_ACCESS_KEY || '',
-        R2_ENDPOINT: window.electron.env.R2_ENDPOINT || '',
-        R2_PUBLIC_URL: window.electron.env.R2_PUBLIC_URL || ''
+      // Use type assertion to handle any environment variables
+      const electronEnv = window.electron.env as any;
+      
+      // Store environment in cache
+      cachedEnvVars = {
+        CLOUDFLARE_ACCOUNT_ID: electronEnv.CLOUDFLARE_ACCOUNT_ID || defaultValues.CLOUDFLARE_ACCOUNT_ID,
+        R2_ACCESS_KEY_ID: electronEnv.R2_ACCESS_KEY_ID || defaultValues.R2_ACCESS_KEY_ID,
+        R2_SECRET_ACCESS_KEY: electronEnv.R2_SECRET_ACCESS_KEY || defaultValues.R2_SECRET_ACCESS_KEY,
+        R2_ENDPOINT: electronEnv.R2_ENDPOINT || defaultValues.R2_ENDPOINT,
+        R2_PUBLIC_URL: electronEnv.R2_PUBLIC_URL || defaultValues.R2_PUBLIC_URL,
+        APP_VERSION: electronEnv.APP_VERSION || window.__APP_VERSION__ || window.__PACKAGE_JSON_VERSION__ || defaultValues.APP_VERSION
       };
+
+      console.log('Environment variables loaded from window.electron.env');
+      // Don't log sensitive data in production
+      if (!IS_ELECTRON_PRODUCTION) {
+        console.log('R2 environment variables available:', 
+          Object.keys(cachedEnvVars).filter(key => 
+            cachedEnvVars && cachedEnvVars[key] && !key.includes('SECRET')
+          )
+        );
+      }
+      
+      return cachedEnvVars;
+    }
+
+    // For web environments or if electron isn't available
+    if (typeof window !== 'undefined' && (window.__APP_VERSION__ || window.__PACKAGE_JSON_VERSION__)) {
+      console.log('Loading environment variables from window globals');
+      // For web environments, we might still have some variables set as globals
+      cachedEnvVars = {
+        ...defaultValues,
+        APP_VERSION: window.__APP_VERSION__ || window.__PACKAGE_JSON_VERSION__ || defaultValues.APP_VERSION
+      };
+      return cachedEnvVars;
     }
     
-    // No fallback to hardcoded values - return empty values
-    return {
-      CLOUDFLARE_ACCOUNT_ID: '',
-      R2_ACCESS_KEY_ID: '',
-      R2_SECRET_ACCESS_KEY: '',
-      R2_ENDPOINT: '',
-      R2_PUBLIC_URL: ''
-    };
+    // If no electron environment, return empty defaults
+    console.warn('No environment variables found, using defaults');
+    cachedEnvVars = defaultValues;
+    return defaultValues;
   } catch (error) {
     console.error('Error getting environment variables:', error);
-    
-    // Return empty values instead of hardcoded credentials
-    return {
-      CLOUDFLARE_ACCOUNT_ID: '',
-      R2_ACCESS_KEY_ID: '',
-      R2_SECRET_ACCESS_KEY: '',
-      R2_ENDPOINT: '',
-      R2_PUBLIC_URL: ''
-    };
+    // Return default values on error
+    cachedEnvVars = defaultValues;
+    return defaultValues;
   }
 };
 
@@ -71,22 +113,36 @@ export const createR2Client = () => {
   // Ensure we have all required environment variables
   if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !CLOUDFLARE_ACCOUNT_ID) {
     console.error('❌ Missing required R2 credentials');
+    // Log what's missing without exposing sensitive data
+    console.error('Missing credentials:', {
+      hasCloudflareId: !!CLOUDFLARE_ACCOUNT_ID,
+      hasAccessKeyId: !!R2_ACCESS_KEY_ID,
+      hasSecretKey: !!R2_SECRET_ACCESS_KEY,
+      hasEndpoint: !!R2_ENDPOINT
+    });
     return null;
   }
 
   // Get the endpoint from environment variables
   const endpoint = R2_ENDPOINT || `https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`;
   
+  console.log(`Creating R2 client with endpoint: ${endpoint}`);
+  
   // Create the client with proper configuration
-  return new S3Client({
-    region: 'auto',
-    endpoint,
-    credentials: {
-      accessKeyId: R2_ACCESS_KEY_ID,
-      secretAccessKey: R2_SECRET_ACCESS_KEY,
-    },
-    forcePathStyle: true, // Required for Cloudflare R2
-  });
+  try {
+    return new S3Client({
+      region: 'auto',
+      endpoint,
+      credentials: {
+        accessKeyId: R2_ACCESS_KEY_ID,
+        secretAccessKey: R2_SECRET_ACCESS_KEY,
+      },
+      forcePathStyle: true, // Required for Cloudflare R2
+    });
+  } catch (error) {
+    console.error('Failed to create S3Client:', error);
+    return null;
+  }
 };
 
 /**
@@ -132,8 +188,11 @@ export async function getFileMetadata(prefix: string) {
  */
 export function getDownloadUrl(key: string) {
   try {
-    // Use API_BASE_URL from environment
-    return `${API_BASE_URL}/download?key=${encodeURIComponent(key)}`;
+    // Get API_BASE_URL from environment or cache
+    const envVars = getEnvVars();
+    const apiBaseUrl = envVars.R2_PUBLIC_URL || API_BASE_URL;
+    
+    return `${apiBaseUrl}/download?key=${encodeURIComponent(key)}`;
   } catch (error) {
     console.error('Error generating download URL:', error);
     // Fallback to a direct download URL for the latest version
@@ -209,11 +268,11 @@ export async function checkForUpdates() {
     if (!appVersion || appVersion === '0.0.0' || appVersion === '') {
       // Try to get from process.env as fallback
       appVersion = process.env.npm_package_version || '';
-      CURRENT_VERSION = appVersion;
-      console.log(`Using npm_package_version: ${appVersion}`);
-      
-      // If still no valid version, we can't proceed with version comparison
-      if (!appVersion) {
+      if (appVersion) {
+        // Update the version using the proper function
+        updateCurrentVersion(appVersion);
+        console.log(`Using npm_package_version: ${appVersion}`);
+      } else {
         console.error('Could not determine current app version');
         return { 
           hasUpdate: false, 
@@ -438,32 +497,18 @@ export async function installUpdate(filePath: string) {
 }
 
 /**
- * Initialize the current version from the main process
+ * Initialize the current version
+ * This is a wrapper around the versionManager.getAppVersion function
  */
 export async function initCurrentVersion() {
   try {
-    if (typeof window !== 'undefined' && window.electron && window.electron.ipcRenderer) {
-      const version = await window.electron.ipcRenderer.invoke('get-app-version');
-      if (version && version !== '0.0.0' && version !== '') {
-        CURRENT_VERSION = version;
-        console.log(`Initialized app version from main process: ${CURRENT_VERSION}`);
-      } else {
-        // If we got an empty or placeholder version, try npm_package_version
-        CURRENT_VERSION = process.env.npm_package_version || '';
-        console.log(`Using npm_package_version: ${CURRENT_VERSION}`);
-      }
-    } else {
-      // If we're not in Electron, try npm_package_version
-      CURRENT_VERSION = process.env.npm_package_version || '';
-      console.log(`Using npm_package_version (not in Electron): ${CURRENT_VERSION}`);
-    }
+    // We now use the centralized versionManager to get the app version
+    // We don't need to modify CURRENT_VERSION as it's just imported
+    await getAppVersion();
+    return;
   } catch (error) {
     console.error('Error initializing current version:', error);
-    // On error, try npm_package_version
-    CURRENT_VERSION = process.env.npm_package_version || '';
-    console.log(`Using npm_package_version (after error): ${CURRENT_VERSION}`);
   }
 }
 
-// Call initCurrentVersion when this module is imported
-initCurrentVersion().catch(console.error); 
+// Types are now defined in the versionManager module
