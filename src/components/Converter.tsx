@@ -6,6 +6,14 @@ import { FaMagnifyingGlassChart } from 'react-icons/fa6';
 
 // Constants
 const ICON_CACHE_PREFIX = 'crypto_icon_';
+const FIAT_ICON_CACHE_PREFIX = 'fiat_icon_';
+
+// Map of fiat currencies to their flag icons
+const fiatIcons: Record<string, string> = {
+  'USD': 'https://s2.coinmarketcap.com/static/cloud/img/fiat-flags/USD.svg',
+  'EUR': 'https://s2.coinmarketcap.com/static/cloud/img/fiat-flags/EUR.svg',
+  'CAD': 'https://s2.coinmarketcap.com/static/cloud/img/fiat-flags/CAD.svg',
+};
 
 const ConverterContainer = styled.div`
   display: flex;
@@ -920,6 +928,70 @@ const Converter: React.FC<ConverterProps> = ({
     setFiatDropdownOpen(false);
   };
 
+  // Get fiat currency icon with caching
+  const getFiatIcon = (currency: string): string | null => {
+    if (!currency) return null;
+    
+    const normalizedCurrency = currency.toUpperCase();
+    
+    // Check if we have an icon for this currency
+    if (fiatIcons[normalizedCurrency]) {
+      // Use local storage cache if available
+      const iconCacheKey = `${FIAT_ICON_CACHE_PREFIX}${normalizedCurrency.toLowerCase()}`;
+      const cachedIcon = localStorage.getItem(iconCacheKey);
+      
+      if (cachedIcon) {
+        return cachedIcon;
+      }
+      
+      // If not cached but we have the icon URL, cache it for future use
+      try {
+        localStorage.setItem(iconCacheKey, fiatIcons[normalizedCurrency]);
+      } catch (error) {
+        console.error('Error caching fiat icon:', error);
+      }
+      
+      return fiatIcons[normalizedCurrency];
+    }
+    
+    return null;
+  };
+
+  // Handle fiat icon loading errors
+  const handleFiatImageError = (e: React.SyntheticEvent<HTMLImageElement>, currency?: string) => {
+    const img = e.currentTarget;
+    img.onerror = null; // Prevent infinite error loops
+    
+    if (!currency) return;
+    
+    // Set a default placeholder
+    img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzZlNzZlNCIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSJ3aGl0ZSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0cHgiPnt7c3ltYm9sfX08L3RleHQ+PC9zdmc+';
+    
+    // Try to replace the placeholder with the first letter of the currency
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 32;
+      canvas.height = 32;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#6e76e4'; // Different color than crypto to distinguish
+        ctx.beginPath();
+        ctx.arc(16, 16, 16, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 14px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(currency.charAt(0).toUpperCase(), 16, 16);
+        
+        img.src = canvas.toDataURL();
+      }
+    } catch (error) {
+      console.error('Error creating fallback fiat icon:', error);
+    }
+  };
+
   // Enhanced getTokenIcon function with better error handling and fallbacks
   const getTokenIcon = (symbol: string): string | null => {
     if (!symbol) return null;
@@ -1231,6 +1303,27 @@ const Converter: React.FC<ConverterProps> = ({
             aria-expanded={fiatDropdownOpen}
             isOpen={fiatDropdownOpen}
           >
+            {getFiatIcon(selectedFiat) ? (
+              <>
+                <TokenIcon 
+                  src={getFiatIcon(selectedFiat) || ''} 
+                  alt={selectedFiat}
+                  className="token-icon"
+                  onError={(e) => handleFiatImageError(e, selectedFiat)}
+                  loading="lazy"
+                />
+                <TokenFallbackIcon 
+                  className="token-fallback-icon" 
+                  style={{ display: 'none' }}
+                >
+                  {selectedFiat.charAt(0)}
+                </TokenFallbackIcon>
+              </>
+            ) : (
+              <TokenFallbackIcon className="token-fallback-icon">
+                {selectedFiat.charAt(0)}
+              </TokenFallbackIcon>
+            )}
             <span className="token-text">{selectedFiat}</span>
             <svg 
               className="dropdown-arrow" 
@@ -1250,6 +1343,27 @@ const Converter: React.FC<ConverterProps> = ({
                 isSelected={fiat === selectedFiat}
                 onClick={() => handleFiatChange(fiat)}
               >
+                {getFiatIcon(fiat) ? (
+                  <>
+                    <TokenIcon 
+                      src={getFiatIcon(fiat) || ''} 
+                      alt={fiat}
+                      className="token-icon"
+                      onError={(e) => handleFiatImageError(e, fiat)}
+                      loading="lazy"
+                    />
+                    <TokenFallbackIcon 
+                      className="token-fallback-icon" 
+                      style={{ display: 'none' }}
+                    >
+                      {fiat.charAt(0)}
+                    </TokenFallbackIcon>
+                  </>
+                ) : (
+                  <TokenFallbackIcon className="token-fallback-icon">
+                    {fiat.charAt(0)}
+                  </TokenFallbackIcon>
+                )}
                 <span className="token-text">{fiat}</span>
               </DropdownItem>
             ))}
