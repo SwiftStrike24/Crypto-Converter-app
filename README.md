@@ -214,3 +214,42 @@ This project is licensed under the MIT License.
 - Added smart relaunch functionality
 - Implemented efficient chunk splitting
 - Optimized asset loading and caching
+
+## Development
+
+### CORS Handling in Development
+
+When developing locally, API requests to external services may be blocked by CORS policies. The application uses a proxy approach to handle CORS in development:
+
+1. For Vite development server, add the following to your `vite.config.ts`:
+
+```typescript
+export default defineConfig({
+  // ... other config
+  server: {
+    proxy: {
+      '/api-proxy': {
+        target: 'https://cryptovertx.com/api',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-proxy/, ''),
+        secure: true,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('proxy error', err);
+          });
+          proxy.on('proxyReq', (proxyReq, req, _res) => {
+            console.log('Sending Request to the Target:', req.method, req.url);
+          });
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            console.log('Received Response from the Target:', proxyRes.statusCode, req.url);
+          });
+        },
+      }
+    }
+  }
+});
+```
+
+2. In Electron development mode, the main process handles requests directly to avoid CORS issues.
+
+### Environment Variables Setup

@@ -420,13 +420,26 @@ This is optional and only needed if you want to customize the app icon appearanc
 
 async function runBuild() {
   try {
+    // Get the version from package.json
+    const currentVersion = await getCurrentVersion();
+    
+    // Update versionManager.ts with the correct version for production builds
+    await updateVersionInVersionManager(currentVersion);
+    
     // Display cool version management header
     console.log('\n');
     console.log(chalk.cyan.bold('🔢 CryptoVertX Version Management 🔢'));
     console.log(chalk.dim('━'.repeat(50)));
+    console.log('\n');
     
     // Handle version management
     const version = await handleVersionManagement();
+    
+    // Update versionManager.ts again in case the version was changed
+    if (version !== currentVersion) {
+      buildLogger.log(`Version changed from ${currentVersion} to ${version}, updating versionManager.ts...`);
+      await updateVersionInVersionManager(version);
+    }
     
     // Update output directories with selected version
     OUTPUT_DIR = path.join(RELEASE_DIR, version);
@@ -500,12 +513,114 @@ async function runBuild() {
     // Display version information at the end
     console.log(chalk.green.bold(`🏁 Build completed for CryptoVertX v${version}`));
     console.log(chalk.cyan(`📁 Output directory: ${OUTPUT_DIR}`));
+    
+    // Final verification of versionManager.ts
+    try {
+      const versionManagerPath = path.join(__dirname, '../src/services/versionManager.ts');
+      const content = fs.readFileSync(versionManagerPath, 'utf-8');
+      
+      if (content.includes(`buildTimeVersion = '${version}'`)) {
+        console.log(chalk.green(`✅ Verified versionManager.ts contains the correct version: ${version}`));
+      } else {
+        console.log(chalk.yellow(`⚠️ versionManager.ts might not have the correct version. Final manual check recommended.`));
+        // One last attempt to update it
+        await updateVersionInVersionManager(version);
+      }
+    } catch (error) {
+      buildLogger.warn(`Could not verify versionManager.ts in final step: ${error.message}`);
+    }
   } catch (error) {
     // Clean up temp assets even if build fails
     await cleanupTempAssets();
     
     buildLogger.error(error.message);
     process.exit(1);
+  }
+}
+
+/**
+ * Updates the hardcoded version in versionManager.ts
+ */
+async function updateVersionInVersionManager(version: string): Promise<void> {
+  try {
+    // Path to the versionManager.ts file
+    const versionManagerPath = path.join(__dirname, '../src/services/versionManager.ts');
+    
+    // Read the file
+    let content = fs.readFileSync(versionManagerPath, 'utf-8');
+    
+    // More robust regex that handles various comment patterns
+    // This will match the line regardless of how many comments it has
+    const versionRegex = /const\s+buildTimeVersion\s*=\s*['"].*?['"]\s*;.*?$/m;
+    
+    if (versionRegex.test(content)) {
+      // Replace the hardcoded version with the current version
+      content = content.replace(
+        versionRegex,
+        `const buildTimeVersion = '${version}'; // Injected by build script`
+      );
+      
+      // Write the modified content back to the file
+      fs.writeFileSync(versionManagerPath, content);
+      
+      buildLogger.log(`✅ Successfully injected version ${version} into versionManager.ts for production builds`);
+    } else {
+      // If the regex doesn't match, try a more aggressive approach
+      const lineRegex = /const\s+buildTimeVersion\s*=.*$/m;
+      
+      if (lineRegex.test(content)) {
+        content = content.replace(
+          lineRegex,
+          `const buildTimeVersion = '${version}'; // Injected by build script`
+        );
+        
+        // Write the modified content back to the file
+        fs.writeFileSync(versionManagerPath, content);
+        
+        buildLogger.log(`✅ Successfully injected version ${version} into versionManager.ts using fallback method`);
+      } else {
+        buildLogger.warn(`⚠️ Could not find buildTimeVersion line in versionManager.ts. Manual update may be needed.`);
+      }
+    }
+    
+    // Verify the update was successful
+    const updatedContent = fs.readFileSync(versionManagerPath, 'utf-8');
+    if (updatedContent.includes(`'${version}'`)) {
+      buildLogger.log(`✓ Verified version ${version} was correctly injected into versionManager.ts`);
+    } else {
+      buildLogger.warn(`⚠️ Version update verification failed - the file might not have been updated correctly`);
+    }
+  } catch (error) {
+    buildLogger.error(`Failed to update version in versionManager.ts: ${error.message}`);
+    
+    // Try an alternative approach with a more direct file manipulation
+    try {
+      const versionManagerPath = path.join(__dirname, '../src/services/versionManager.ts');
+      const content = fs.readFileSync(versionManagerPath, 'utf-8');
+      
+      // Split by lines
+      const lines = content.split('\n');
+      
+      // Find the line with buildTimeVersion
+      let updated = false;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes('buildTimeVersion') && lines[i].includes('=')) {
+          lines[i] = `    const buildTimeVersion = '${version}'; // Injected by build script`;
+          updated = true;
+          break;
+        }
+      }
+      
+      if (updated) {
+        // Rejoin and write back
+        fs.writeFileSync(versionManagerPath, lines.join('\n'));
+        buildLogger.log(`✅ Successfully injected version ${version} into versionManager.ts using line-by-line method`);
+      } else {
+        buildLogger.error(`Could not find buildTimeVersion line using line-by-line method`);
+      }
+    } catch (fallbackError) {
+      buildLogger.error(`Fallback method also failed: ${fallbackError.message}`);
+    }
   }
 }
 

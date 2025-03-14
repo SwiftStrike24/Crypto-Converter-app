@@ -1,13 +1,6 @@
 // import axios from 'axios';
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
 
-// Define AWS error interface
-interface AWSError extends Error {
-  $metadata?: Record<string, unknown>;
-  Code?: string;
-  $fault?: string;
-}
-
 // Bucket name - should be configured in .env
 export const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'cryptoconverter-downloads';
 
@@ -21,8 +14,103 @@ export const IS_ELECTRON_PRODUCTION = typeof window !== 'undefined' &&
   window.electron && 
   !process.env.NODE_ENV?.includes('development');
 
-// Base URL for API endpoints
-export const API_BASE_URL = process.env.API_BASE_URL || 'https://cryptovertx.com/api';
+// Determine if logging should be enabled
+// By default enable in development, disable in production
+// Can be enabled with ?debug=true or ?logging=true in URL
+const determineLoggingState = (): boolean => {
+  // Always enable in development unless explicitly disabled
+  if (process.env.NODE_ENV === 'development') {
+    // Check if URL has debug=false or logging=false to disable
+    if (typeof window !== 'undefined' && window.location) {
+      const urlParams = new URLSearchParams(window.location.search);
+      const debugParam = urlParams.get('debug');
+      const loggingParam = urlParams.get('logging');
+      
+      if (debugParam === 'false' || loggingParam === 'false') {
+        return false;
+      }
+    }
+    return true;
+  }
+  
+  // In production, disabled by default
+  if (typeof window !== 'undefined' && window.location) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const debugParam = urlParams.get('debug');
+    const loggingParam = urlParams.get('logging');
+    
+    // Only enable if explicitly enabled
+    if (debugParam === 'true' || loggingParam === 'true') {
+      return true;
+    }
+  }
+  
+  return false;
+};
+
+// Flag to enable selective console logging
+const ENABLE_LOGS = determineLoggingState();
+
+// Helper function for controlled logging
+const log = {
+  info: (message: string, ...args: any[]) => {
+    if (ENABLE_LOGS) console.log(`[CryptoVertX] 📢 ${message}`, ...args);
+  },
+  success: (message: string, ...args: any[]) => {
+    if (ENABLE_LOGS) console.log(`[CryptoVertX] ✅ ${message}`, ...args);
+  },
+  warn: (message: string, ...args: any[]) => {
+    if (ENABLE_LOGS) console.log(`[CryptoVertX] ⚠️ ${message}`, ...args);
+  },
+  error: (_message: string, ..._args: any[]) => {
+    // We don't log errors to console - they're handled silently
+  }
+};
+
+// Log initial state
+if (ENABLE_LOGS) {
+  console.log(`[CryptoVertX] 🔧 Logging is ${ENABLE_LOGS ? 'ENABLED' : 'DISABLED'}`);
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[CryptoVertX] 🛠️ Running in DEVELOPMENT mode`);
+  } else {
+    console.log(`[CryptoVertX] 🚀 Running in PRODUCTION mode`);
+  }
+}
+
+// Base URL for API endpoints - ensure this is hardcoded for production
+export const API_BASE_URL = 'https://cryptovertx.com/api';
+
+/**
+ * Use a development proxy for API requests to avoid CORS issues in development mode
+ * @param url The original API URL to proxy
+ * @returns The proxied URL for development or the original URL for production
+ */
+export function getProxiedUrl(url: string): string {
+  if (process.env.NODE_ENV === 'development' && typeof window !== 'undefined' && !window.electron) {
+    // In browser development mode, use a CORS proxy
+    // We replace the API domain with the local dev server + proxy path
+    const currentOrigin = window.location.origin; // e.g. http://localhost:5173
+    
+    // Extract the path from the original URL
+    const apiPath = url.replace(API_BASE_URL, '');
+    
+    // Compose the proxied URL with the local dev server
+    return `${currentOrigin}/api-proxy${apiPath}`;
+  }
+  
+  // In production or Electron development, use the original URL
+  return url;
+}
+
+// Hardcoded credentials for production build
+// These credentials are restricted to read-only access on the public bucket
+const FALLBACK_CREDENTIALS = {
+  CLOUDFLARE_ACCOUNT_ID: 'a29e1fcdd07785579dd54acb5378348a',
+  R2_ACCESS_KEY_ID: '7f4477e05cdf9d71385da15bad012fb9',
+  R2_SECRET_ACCESS_KEY: '4f43905f8d806110e6f3a548f294b71ae86b2cadb7218532d3113c960ddce1b7',
+  R2_ENDPOINT: 'https://a29e1fcdd07785579dd54acb5378348a.r2.cloudflarestorage.com',
+  R2_PUBLIC_URL: 'https://pub-a29e1fcdd07785579dd54acb5378348a.r2.dev'
+};
 
 // Cache for environment variables to avoid repeated lookups
 let cachedEnvVars: Record<string, string> | null = null;
@@ -36,13 +124,9 @@ export const getEnvVars = () => {
     return cachedEnvVars;
   }
 
-  // Default empty values
+  // Default to fallback values for production
   const defaultValues = {
-    CLOUDFLARE_ACCOUNT_ID: '',
-    R2_ACCESS_KEY_ID: '',
-    R2_SECRET_ACCESS_KEY: '',
-    R2_ENDPOINT: '',
-    R2_PUBLIC_URL: '',
+    ...FALLBACK_CREDENTIALS,
     APP_VERSION: ''
   };
   
@@ -61,23 +145,12 @@ export const getEnvVars = () => {
         R2_PUBLIC_URL: electronEnv.R2_PUBLIC_URL || defaultValues.R2_PUBLIC_URL,
         APP_VERSION: electronEnv.APP_VERSION || window.__APP_VERSION__ || window.__PACKAGE_JSON_VERSION__ || defaultValues.APP_VERSION
       };
-
-      console.log('Environment variables loaded from window.electron.env');
-      // Don't log sensitive data in production
-      if (!IS_ELECTRON_PRODUCTION) {
-        console.log('R2 environment variables available:', 
-          Object.keys(cachedEnvVars).filter(key => 
-            cachedEnvVars && cachedEnvVars[key] && !key.includes('SECRET')
-          )
-        );
-      }
       
       return cachedEnvVars;
     }
 
     // For web environments or if electron isn't available
     if (typeof window !== 'undefined' && (window.__APP_VERSION__ || window.__PACKAGE_JSON_VERSION__)) {
-      console.log('Loading environment variables from window globals');
       // For web environments, we might still have some variables set as globals
       cachedEnvVars = {
         ...defaultValues,
@@ -86,13 +159,11 @@ export const getEnvVars = () => {
       return cachedEnvVars;
     }
     
-    // If no electron environment, return empty defaults
-    console.warn('No environment variables found, using defaults');
+    // If no electron environment, use hardcoded fallbacks for production
     cachedEnvVars = defaultValues;
     return defaultValues;
   } catch (error) {
-    console.error('Error getting environment variables:', error);
-    // Return default values on error
+    // Return hardcoded values on error
     cachedEnvVars = defaultValues;
     return defaultValues;
   }
@@ -112,21 +183,11 @@ export const createR2Client = () => {
 
   // Ensure we have all required environment variables
   if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !CLOUDFLARE_ACCOUNT_ID) {
-    console.error('❌ Missing required R2 credentials');
-    // Log what's missing without exposing sensitive data
-    console.error('Missing credentials:', {
-      hasCloudflareId: !!CLOUDFLARE_ACCOUNT_ID,
-      hasAccessKeyId: !!R2_ACCESS_KEY_ID,
-      hasSecretKey: !!R2_SECRET_ACCESS_KEY,
-      hasEndpoint: !!R2_ENDPOINT
-    });
     return null;
   }
 
   // Get the endpoint from environment variables
   const endpoint = R2_ENDPOINT || `https://${CLOUDFLARE_ACCOUNT_ID}.r2.cloudflarestorage.com`;
-  
-  console.log(`Creating R2 client with endpoint: ${endpoint}`);
   
   // Create the client with proper configuration
   try {
@@ -140,7 +201,6 @@ export const createR2Client = () => {
       forcePathStyle: true, // Required for Cloudflare R2
     });
   } catch (error) {
-    console.error('Failed to create S3Client:', error);
     return null;
   }
 };
@@ -152,13 +212,28 @@ export const createR2Client = () => {
  */
 export async function getFileMetadata(prefix: string) {
   try {
-    // Create a fresh client for this request
-    const client = createR2Client();
-    if (!client) {
-      throw new Error('Failed to create R2 client');
+    log.info(`Checking for updates with prefix: ${prefix}`);
+    
+    // First try to use the CryptoVertX API directly
+    try {
+      const apiResults = await getFileMetadataFromApi(prefix);
+      
+      // If we got results from the API, use them
+      if (apiResults && apiResults.length > 0) {
+        log.success(`Found ${apiResults.length} files via API`);
+        return apiResults;
+      }
+    } catch (apiError) {
+      // Silent fail - we'll try the direct method next
+      log.warn(`API method failed, trying R2 directly`);
     }
     
-    console.log(`Fetching files with prefix: ${prefix} from bucket: ${BUCKET_NAME}`);
+    // As a fallback, try to use the R2 client directly
+    const client = createR2Client();
+    if (!client) {
+      // Return empty array as last resort
+      return [];
+    }
     
     const command = new ListObjectsV2Command({
       Bucket: BUCKET_NAME,
@@ -166,18 +241,75 @@ export async function getFileMetadata(prefix: string) {
       MaxKeys: 10,
     });
     
-    const response = await client.send(command);
-    console.log(`R2 response received. Found ${response.Contents?.length || 0} objects.`);
-    return response.Contents || [];
+    try {
+      const response = await client.send(command);
+      const contents = response.Contents || [];
+      log.success(`Found ${contents.length} files via R2 client`);
+      return contents;
+    } catch (r2Error) {
+      return [];
+    }
   } catch (error) {
-    console.error('Error fetching file metadata from R2:', error);
+    // Return empty array as last resort
+    return [];
+  }
+}
+
+/**
+ * Fallback method to get file metadata using the CryptoVertX API
+ * This is useful for production builds where R2 credentials might not be available
+ */
+async function getFileMetadataFromApi(prefix: string) {
+  // Define interface for API response
+  interface ApiFileMetadata {
+    key: string;
+    size: number;
+    lastModified: string;
+  }
+  
+  try {
+    // Always use the landing page API endpoint
+    const apiUrl = `${API_BASE_URL}/files?prefix=${encodeURIComponent(prefix)}`;
     
-    // Log additional details for AWS errors
-    if (error && typeof error === 'object' && '$metadata' in error) {
-      console.error('AWS error metadata:', JSON.stringify((error as AWSError).$metadata, null, 2));
+    // Get the proxied URL for development environments
+    const requestUrl = getProxiedUrl(apiUrl);
+    
+    // In development, use no-cors mode to prevent CORS errors in console
+    const mode = process.env.NODE_ENV === 'development' ? 'no-cors' : 'cors';
+    
+    // Add CORS mode and credentials handling
+    const response = await fetch(requestUrl, {
+      method: 'GET',
+      mode, // Use no-cors in development to suppress errors
+      credentials: 'same-origin',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      }
+    });
+    
+    // If using no-cors mode, we can't actually read the response
+    // This is a limitation of CORS and fetch API
+    if (mode === 'no-cors') {
+      // Just throw an error to trigger the fallback to R2 
+      throw new Error('Using no-cors mode, cannot read response');
     }
     
-    throw error;
+    if (!response.ok) {
+      throw new Error(`API responded with status: ${response.status} - ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    // Transform the API response to match the S3 format
+    return (data.files as ApiFileMetadata[] || []).map(file => ({
+      Key: file.key,
+      Size: file.size,
+      LastModified: new Date(file.lastModified)
+    }));
+  } catch (error) {
+    // Return empty array as last resort
+    return [];
   }
 }
 
@@ -188,15 +320,14 @@ export async function getFileMetadata(prefix: string) {
  */
 export function getDownloadUrl(key: string) {
   try {
-    // Get API_BASE_URL from environment or cache
-    const envVars = getEnvVars();
-    const apiBaseUrl = envVars.R2_PUBLIC_URL || API_BASE_URL;
+    // Always use the landing page API for downloads
+    const apiUrl = `${API_BASE_URL}/download?key=${encodeURIComponent(key)}`;
     
-    return `${apiBaseUrl}/download?key=${encodeURIComponent(key)}`;
+    // Get the proxied URL for development environments
+    return getProxiedUrl(apiUrl);
   } catch (error) {
-    console.error('Error generating download URL:', error);
     // Fallback to a direct download URL for the latest version
-    return `${API_BASE_URL}/download?key=latest%2FCryptoVertX-Setup-${CURRENT_VERSION}.exe`;
+    return getProxiedUrl(`${API_BASE_URL}/download?key=latest%2FCryptoVertX-Setup-${CURRENT_VERSION}.exe`);
   }
 }
 
@@ -246,7 +377,6 @@ export function compareVersions(v1: string, v2: string): number {
     
     return 0;
   } catch (error) {
-    console.error('Error comparing versions:', error);
     return 0; // In case of error, consider versions equal
   }
 }
@@ -262,7 +392,7 @@ export async function checkForUpdates() {
     
     // Get the current version from the app
     let appVersion = CURRENT_VERSION;
-    console.log(`Current app version: ${appVersion}`);
+    log.info(`Current app version: ${appVersion}`);
     
     // If we couldn't get a valid version, try to get it from process.env
     if (!appVersion || appVersion === '0.0.0' || appVersion === '') {
@@ -271,9 +401,9 @@ export async function checkForUpdates() {
       if (appVersion) {
         // Update the version using the proper function
         updateCurrentVersion(appVersion);
-        console.log(`Using npm_package_version: ${appVersion}`);
+        log.info(`Using npm_package_version: ${appVersion}`);
       } else {
-        console.error('Could not determine current app version');
+        log.warn('Could not determine current app version');
         return { 
           hasUpdate: false, 
           message: 'Could not determine current app version',
@@ -292,8 +422,7 @@ export async function checkForUpdates() {
     );
     
     if (!windowsInstaller || !windowsInstaller.Key) {
-      console.log('No Windows installer found in R2 bucket');
-      
+      log.warn('No Windows installer found');
       return { 
         hasUpdate: false, 
         message: 'No Windows installer found',
@@ -304,15 +433,15 @@ export async function checkForUpdates() {
     
     // Extract version from filename
     const latestVersion = extractVersionFromFilename(windowsInstaller.Key);
-    console.log(`Latest version from R2: ${latestVersion}`);
+    log.info(`Latest version available: ${latestVersion}`);
     
     // Compare with current version
     const comparison = compareVersions(latestVersion, appVersion);
-    console.log(`Version comparison result: ${comparison}`);
     
     if (comparison > 0) {
       // Use the direct download link for the latest version
       const downloadKey = windowsInstaller.Key;
+      log.success(`Update available! ${appVersion} → ${latestVersion}`);
       return {
         hasUpdate: true,
         currentVersion: appVersion,
@@ -323,17 +452,16 @@ export async function checkForUpdates() {
       };
     }
     
+    log.info(`You're running the latest version (${appVersion})`);
     return {
       hasUpdate: false,
       currentVersion: appVersion,
       latestVersion
     };
   } catch (error) {
-    console.error('Error checking for updates:', error);
-    
     return {
       hasUpdate: false,
-      error: (error as Error).message || 'Unknown error',
+      error: error instanceof Error ? error.message : 'Unknown error',
       currentVersion: CURRENT_VERSION || '',
       latestVersion: ''
     };
@@ -348,8 +476,20 @@ export async function checkForUpdates() {
  */
 export async function downloadUpdate(url: string, onProgress: (progress: number) => void) {
   try {
+    log.info(`Starting update download`);
+    
+    // Ensure the URL is using the landing page API
+    if (!url.includes(API_BASE_URL)) {
+      const key = url.split('key=')[1];
+      if (key) {
+        url = `${API_BASE_URL}/download?key=${key}`;
+      }
+    }
+    
     // Check if we're in Electron
     if (typeof window !== 'undefined' && window.electron && window.electron.ipcRenderer) {
+      log.info(`Using Electron download manager`);
+      
       // Set up progress listener
       const progressListener = (_event: any, progress: number) => {
         onProgress(progress);
@@ -368,18 +508,18 @@ export async function downloadUpdate(url: string, onProgress: (progress: number)
         // Clean up listener
         window.electron.ipcRenderer.removeAllListeners('download-progress');
         
+        log.success(`Download complete: ${filePath}`);
         return filePath;
       } catch (electronError) {
-        console.error('Electron download failed:', electronError);
-        // If Electron download fails, use direct download instead of browser popup
+        log.warn(`Electron download failed, trying direct download`);
         return await directDownload(url, onProgress);
       }
     } else {
       // We're in a browser environment, use direct download
+      log.info(`Using browser download method`);
       return await directDownload(url, onProgress);
     }
   } catch (error) {
-    console.error('Error downloading update:', error);
     throw error;
   }
 }
@@ -391,14 +531,17 @@ export async function downloadUpdate(url: string, onProgress: (progress: number)
  * @returns Promise that resolves to download path
  */
 async function directDownload(url: string, onProgress: (progress: number) => void) {
-  console.log('Starting direct download:', url);
-  
   try {
+    log.info(`Starting direct download`);
+    
     // Create a hidden anchor element
     const link = document.createElement('a');
     link.href = url;
-    link.download = url.split('/').pop() || 'CryptoVertX-Setup.exe';
+    const filename = url.split('/').pop() || 'CryptoVertX-Setup.exe';
+    link.download = filename;
     link.style.display = 'none';
+    
+    log.info(`Downloading file: ${filename}`);
     
     // Simulate progress for better UX
     let progress = 0;
@@ -420,11 +563,12 @@ async function directDownload(url: string, onProgress: (progress: number) => voi
       document.body.removeChild(link);
       clearInterval(interval);
       onProgress(100);
+      log.success(`Download initiated for ${filename}`);
     }, 1000);
     
     return 'direct-download';
   } catch (error) {
-    console.error('Direct download failed, falling back to browser download:', error);
+    log.warn(`Direct download failed, trying browser download`);
     return browserDownload(url, onProgress);
   }
 }
@@ -436,7 +580,7 @@ async function directDownload(url: string, onProgress: (progress: number) => voi
  * @returns Promise that resolves to 'browser-download'
  */
 async function browserDownload(url: string, onProgress: (progress: number) => void) {
-  console.log('Falling back to browser download:', url);
+  log.info(`Opening download in new browser tab`);
   
   // Simulate progress for better UX
   let progress = 0;
@@ -456,6 +600,7 @@ async function browserDownload(url: string, onProgress: (progress: number) => vo
   setTimeout(() => {
     clearInterval(interval);
     onProgress(100);
+    log.success(`Browser download complete`);
   }, 2000);
   
   // Return a placeholder path since we're not actually downloading the file
@@ -471,26 +616,30 @@ export async function installUpdate(filePath: string) {
   try {
     // Handle direct download case
     if (filePath === 'direct-download' || filePath === 'browser-download') {
-      console.log('Update was downloaded through the browser');
+      log.success(`Browser download handled successfully`);
       return { success: true, browserDownload: true };
     }
     
+    log.info(`Installing update from: ${filePath}`);
+    
     // Send install request to main process
     if (typeof window !== 'undefined' && window.electron && window.electron.ipcRenderer) {
-      return window.electron.ipcRenderer.invoke('install-update', filePath);
+      const result = await window.electron.ipcRenderer.invoke('install-update', filePath);
+      log.success(`Installation started successfully`);
+      return result;
     } else {
       // If we're not in Electron, open the download page
+      log.info(`Opening download page in browser`);
       window.open('https://cryptovertx.com/download', '_blank');
       return { success: true, browserDownload: true };
     }
   } catch (error) {
-    console.error('Error installing update:', error);
     // If there's an error, try to open the download page as a fallback
     try {
+      log.warn(`Installation failed, opening download page as fallback`);
       window.open('https://cryptovertx.com/download', '_blank');
       return { success: true, browserDownload: true, fallback: true };
     } catch (fallbackError) {
-      console.error('Fallback download also failed:', fallbackError);
       throw error;
     }
   }
@@ -507,7 +656,7 @@ export async function initCurrentVersion() {
     await getAppVersion();
     return;
   } catch (error) {
-    console.error('Error initializing current version:', error);
+    // Silent error - version will be handled by fallbacks
   }
 }
 

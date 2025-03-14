@@ -389,6 +389,12 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     console.log('');
   }
 
+  warn(message: string) {
+    this.spinner.stop();
+    console.warn(chalk.yellow(`${this.emojis.info} Warning: ${message}`));
+    this.spinner.start();
+  }
+
   cleanupStep() {
     this.spinner.start(chalk.blue(`${this.emojis.cleanup} Cleaning up before build...`));
     this.spinner.succeed();

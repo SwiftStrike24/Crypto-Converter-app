@@ -39,6 +39,24 @@ export default defineConfig({
       '@': resolve(__dirname, 'src')
     }
   },
+  // Add server configuration with CORS proxy
+  server: {
+    port: 5173,
+    strictPort: false,
+    proxy: {
+      '/api-proxy': {
+        target: 'https://cryptovertx.com/api',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api-proxy/, ''),
+        secure: true,
+        configure: (proxy) => {
+          proxy.on('error', (err) => {
+            console.error('Proxy error:', err);
+          });
+        },
+      }
+    }
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

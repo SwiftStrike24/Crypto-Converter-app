@@ -80,7 +80,41 @@ export async function getAppVersion(): Promise<string> {
       return currentVersion;
     }
 
-    // Priority 4: npm_package_version (works in development)
+    // Priority 4: Try to dynamically load package.json version if available
+    // This is better than a hardcoded value as it will always use the actual version
+    try {
+      if (typeof window !== 'undefined' && (window as any).electron && (window as any).electron.fs) {
+        const fs = (window as any).electron.fs;
+        const path = (window as any).electron.path;
+        
+        // Try to read package.json from app directory
+        const appDir = (window as any).electron.app?.getAppPath() || process.cwd();
+        const packageJsonPath = path.join(appDir, 'package.json');
+        
+        if (fs.existsSync(packageJsonPath)) {
+          const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+          if (packageJson.version) {
+            currentVersion = packageJson.version;
+            console.log(`[Version Manager] Read version directly from package.json: ${currentVersion}`);
+            return currentVersion;
+          }
+        }
+      }
+    } catch (packageJsonError) {
+      console.warn('[Version Manager] Error reading package.json directly:', packageJsonError);
+    }
+
+    // Priority 5: Hardcoded version from package.json at build time
+    // Only use this as a fallback if all else fails
+    // This value should be updated by the build script
+    const buildTimeVersion = '1.3.5'; // Injected by build script
+    if (buildTimeVersion && buildTimeVersion.length > 0 && !buildTimeVersion.includes('0.0.0')) {
+      currentVersion = buildTimeVersion;
+      console.log(`[Version Manager] Using hardcoded build-time version: ${currentVersion}`);
+      return currentVersion;
+    }
+
+    // Priority 6: npm_package_version (works in development)
     if (typeof process !== 'undefined' && process.env && process.env.npm_package_version) {
       currentVersion = process.env.npm_package_version;
       console.log(`[Version Manager] Using npm_package_version: ${currentVersion}`);
