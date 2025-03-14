@@ -99,6 +99,12 @@ This will present you with a menu to choose between:
 - 💿 Installer Package - Windows installer (.exe)
 - 🔥 Both - Build both portable and installer
 
+The build system also handles version management:
+- Automatically reads version from package.json
+- Updates the hardcoded version in versionManager.ts for production builds
+- Prompts to create a new version or overwrite existing version
+- Automatically creates versioned output directories
+
 When selecting the "Both" option, you'll get a cool build summary with performance metrics showing:
 - Build time for each package type
 - Visual progress bars comparing build times
@@ -144,6 +150,22 @@ All build outputs are placed in the `release/${version}` directory.
 - Fast production builds
 - Efficient caching
 - Minimal output size
+
+### Version Management & Updates
+- Robust version management:
+  - Centralized version handling through `versionManager.ts`
+  - Multiple version detection methods with fallbacks
+  - Version priority system for reliable detection in all environments
+- Automated version injection during build:
+  - Dynamic injection of current version from package.json into build files
+  - Multiple verification passes to ensure correct version is used
+  - Support for updating version number during the build process
+- Integrated update system:
+  - Automatic update checking against cloud storage
+  - Secure Cloudflare R2 integration for update distribution
+  - Version comparison with semantic versioning support
+  - Smooth update download and installation process
+  - Support for both direct updates and browser-based downloads
 
 ## 📦 Dependencies
 
@@ -249,7 +271,3 @@ export default defineConfig({
   }
 });
 ```
-
-2. In Electron development mode, the main process handles requests directly to avoid CORS issues.
-
-### Environment Variables Setup
