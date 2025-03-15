@@ -15,7 +15,7 @@ import InstanceDialog from './pages/InstanceDialog';
 const AppContainer = styled.div<{ isFullScreen?: boolean }>`
   width: ${props => props.isFullScreen ? '100%' : '400px'};
   height: ${props => props.isFullScreen ? '100%' : '300px'};
-  background: rgba(18, 18, 18, 0.95);
+  background: #121212;
   border-radius: ${props => props.isFullScreen ? '0' : '10px'};
   padding: 0;
   display: flex;

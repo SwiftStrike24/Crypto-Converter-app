@@ -192,7 +192,7 @@ function createDialogWindow() {
     width: 450,
     height: 250,
     frame: false,
-    transparent: true,
+    transparent: false,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -315,7 +315,7 @@ function createWindow() {
     width: 400,
     height: 300,
     frame: false,
-    transparent: true,
+    transparent: false,
     show: false,
     webPreferences: {
       nodeIntegration: true,
@@ -330,7 +330,7 @@ function createWindow() {
     resizable: false,
     maximizable: false,
     minimizable: true,
-    backgroundColor: '#111111',
+    backgroundColor: '#121212',
     icon: getIconPath(),
   });
 
