@@ -266,17 +266,6 @@ const TooltipHeader = styled.div`
   margin-bottom: 8px;
 `;
 
-const fadeIn = keyframes`
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-`;
-
 const UpdateButtonSpinner = styled.div`
   animation: spin 1s linear infinite;
   
@@ -379,33 +368,97 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   };
 
   const getOptimalDecimals = (price: number): number => {
-    if (price >= 1000) return 2;    // For high value currencies like BTC
-    if (price >= 100) return 3;     // For mid-range values
-    if (price >= 10) return 4;      // For lower values
-    if (price >= 1) return 6;       // For values close to 1
-    if (price >= 0.01) return 8;    // For small values
-    if (price >= 0.0001) return 8;  // For very small values
-    return 8;                       // For extremely small values like BONK
+    if (price >= 10) return 2;      // For values >= 10, show 2 decimals (e.g., 123.45)
+    if (price >= 0.1) return 2;     // For values between 0.1 and 10, show 2 decimals (e.g., 0.55)
+    if (price >= 0.01) return 3;    // For values between 0.01 and 0.1, show 3 decimals (e.g., 0.055)
+    if (price >= 0.001) return 4;   // For values between 0.001 and 0.01, show 4 decimals (e.g., 0.0055)
+    if (price >= 0.0001) return 5;  // For values between 0.0001 and 0.001, show 5 decimals (e.g., 0.00055)
+    
+    // For very small values, count leading zeros and show 1-2 significant digits
+    const priceStr = price.toString();
+    if (priceStr.includes('e-')) {
+      // Handle scientific notation for extremely small values
+      const [_, exponent] = priceStr.split('e-');
+      return parseInt(exponent) + 1; // Show one significant digit
+    }
+    
+    // Count leading zeros for small decimal values
+    const match = priceStr.match(/0\.0*/);
+    if (match) {
+      const leadingZeros = match[0].length - 2; // Subtract 2 for "0."
+      return leadingZeros + 2; // Show 2 significant digits
+    }
+    
+    return 6; // Default fallback
   };
 
-  const formatSmallNumber = (num: number): string => {
-    const str = num.toString();
-    if (str.includes('e')) {
-      const [base, exponent] = str.split('e');
-      const exp = parseInt(exponent);
-      if (exp < 0) {
-        const absExp = Math.abs(exp);
-        return '0.' + '0'.repeat(absExp - 1) + base.replace('.', '');
+  const formatPrice = (price: number, fiat: string): string => {
+    // For very small numbers (like BONK at $0.00001094)
+    if (price < 0.0001) {
+      // Count significant digits based on the size of the number
+      const decimals = getOptimalDecimals(price);
+      const formattedValue = price.toFixed(decimals);
+      
+      // Add the appropriate currency symbol
+      switch (fiat) {
+        case 'USD': return `$${formattedValue}`;
+        case 'CAD': return `CA$${formattedValue}`;
+        case 'EUR': return `€${formattedValue.replace('.', ',')}`;
+        case 'GBP': return `£${formattedValue}`;
+        case 'JPY': return `¥${formattedValue}`;
+        case 'AUD': return `A$${formattedValue}`;
+        default: return `${fiat} ${formattedValue}`;
       }
     }
     
-    const parts = str.split('.');
-    if (parts.length === 2) {
-      const decimals = Math.min(8, parts[1].length);
-      return num.toFixed(decimals);
-    }
+    // For normal numbers, use locale formatting with appropriate decimals
+    const decimals = getOptimalDecimals(price);
     
-    return str;
+    // Format based on currency
+    switch (fiat) {
+      case 'USD':
+        return `$${price.toLocaleString('en-US', {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals
+        })}`;
+      case 'CAD':
+        return `CA$${price.toLocaleString('en-CA', {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals
+        })}`;
+      case 'EUR':
+        const formattedEuro = price.toLocaleString('de-DE', {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals,
+          useGrouping: true
+        });
+        return `€${formattedEuro.replace(/€\s?/g, '')}`;
+      case 'GBP':
+        return `£${price.toLocaleString('en-GB', {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals
+        })}`;
+      case 'JPY':
+        // JPY typically doesn't use decimal places
+        return `¥${price.toLocaleString('ja-JP', {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0
+        })}`;
+      case 'AUD':
+        return `A$${price.toLocaleString('en-AU', {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals
+        })}`;
+      default:
+        const formatter = new Intl.NumberFormat(
+          fiat === 'USD' ? 'en-US' : fiat === 'EUR' ? 'de-DE' : 'en-CA', 
+          { 
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals
+          }
+        );
+        return `${fiat} ${formatter.format(price)}`;
+    }
   };
 
   // Only show price on main page
@@ -436,21 +489,8 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
     const price = prices[selectedCrypto][selectedFiat.toLowerCase()];
     if (!price) return 'N/A';
 
-    // For very small numbers, use special formatting
-    if (price < 0.01) {
-      return formatSmallNumber(price);
-    }
-
-    const decimals = getOptimalDecimals(price);
-    return price.toLocaleString(
-      selectedFiat === 'USD' ? 'en-US' : selectedFiat === 'EUR' ? 'de-DE' : 'en-CA', 
-      { 
-        style: 'currency', 
-        currency: selectedFiat,
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals
-      }
-    );
+    // Use the new formatPrice function for consistent formatting
+    return formatPrice(price, selectedFiat);
   };
 
   return (
