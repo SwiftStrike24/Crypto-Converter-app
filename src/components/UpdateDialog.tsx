@@ -207,6 +207,12 @@ const Dot = styled(motion.div)`
   background-color: currentColor;
 `;
 
+// New styled component for the wait message
+const WaitMessage = styled.span`
+  margin-left: 4px;
+  font-size: 11px;
+`;
+
 interface UpdateDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -486,7 +492,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
                     <FiRefreshCw size={16} />
                   </motion.div>
                   Installing... App will restart
-                  {error ? null : <span style={{ marginLeft: '4px', fontSize: '11px' }}>(please wait)</span>}
+                  {error ? null : <WaitMessage>(please wait)</WaitMessage>}
                 </StatusMessage>
               )}
             </Content>
@@ -548,7 +554,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
                     <FiRefreshCw size={16} />
                   </motion.div>
                   Installing
-                  {error ? null : <span style={{ marginLeft: '4px', fontSize: '11px' }}>(please wait)</span>}
+                  {error ? null : <WaitMessage>(please wait)</WaitMessage>}
                 </Button>
               )}
             </ButtonContainer>
