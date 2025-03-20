@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { GiPowerButton } from "react-icons/gi";
 import { IoMdAdd } from "react-icons/io";
 import { FiRefreshCw, FiX, FiCheck } from "react-icons/fi";
@@ -175,25 +175,6 @@ const LastUpdated = styled.span`
   color: rgba(255, 255, 255, 0.5);
   opacity: 0;
   transition: opacity 0.2s ease;
-`;
-
-const pulse = keyframes`
-  0% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.6;
-  }
-`;
-
-const PendingPrice = styled.span`
-  animation: ${pulse} 1.5s infinite ease-in-out;
-  color: #8b5cf6;
-  display: inline-flex;
-  align-items: center;
 `;
 
 const Tooltip = styled.div<{ isVisible: boolean }>`
@@ -477,11 +458,32 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
     
     // Check if the token is pending price update
     if (isPending(selectedCrypto)) {
-      return (
-        <PendingPrice>
-          Loading price...
-        </PendingPrice>
-      );
+      // Instead of showing loading state, try to display any available data for this token
+      
+      // First attempt: use any possible stored data for this token
+      if (prices[selectedCrypto]) {
+        const price = prices[selectedCrypto][selectedFiat.toLowerCase()];
+        if (price) {
+          return formatPrice(price, selectedFiat);
+        }
+      }
+      
+      // Second attempt: check localStorage for cached price
+      try {
+        const priceCacheKey = `crypto_price_${selectedCrypto.toLowerCase()}`;
+        const cachedData = localStorage.getItem(priceCacheKey);
+        if (cachedData) {
+          const priceData = JSON.parse(cachedData);
+          if (priceData && priceData[selectedFiat.toLowerCase()]) {
+            return formatPrice(priceData[selectedFiat.toLowerCase()], selectedFiat);
+          }
+        }
+      } catch (e) {
+        // Ignore cache errors
+      }
+      
+      // Fallback: Show the symbol with a placeholder dash
+      return `${selectedCrypto} —`;
     }
     
     if (!prices[selectedCrypto]) return 'N/A';

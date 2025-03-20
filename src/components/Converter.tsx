@@ -490,25 +490,6 @@ const AnalysisIcon = () => (
   <FaMagnifyingGlassChart />
 );
 
-const pulse = keyframes`
-  0% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.6;
-  }
-`;
-
-const PendingIndicator = styled.span`
-  animation: ${pulse} 1.5s infinite ease-in-out;
-  color: #8b5cf6;
-  font-size: 12px;
-  margin-left: 8px;
-`;
-
 const Converter: React.FC<ConverterProps> = ({ 
   onCryptoChange, 
   onFiatChange,
@@ -914,10 +895,27 @@ const Converter: React.FC<ConverterProps> = ({
     setCryptoDropdownOpen(false);
     setCryptoSearchTerm('');
     
-    // Force price update for the new selection to ensure we have the latest data
-    // Especially important for newly added tokens
-    if (isPending(crypto)) {
-      updatePrices(true);
+    // Force immediate price update for the new selection
+    updatePrices(true);
+    
+    // Try to fetch cached data if available
+    const id = getCryptoId(crypto);
+    if (id) {
+      // Check if we already have price data in localStorage
+      const priceCacheKey = `crypto_price_${crypto.toLowerCase()}`;
+      const cachedPrice = localStorage.getItem(priceCacheKey);
+      if (cachedPrice) {
+        try {
+          const priceData = JSON.parse(cachedPrice);
+          // Use cached price data immediately while waiting for fresh data
+          if (priceData && priceData.timestamp && Date.now() - priceData.timestamp < 5 * 60 * 1000) {
+            // Only use cache if less than 5 minutes old
+            // This provides immediate feedback while waiting for the API
+          }
+        } catch (e) {
+          // Ignore cache parse errors, will fetch fresh data
+        }
+      }
     }
   };
 
@@ -1010,7 +1008,7 @@ const Converter: React.FC<ConverterProps> = ({
     if (cachedIcon) {
       // If we have a cached icon but no metadata, update the metadata
       if (id && !tokenMetadata[id]?.image) {
-        // This will trigger a metadata update in the background
+        // This will trigger a metadata update in the background without loading indicators
         setTimeout(() => {
           // Update the metadata with the cached icon
           setTokenMetadata((prev: Record<string, any>) => ({
@@ -1026,22 +1024,22 @@ const Converter: React.FC<ConverterProps> = ({
       return cachedIcon;
     }
     
-    // If we don't have an icon but we have an ID, trigger a background fetch
-    if (id && !isPending(normalizedSymbol)) {
+    // If we don't have an icon but we have an ID, trigger an immediate background fetch
+    if (id) {
       // Debounce the fetch to avoid multiple requests for the same token
       const now = Date.now();
       const lastFetchAttempt = iconFetchAttempts.current[normalizedSymbol] || 0;
       
-      // Only attempt to fetch if we haven't tried in the last 2 minutes (reduced from 5 minutes)
-      if (now - lastFetchAttempt > 2 * 60 * 1000) {
+      // Only attempt to fetch if we haven't tried in the last minute (reduced from 2 minutes for more responsiveness)
+      if (now - lastFetchAttempt > 60 * 1000) {
         iconFetchAttempts.current[normalizedSymbol] = now;
         iconUpdateAttempts.current[normalizedSymbol] = (iconUpdateAttempts.current[normalizedSymbol] || 0) + 1;
         
-        // Trigger a background fetch for this token's metadata
+        // Trigger an immediate background fetch for this token's metadata
         setTimeout(() => {
           // Use the checkAndUpdateMissingIcons function from context
           checkMissingIcons();
-        }, 100);
+        }, 10); // Reduced from 100ms to 10ms for faster updates
       }
     }
     
@@ -1113,9 +1111,6 @@ const Converter: React.FC<ConverterProps> = ({
     }
   };
 
-  // Check if the selected crypto is pending
-  const isSelectedCryptoPending = isPending(selectedCrypto);
-
   return (
     <ConverterContainer>
       <InputGroup>
@@ -1161,7 +1156,6 @@ const Converter: React.FC<ConverterProps> = ({
                 <TokenFallbackIcon className="token-fallback-icon">
                   {selectedCrypto.charAt(0)}
                 </TokenFallbackIcon>
-                {/* Trigger a background update for the selected token's icon */}
                 {(() => {
                   const id = getCryptoId(selectedCrypto);
                   if (id && !preloadedIcons.has(selectedCrypto)) {
@@ -1171,26 +1165,13 @@ const Converter: React.FC<ConverterProps> = ({
                       setPreloadedIcons(prev => new Set([...prev, selectedCrypto]));
                       // Try to fetch the icon with high priority
                       checkMissingIcons();
-                    }, 100);
+                    }, 10); // Reduced from 100ms to 10ms for faster updates
                   }
                   return null;
                 })()}
               </>
             )}
             <span className="token-text">{selectedCrypto}</span>
-            {isPending(selectedCrypto) && (
-              <span className="loading-indicator">(Loading...)</span>
-            )}
-            <svg 
-              className="dropdown-arrow" 
-              width="12" 
-              height="6" 
-              viewBox="0 0 12 6" 
-              fill="none" 
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path d="M1 1L6 5L11 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
           </SelectButton>
           <DropdownMenu 
             isOpen={cryptoDropdownOpen} 
@@ -1241,7 +1222,6 @@ const Converter: React.FC<ConverterProps> = ({
                         <TokenFallbackIcon className="token-fallback-icon">
                           {crypto.charAt(0)}
                         </TokenFallbackIcon>
-                        {/* Enhanced background update for this token's icon */}
                         {(() => {
                           // Check if we've already tried to load this icon
                           const hasAttempted = preloadedIcons.has(crypto);
@@ -1262,16 +1242,13 @@ const Converter: React.FC<ConverterProps> = ({
                             setTimeout(() => {
                               // Try to fetch the icon with higher priority
                               checkMissingIcons();
-                            }, 100);
+                            }, 10); // Reduced from 100ms to 10ms for faster updates
                           }
                           return null;
                         })()}
                       </>
                     )}
                     <span>{crypto}</span>
-                    {isPending(crypto) && (
-                      <span className="loading-indicator">(Loading...)</span>
-                    )}
                   </DropdownItem>
                 ))}
                 
@@ -1371,10 +1348,9 @@ const Converter: React.FC<ConverterProps> = ({
         </SelectContainer>
       </InputGroup>
 
-      {error && !isSelectedCryptoPending && <ErrorMessage>{error}</ErrorMessage>}
-      {isSelectedCryptoPending && <ErrorMessage>Loading price data for {selectedCrypto}...</ErrorMessage>}
+      {error && <ErrorMessage>{error}</ErrorMessage>}
       
-      {(cryptoAmount || fiatAmount) && (!error || isSelectedCryptoPending) && (
+      {(cryptoAmount || fiatAmount) && !error && (
         <ResultBox 
           onClick={handleCopy} 
           className={copyFeedback ? 'copied' : ''}
@@ -1384,7 +1360,6 @@ const Converter: React.FC<ConverterProps> = ({
             {lastEditedField === 'crypto' 
               ? `${selectedFiat} ${formatNumber(fiatAmount, false)}`
               : `${selectedCrypto} ${formatNumber(cryptoAmount, true)}`}
-            {isSelectedCryptoPending && <PendingIndicator>(Estimated)</PendingIndicator>}
           </Amount>
         </ResultBox>
       )}

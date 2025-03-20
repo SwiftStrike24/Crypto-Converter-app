@@ -1,5 +1,5 @@
 import React from 'react';
-import styled, { keyframes } from 'styled-components';
+import styled from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
 
 const PriceContainer = styled.div`
@@ -30,23 +30,6 @@ const CurrencySymbol = styled.span`
 const Symbol = styled.span`
   color: #9ca3af;
   font-size: 1.25rem;
-`;
-
-const pulse = keyframes`
-  0% {
-    opacity: 0.6;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.6;
-  }
-`;
-
-const PendingPrice = styled.span`
-  animation: ${pulse} 1.5s infinite ease-in-out;
-  color: #8b5cf6;
 `;
 
 interface LivePriceProps {
@@ -103,10 +86,9 @@ const formatPrice = (price: number): string => {
 };
 
 export const LivePrice: React.FC<LivePriceProps> = ({ cryptoId, currency }) => {
-  const { prices, isPending } = useCrypto();
+  const { prices } = useCrypto();
   
   const currentPrice = prices[cryptoId]?.[currency.toLowerCase()];
-  const isPendingPrice = isPending(cryptoId);
   
   const formattedPrice = currentPrice !== undefined 
     ? formatPrice(currentPrice)
@@ -119,11 +101,7 @@ export const LivePrice: React.FC<LivePriceProps> = ({ cryptoId, currency }) => {
       <Symbol>{cryptoId}</Symbol>
       <Price>
         <CurrencySymbol>{currencySymbol}</CurrencySymbol>
-        {isPendingPrice ? (
-          <PendingPrice>{formattedPrice || 'Loading...'}</PendingPrice>
-        ) : (
-          formattedPrice || '...'
-        )}
+        {formattedPrice || '...'}
       </Price>
     </PriceContainer>
   );
