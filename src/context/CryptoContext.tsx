@@ -1331,13 +1331,13 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setAvailableCryptos(prev => {
       const defaultTokens = Object.keys(defaultCryptoIds);
       // Get existing custom tokens, but filter out any that might already exist
-      const existingCustomTokens = prev.filter(token => 
+      const existingCustomTokens = prev.filter(token =>
         !defaultTokens.includes(token) && !newSymbols.includes(token)
       );
-      
+
       // All custom tokens (old and new) sorted alphabetically
       const allCustomTokens = [...existingCustomTokens, ...newSymbols].sort();
-      
+
       // Return with default tokens first, then custom tokens
       return [...defaultTokens, ...allCustomTokens];
     });
