@@ -12,17 +12,17 @@ import { CryptoProvider } from './context/CryptoContext';
 import { CryptoCompareProvider } from './context/CryptoCompareContext';
 import InstanceDialog from './pages/InstanceDialog';
 
-const AppContainer = styled.div<{ isFullScreen?: boolean }>`
-  width: ${props => props.isFullScreen ? '100%' : '400px'};
-  height: ${props => props.isFullScreen ? '100%' : '300px'};
+const AppContainer = styled.div<{ $isFullScreen?: boolean }>`
+  width: ${props => props.$isFullScreen ? '100%' : '400px'};
+  height: ${props => props.$isFullScreen ? '100%' : '300px'};
   background: #121212;
-  border-radius: ${props => props.isFullScreen ? '0' : '10px'};
+  border-radius: ${props => props.$isFullScreen ? '0' : '10px'};
   padding: 0;
   display: flex;
   flex-direction: column;
   backdrop-filter: blur(10px);
-  border: ${props => props.isFullScreen ? 'none' : '1px solid rgba(255, 255, 255, 0.1)'};
-  box-shadow: ${props => props.isFullScreen ? 'none' : '0 8px 32px 0 rgba(0, 0, 0, 0.37)'};
+  border: ${props => props.$isFullScreen ? 'none' : '1px solid rgba(255, 255, 255, 0.1)'};
+  box-shadow: ${props => props.$isFullScreen ? 'none' : '0 8px 32px 0 rgba(0, 0, 0, 0.37)'};
   overflow: hidden;
   position: relative;
 `;
@@ -67,7 +67,7 @@ const AppContent: React.FC = () => {
       <Route path="/chart" element={<ChartPage />} />
       <Route path="/analysis" element={<TechnicalAnalysisPage />} />
       <Route path="/" element={
-        <AppContainer isFullScreen={false}>
+        <AppContainer $isFullScreen={false}>
           <Header selectedCrypto={selectedCrypto} selectedFiat={selectedFiat} />
           <ContentContainer>
             <Converter 

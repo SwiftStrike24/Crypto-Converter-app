@@ -9,7 +9,7 @@ import os from 'os';
 const cpuCount = os.cpus().length;
 const workerCount = Math.max(2, cpuCount - 1); // Leave one core free for system
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     electron([
@@ -60,7 +60,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    minify: 'esbuild',
+    minify: mode === 'production',
     sourcemap: false,
     chunkSizeWarningLimit: 1000,
     target: 'esnext',
@@ -82,7 +82,13 @@ export default defineConfig({
         },
         compact: true
       }
-    }
+    },
+    terserOptions: mode === 'production' ? {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+      },
+    } : undefined
   },
   esbuild: {
     target: 'esnext',
@@ -92,4 +98,4 @@ export default defineConfig({
     minifySyntax: true,
     minifyWhitespace: true
   }
-}); 
+})); 

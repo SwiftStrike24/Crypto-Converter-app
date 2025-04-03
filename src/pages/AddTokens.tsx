@@ -512,7 +512,7 @@ const ButtonContainer = styled.div`
   }
 `;
 
-const Button = styled.button<{ primary?: boolean }>`
+const Button = styled.button<{ $primary?: boolean }>`
   flex: 1;
   padding: 16px;
   border-radius: 12px;
@@ -521,8 +521,8 @@ const Button = styled.button<{ primary?: boolean }>`
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
-  background: ${props => props.primary ? '#8b5cf6' : '#2a2a2a'};
-  color: ${props => props.primary ? 'white' : '#888'};
+  background: ${props => props.$primary ? '#8b5cf6' : '#2a2a2a'};
+  color: ${props => props.$primary ? 'white' : '#888'};
   display: flex;
   align-items: center;
   justify-content: center;
@@ -530,7 +530,7 @@ const Button = styled.button<{ primary?: boolean }>`
 
   &:hover {
     transform: translateY(-1px);
-    background: ${props => props.primary ? '#7c3aed' : '#333'};
+    background: ${props => props.$primary ? '#7c3aed' : '#333'};
   }
 
   &:disabled {
@@ -594,6 +594,69 @@ const SectionHeader = styled.div`
   justify-content: space-between;
   align-items: center;
   width: 100%;
+`;
+
+// Add this new component for API error display
+const ApiErrorMessage = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 87, 87, 0.1);
+  border: 1px solid rgba(255, 87, 87, 0.3);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-top: 8px;
+  
+  .error-icon {
+    color: #ff5757;
+    flex-shrink: 0;
+  }
+  
+  .error-text {
+    font-size: 0.9rem;
+    color: #ff9494;
+    flex: 1;
+  }
+  
+  .retry-button {
+    background: none;
+    border: none;
+    color: #8b5cf6;
+    cursor: pointer;
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s ease;
+    
+    &:hover {
+      background: rgba(139, 92, 246, 0.1);
+    }
+  }
+`;
+
+// Add this new component for API status display
+const ApiStatusIndicator = styled.div<{ $status: 'available' | 'limited' | 'unavailable' }>`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: ${props => 
+    props.$status === 'available' ? '#4ade80' : 
+    props.$status === 'limited' ? '#fbbf24' : 
+    '#ef4444'};
+  margin-top: 8px;
+  
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: ${props => 
+      props.$status === 'available' ? '#4ade80' : 
+      props.$status === 'limited' ? '#fbbf24' : 
+      '#ef4444'};
+  }
 `;
 
 // Enhanced interface with additional fields for better type safety
@@ -1335,69 +1398,6 @@ const AddTokens: React.FC = () => {
     }
   }, [searchTerm]);
 
-  // Add this new component for API error display
-  const ApiErrorMessage = styled.div`
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    background: rgba(255, 87, 87, 0.1);
-    border: 1px solid rgba(255, 87, 87, 0.3);
-    border-radius: 12px;
-    padding: 12px 16px;
-    margin-top: 8px;
-    
-    .error-icon {
-      color: #ff5757;
-      flex-shrink: 0;
-    }
-    
-    .error-text {
-      font-size: 0.9rem;
-      color: #ff9494;
-      flex: 1;
-    }
-    
-    .retry-button {
-      background: none;
-      border: none;
-      color: #8b5cf6;
-      cursor: pointer;
-      padding: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: 50%;
-      transition: all 0.2s ease;
-      
-      &:hover {
-        background: rgba(139, 92, 246, 0.1);
-      }
-    }
-  `;
-
-  // Add this new component for API status display
-  const ApiStatusIndicator = styled.div<{ status: 'available' | 'limited' | 'unavailable' }>`
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.8rem;
-    color: ${props => 
-      props.status === 'available' ? '#4ade80' : 
-      props.status === 'limited' ? '#fbbf24' : 
-      '#ef4444'};
-    margin-top: 8px;
-    
-    .status-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background-color: ${props => 
-        props.status === 'available' ? '#4ade80' : 
-        props.status === 'limited' ? '#fbbf24' : 
-        '#ef4444'};
-    }
-  `;
-
   return (
     <PageContainer>
       <Header>
@@ -1484,7 +1484,7 @@ const AddTokens: React.FC = () => {
             autoFocus
             aria-label="Search for tokens"
           />
-          <ApiStatusIndicator status={apiStatus}>
+          <ApiStatusIndicator $status={apiStatus}>
             <div className="status-dot"></div>
             <span>
               {apiStatus === 'available' 
@@ -1648,7 +1648,7 @@ const AddTokens: React.FC = () => {
           Cancel
         </Button>
         <Button 
-          primary 
+          $primary 
           onClick={handleAddTokens}
           disabled={selectedCryptos.size === 0 || loading}
           aria-label={`Add ${selectedCryptos.size} tokens`}

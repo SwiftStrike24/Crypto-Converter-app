@@ -284,8 +284,6 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }));
         }
       }
-      
-      console.log(`Cached icon for ${symbol}`);
     } catch (error) {
       console.error('Error caching token icon:', error);
     }
@@ -872,8 +870,15 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             results.push(data);
           }
         }
-      } catch (error) {
-        // Silent catch - just continue with next symbol
+      } catch (error: any) {
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+          // Log specifically that this pair was not found on CryptoCompare/Binance
+          console.warn(`[CryptoContext] Fallback failed: ${symbol}-USDT not found on CryptoCompare (Binance market). Skipping.`);
+        } else {
+          // Log other errors, but still continue
+          console.error(`[CryptoContext] Error during CryptoCompare fallback for ${symbol}:`, error.message);
+        }
+        // Continue with the next symbol even if one fails
         continue;
       }
     }

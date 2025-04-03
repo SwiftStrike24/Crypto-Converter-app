@@ -114,9 +114,9 @@ const IconsContainer = styled.div`
   gap: 8px;
 `;
 
-const ExchangeRate = styled.div<{ isError?: boolean }>`
+const ExchangeRate = styled.div<{ $isError?: boolean }>`
   font-size: 14px;
-  color: ${props => props.isError ? '#ff4444' : '#ffffff'};
+  color: ${props => props.$isError ? '#ff4444' : '#ffffff'};
   margin-right: 10px;
   display: flex;
   align-items: center;
@@ -129,7 +129,7 @@ const ExchangeRate = styled.div<{ isError?: boolean }>`
   -webkit-app-region: no-drag;
 
   &:hover {
-    color: ${props => props.isError ? '#ff6666' : '#ffffff'};
+    color: ${props => props.$isError ? '#ff6666' : '#ffffff'};
   }
 
   &:hover .last-updated {
@@ -177,7 +177,7 @@ const LastUpdated = styled.span`
   transition: opacity 0.2s ease;
 `;
 
-const Tooltip = styled.div<{ isVisible: boolean }>`
+const Tooltip = styled.div<{ $isVisible: boolean }>`
   position: absolute;
   top: 40px;
   right: 10px;
@@ -189,9 +189,9 @@ const Tooltip = styled.div<{ isVisible: boolean }>`
   border: 1px solid #8b5cf6;
   color: white;
   z-index: 1000;
-  opacity: ${props => props.isVisible ? 1 : 0};
-  visibility: ${props => props.isVisible ? 'visible' : 'hidden'};
-  transform: ${props => props.isVisible ? 'translateY(0)' : 'translateY(-10px)'};
+  opacity: ${props => props.$isVisible ? 1 : 0};
+  visibility: ${props => props.$isVisible ? 'visible' : 'hidden'};
+  transform: ${props => props.$isVisible ? 'translateY(0)' : 'translateY(-10px)'};
   transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s;
   font-size: 12px;
 `;
@@ -253,6 +253,35 @@ const UpdateButtonSpinner = styled.div`
   @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+  }
+`;
+
+const ErrorIcon = styled.div<{ $isError?: boolean }>`
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.2s;
+  background: ${props => props.$isError ? '#ff4444' : 'transparent'};
+  
+  &:hover {
+    background: ${props => props.$isError ? '#ff6666' : 'transparent'};
+    transform: scale(1.05);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  svg {
+    width: 12px;
+    height: 12px;
+    color: white;
   }
 `;
 
@@ -507,7 +536,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
       </IconsContainer>
 
       {showPrice && (
-        <ExchangeRate isError={!!error}>
+        <ExchangeRate $isError={!!error}>
           <LastUpdated className="last-updated">
             {lastUpdated ? formatTimeAgo(lastUpdated) : ''}
           </LastUpdated>
@@ -534,7 +563,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
         </PowerButton>
         
         {/* Tooltip notification */}
-        <Tooltip isVisible={tooltipVisible}>
+        <Tooltip $isVisible={tooltipVisible}>
           <TooltipTitle>
             <TooltipHeader>
               <TooltipIcon>

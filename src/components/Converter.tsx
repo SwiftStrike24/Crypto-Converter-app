@@ -164,7 +164,7 @@ const SelectContainer = styled.div`
   -webkit-app-region: no-drag;
 `;
 
-const SelectButton = styled.button<{ isOpen?: boolean }>`
+const SelectButton = styled.button<{ $isOpen?: boolean }>`
   display: flex;
   align-items: center;
   gap: 8px;
@@ -208,11 +208,11 @@ const SelectButton = styled.button<{ isOpen?: boolean }>`
   .dropdown-arrow {
     margin-left: 4px;
     transition: transform 0.2s ease;
-    transform: ${props => props.isOpen ? 'rotate(180deg)' : 'rotate(0deg)'};
+    transform: ${props => props.$isOpen ? 'rotate(180deg)' : 'rotate(0deg)'};
   }
 `;
 
-const DropdownMenu = styled.div<{ isOpen: boolean }>`
+const DropdownMenu = styled.div<{ $isOpen: boolean }>`
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
@@ -223,7 +223,7 @@ const DropdownMenu = styled.div<{ isOpen: boolean }>`
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   z-index: 1000; /* Ensure it's above other elements */
-  display: ${props => props.isOpen ? 'block' : 'none'};
+  display: ${props => props.$isOpen ? 'block' : 'none'};
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   
   &::-webkit-scrollbar {
@@ -244,21 +244,23 @@ const DropdownMenu = styled.div<{ isOpen: boolean }>`
   }
 `;
 
-const DropdownItem = styled.button<{ isSelected: boolean }>`
+const DropdownItem = styled.button<{ $isSelected: boolean }>`
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  padding: 10px 12px;
   width: 100%;
-  background: ${props => props.isSelected ? 'rgba(139, 92, 246, 0.15)' : 'transparent'};
+  background: none;
   border: none;
   color: white;
-  cursor: pointer;
   text-align: left;
-  transition: all 0.2s ease;
-  
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.15s ease;
+  background-color: ${props => props.$isSelected ? 'rgba(139, 92, 246, 0.2)' : 'transparent'}; 
+
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.08);
   }
   
   .token-icon, .token-fallback-icon {
@@ -1129,7 +1131,7 @@ const Converter: React.FC<ConverterProps> = ({
             onClick={() => setCryptoDropdownOpen(!cryptoDropdownOpen)}
             aria-label="Select cryptocurrency"
             aria-expanded={cryptoDropdownOpen}
-            isOpen={cryptoDropdownOpen}
+            $isOpen={cryptoDropdownOpen}
           >
             {getTokenIcon(selectedCrypto) ? (
               <>
@@ -1174,7 +1176,7 @@ const Converter: React.FC<ConverterProps> = ({
             <span className="token-text">{selectedCrypto}</span>
           </SelectButton>
           <DropdownMenu 
-            isOpen={cryptoDropdownOpen} 
+            $isOpen={cryptoDropdownOpen} 
             ref={dropdownRef as React.RefObject<HTMLDivElement>}
             onScroll={handleDropdownScroll}
           >
@@ -1195,7 +1197,7 @@ const Converter: React.FC<ConverterProps> = ({
                   <DropdownItem
                     key={crypto}
                     onClick={() => handleCryptoChange(crypto)}
-                    isSelected={crypto === selectedCrypto}
+                    $isSelected={crypto === selectedCrypto}
                   >
                     {getTokenIcon(crypto) ? (
                       <>
@@ -1278,7 +1280,7 @@ const Converter: React.FC<ConverterProps> = ({
             onClick={() => setFiatDropdownOpen(!fiatDropdownOpen)}
             aria-label="Select fiat currency"
             aria-expanded={fiatDropdownOpen}
-            isOpen={fiatDropdownOpen}
+            $isOpen={fiatDropdownOpen}
           >
             {getFiatIcon(selectedFiat) ? (
               <>
@@ -1313,12 +1315,12 @@ const Converter: React.FC<ConverterProps> = ({
               <path d="M1 1L6 5L11 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </SelectButton>
-          <DropdownMenu isOpen={fiatDropdownOpen}>
+          <DropdownMenu $isOpen={fiatDropdownOpen}>
             {fiats.map((fiat) => (
               <DropdownItem
                 key={fiat}
-                isSelected={fiat === selectedFiat}
                 onClick={() => handleFiatChange(fiat)}
+                $isSelected={fiat === selectedFiat}
               >
                 {getFiatIcon(fiat) ? (
                   <>
