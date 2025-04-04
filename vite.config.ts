@@ -67,9 +67,7 @@ export default defineConfig(({ mode }) => ({
     reportCompressedSize: false,
     cssMinify: true,
     cssCodeSplit: true,
-    modulePreload: {
-      polyfill: false
-    },
+    modulePreload: false,
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html')

@@ -88,10 +88,8 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
   useEffect(() => {
     const cleanupWidget = () => {
       if (container.current) {
-        // Remove all child elements
-        while (container.current.firstChild) {
-          container.current.removeChild(container.current.firstChild);
-        }
+        // More aggressively clear the container
+        container.current.innerHTML = ''; 
       }
       if (scriptRef.current && scriptRef.current.parentNode) {
         scriptRef.current.parentNode.removeChild(scriptRef.current);
@@ -99,19 +97,29 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
       }
       setError(null);
 
-      // Remove any existing TradingView widgets
+      // Remove any existing TradingView widget containers created by the script
+      // (Doing this after clearing innerHTML might be redundant but safe)
       const existingWidgets = document.querySelectorAll('.tradingview-widget-container__widget');
       existingWidgets.forEach(widget => widget.remove());
     };
 
-    if (!container.current) return cleanupWidget;
+    if (!container.current) {
+        // If the container ref isn't ready yet, return early and let the effect re-run
+        console.warn('TradingView container ref not ready yet.');
+        return;
+    }
 
+    // Ensure cleanup runs FIRST
     cleanupWidget();
 
-    // Create widget container elements
-    const widgetContainer = document.createElement('div');
-    widgetContainer.className = 'tradingview-widget-container__widget';
-    container.current.appendChild(widgetContainer);
+    // Create dedicated container for the script to target
+    // This gives the script a predictable element ID to find
+    const widgetTargetId = `tradingview-widget-${widgetKey}`;
+    const widgetInnerContainer = document.createElement('div');
+    widgetInnerContainer.id = widgetTargetId;
+    widgetInnerContainer.style.height = '100%'; // Ensure it takes up space
+    widgetInnerContainer.style.width = '100%';
+    container.current.appendChild(widgetInnerContainer);
 
     const script = document.createElement("script");
     script.src = "https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js";
@@ -167,7 +175,7 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
       "withdateranges": true,
       "upColor": "#22ab94",
       "downColor": "#f7525f",
-      "container_id": `tv-${widgetKey}`
+      "container_id": widgetTargetId // Use the generated ID
     };
 
     script.innerHTML = JSON.stringify(widgetConfig);
@@ -183,7 +191,14 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
     };
 
     window.addEventListener('error', errorHandler);
-    container.current.appendChild(script);
+
+    // Append script slightly deferred to ensure DOM is ready
+    const timerId = setTimeout(() => {
+        // Check if container still exists before appending
+        if (widgetInnerContainer.isConnected) { 
+            widgetInnerContainer.appendChild(script);
+        }
+    }, 0);
 
     script.onerror = () => {
       console.error('Failed to load TradingView widget script');
@@ -191,6 +206,7 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
     };
 
     return () => {
+      clearTimeout(timerId); // Clear timeout on cleanup
       window.removeEventListener('error', errorHandler);
       cleanupWidget();
     };

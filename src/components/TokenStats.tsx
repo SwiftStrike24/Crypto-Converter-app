@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, memo } from 'react';
 import styled from 'styled-components';
 import { getTokenStats } from '../services';
 import { useCrypto } from '../context/CryptoContext';
@@ -130,7 +130,7 @@ const CircleBackground = styled.circle`
   stroke: rgba(139, 92, 246, 0.1);
 `;
 
-const CircleProgress = styled.circle<{ progress: number }>`
+const CircleProgress = styled.circle<{ $progress: number }>`
   fill: none;
   stroke: rgb(139, 92, 246);
   stroke-linecap: round;
@@ -251,30 +251,23 @@ const CircularProgressIndicator: React.FC<{ percentage: number }> = ({ percentag
   return (
     <CircleContainer>
       <svg width="40" height="40" viewBox="0 0 40 40">
-        <CircleBackground
-          cx="20"
-          cy="20"
-          r={radius}
-          strokeWidth="4"
-        />
+        <CircleBackground cx="20" cy="20" r={radius} strokeWidth="3" />
         <CircleProgress
+          $progress={progress}
           cx="20"
           cy="20"
           r={radius}
-          strokeWidth="4"
-          progress={progress}
-          style={{
-            strokeDasharray: circumference,
-            strokeDashoffset: strokeDashoffset
-          }}
+          strokeWidth="3"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
         />
       </svg>
-      <PercentageText>{Math.round(progress)}%</PercentageText>
+      <PercentageText>{`${Math.round(progress)}%`}</PercentageText>
     </CircleContainer>
   );
 };
 
-export const TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
+const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
   const [stats, setStats] = useState<TokenStatsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -448,4 +441,6 @@ export const TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) =>
       )}
     </StatsContainer>
   );
-}; 
+};
+
+export const TokenStats = memo(_TokenStats); 

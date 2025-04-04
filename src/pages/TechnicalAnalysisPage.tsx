@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import styled from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import TechnicalAnalysisWidget from '../components/TechnicalAnalysisWidget';
 import { FaMagnifyingGlassChart } from 'react-icons/fa6';
 
-const PageContainer = styled.div`
+const PageContainer = styled(motion.div)`
   position: fixed;
   top: 0;
   left: 0;
@@ -16,21 +17,9 @@ const PageContainer = styled.div`
   display: flex;
   flex-direction: column;
   padding: 0;
-  animation: fadeIn 0.3s ease;
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: scale(0.98);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
 `;
 
-const AnalysisContainer = styled.div`
+const AnalysisContainer = styled(motion.div)`
   width: 100%;
   height: 100%;
   display: flex;
@@ -38,7 +27,7 @@ const AnalysisContainer = styled.div`
   overflow: hidden;
 `;
 
-const Header = styled.div`
+const Header = styled(motion.div)`
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -74,7 +63,7 @@ const CloseButton = styled.button`
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease;
 
   &:hover {
     background: rgba(255, 255, 255, 0.1);
@@ -87,7 +76,7 @@ const CloseButton = styled.button`
   }
 `;
 
-const WidgetWrapper = styled.div`
+const WidgetWrapper = styled(motion.div)`
   flex: 1;
   padding: 0;
   display: flex;
@@ -157,7 +146,7 @@ const MarketButton = styled.button<MarketButtonProps>`
   font-size: 0.85rem;
   font-weight: ${props => props.$active ? '600' : '500'};
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
   min-width: 80px;
   letter-spacing: 0.5px;
   
@@ -197,7 +186,25 @@ interface LocationState {
   currency: string;
 }
 
-const TechnicalAnalysisPage: React.FC = () => {
+// Define animation variants
+const pageVariants = {
+  hidden: { opacity: 0, scale: 0.98 },
+  visible: { opacity: 1, scale: 1, transition: { duration: 0.2, ease: "easeOut" } },
+  exit: { opacity: 0, scale: 0.98, transition: { duration: 0.15, ease: "easeIn" } },
+};
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.1, delayChildren: 0.1 } },
+  exit: { opacity: 0 },
+};
+
+const itemVariants = {
+  hidden: { y: -10, opacity: 0 },
+  visible: { y: 0, opacity: 1 },
+};
+
+const _TechnicalAnalysisPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [selectedInterval] = useState<'1h'>('1h');
@@ -208,14 +215,31 @@ const TechnicalAnalysisPage: React.FC = () => {
     currency: 'USD'
   };
 
+  // Add location state check
+  if (!location.state?.cryptoId || !location.state?.currency) {
+    console.error('🚨 TechnicalAnalysisPage: Missing cryptoId or currency in location state.');
+    // Navigate back or show error immediately
+    React.useEffect(() => { navigate(-1); }, [navigate]);
+    return null; // Render nothing while navigating back
+  }
+
   const handleClose = () => {
     navigate(-1);
   };
 
   return (
-    <PageContainer onClick={handleClose}>
-      <AnalysisContainer onClick={e => e.stopPropagation()}>
-        <Header>
+    <PageContainer
+      variants={pageVariants}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      onClick={handleClose}
+    >
+      <AnalysisContainer 
+        variants={containerVariants}
+        onClick={e => e.stopPropagation()}
+      >
+        <Header variants={itemVariants}>
           <Title>
             <AnalysisIcon />
             Technical Analysis - {cryptoId}/{currency}
@@ -224,7 +248,7 @@ const TechnicalAnalysisPage: React.FC = () => {
             <CloseIcon />
           </CloseButton>
         </Header>
-        <WidgetWrapper>
+        <WidgetWrapper variants={itemVariants}>
           <ChartControls>
             <MarketLabel>Exchange View</MarketLabel>
             <MarketButtons>
@@ -251,4 +275,4 @@ const TechnicalAnalysisPage: React.FC = () => {
   );
 };
 
-export default TechnicalAnalysisPage; 
+export default memo(_TechnicalAnalysisPage); 
