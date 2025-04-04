@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -159,17 +159,25 @@ const TokenItem = styled(motion.div)`
 
 const TokenInfo = styled.div`
   flex: 1;
-  
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+
   .token-symbol {
     font-weight: 500;
-    margin-bottom: 4px;
-    font-size: 1.1rem;
+    margin-bottom: 2px;
+    font-size: 1rem;
     color: #fff;
+    white-space: nowrap;
   }
-  
+
   .token-id {
-    font-size: 0.9rem;
+    font-size: 0.8rem;
     color: #888;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 `;
 
@@ -302,17 +310,16 @@ const NewTokenBadge = styled.span`
   padding: 3px 8px;
   border-radius: 20px;
   margin-left: 8px;
-  animation: pulse 2s infinite;
-  
-  @keyframes pulse {
-    0% {
-      opacity: 0.6;
+  animation: pulseGlow 2.5s infinite ease-in-out;
+
+  @keyframes pulseGlow {
+    0%, 100% {
+      opacity: 0.7;
+      box-shadow: 0 0 3px rgba(139, 92, 246, 0.2);
     }
     50% {
       opacity: 1;
-    }
-    100% {
-      opacity: 0.6;
+      box-shadow: 0 0 8px rgba(139, 92, 246, 0.4);
     }
   }
 `;
@@ -369,60 +376,76 @@ const dialogVariants = {
   exit: { opacity: 0, scale: 0.9, transition: { duration: 0.2 } }
 };
 
+// --- Add Icon Styles (adapted from Converter.tsx) ---
+const IconContainer = styled.div`
+  width: 36px;
+  height: 36px;
+  position: relative;
+  flex-shrink: 0;
+`;
+
+const StyledTokenIcon = styled.img`
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #3a3a3a;
+  object-fit: cover;
+  display: block;
+`;
+
+const StyledTokenFallbackIcon = styled.div`
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #8b5cf6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: bold;
+  color: white;
+`;
+// --- End Icon Styles ---
+
 const ManageTokens: React.FC = () => {
   const navigate = useNavigate();
-  const { availableCryptos, getCryptoId, deleteCrypto } = useCrypto();
+  const { 
+    availableCryptos, 
+    getCryptoId, 
+    deleteCrypto, 
+    tokenMetadata // Get tokenMetadata from context
+  } = useCrypto(); 
   const defaultTokens = new Set(['BTC', 'ETH', 'SOL', 'USDC', 'XRP']);
   const [confirmDialog, setConfirmDialog] = useState(false);
-  const [forceUpdate, setForceUpdate] = useState(0);
-  
-  // Add refs for keeping track of newly added tokens
-  const newlyAddedTokens = useRef<Set<string>>(new Set());
-  const lastUpdateTime = useRef<number>(Date.now());
+  const [newlyAddedTokens, setNewlyAddedTokens] = useState<Set<string>>(new Set());
 
-  // Filter out default tokens
   const customTokens = availableCryptos.filter(symbol => !defaultTokens.has(symbol));
 
-  // Listen for token update events
   useEffect(() => {
     const handleTokensPreAdd = (e: CustomEvent) => {
       console.log('ManageTokens received token pre-add event:', e.detail);
-      
-      // Mark tokens as newly added
       if (e.detail?.tokens && Array.isArray(e.detail.tokens)) {
-        e.detail.tokens.forEach((token: string) => {
-          newlyAddedTokens.current.add(token);
+        setNewlyAddedTokens(prev => {
+          const updatedSet = new Set(prev);
+          e.detail.tokens.forEach((token: string) => updatedSet.add(token));
+          return updatedSet;
         });
       }
-      
-      // Force UI to refresh
-      setForceUpdate(prev => prev + 1);
     };
-    
+
     const handleTokensUpdated = (e: CustomEvent) => {
-      console.log('ManageTokens received token update event:', e.detail);
-      
-      // Force UI to refresh
-      setForceUpdate(prev => prev + 1);
-      lastUpdateTime.current = Date.now();
+      console.log('ManageTokens received token update event (context should handle re-render):', e.detail);
     };
-    
+
     const handleTokensAddComplete = (e: CustomEvent) => {
-      console.log('ManageTokens received token add complete event:', e.detail);
-      
-      // Force a final refresh after tokens are fully added
-      setTimeout(() => {
-        setForceUpdate(prev => prev + 1);
-      }, 100);
+      console.log('ManageTokens received token add complete event (context should handle re-render):', e.detail);
     };
-    
-    // Add event listeners for token updates
+
     window.addEventListener('cryptoTokensPreAdd', handleTokensPreAdd as EventListener);
     window.addEventListener('cryptoTokensUpdated', handleTokensUpdated as EventListener);
     window.addEventListener('cryptoTokensAddComplete', handleTokensAddComplete as EventListener);
     window.addEventListener('cryptoMetadataUpdated', handleTokensUpdated as EventListener);
-    
-    // Clean up event listeners on unmount
+
     return () => {
       window.removeEventListener('cryptoTokensPreAdd', handleTokensPreAdd as EventListener);
       window.removeEventListener('cryptoTokensUpdated', handleTokensUpdated as EventListener);
@@ -430,18 +453,17 @@ const ManageTokens: React.FC = () => {
       window.removeEventListener('cryptoMetadataUpdated', handleTokensUpdated as EventListener);
     };
   }, []);
-  
-  // Clear newly added tokens markers after a delay
+
   useEffect(() => {
-    if (newlyAddedTokens.current.size > 0) {
+    if (newlyAddedTokens.size > 0) {
       const clearTimer = setTimeout(() => {
-        newlyAddedTokens.current.clear();
-        setForceUpdate(prev => prev + 1);
+        setNewlyAddedTokens(new Set());
       }, 5000);
-      
+
       return () => clearTimeout(clearTimer);
     }
-  }, [forceUpdate]);
+    return undefined;
+  }, [newlyAddedTokens]);
 
   const handleBack = () => {
     navigate('/');
@@ -450,6 +472,11 @@ const ManageTokens: React.FC = () => {
   const handleDeleteToken = (symbol: string) => {
     if (!defaultTokens.has(symbol)) {
       deleteCrypto(symbol);
+      setNewlyAddedTokens(prev => {
+        const updatedSet = new Set(prev);
+        updatedSet.delete(symbol);
+        return updatedSet;
+      });
     }
   };
   
@@ -462,20 +489,31 @@ const ManageTokens: React.FC = () => {
       deleteCrypto(symbol);
     });
     setConfirmDialog(false);
+    setNewlyAddedTokens(new Set());
   };
   
-  // Function to check if a token was recently added
-  const isNewlyAdded = (symbol: string) => {
-    return newlyAddedTokens.current.has(symbol);
-  };
+  const isNewlyAdded = useCallback((symbol: string): boolean => {
+    return newlyAddedTokens.has(symbol);
+  }, [newlyAddedTokens]);
 
+  // Simple error handler for icons within this component
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget;
+    img.style.display = 'none'; // Hide broken image
+    // Attempt to show a sibling fallback icon if available
+    const fallback = img.nextElementSibling as HTMLElement;
+    if (fallback && fallback.classList.contains('fallback-icon')) {
+      fallback.style.display = 'flex';
+    }
+  };
+  
   return (
     <PageContainer 
       initial="initial"
       animate="animate"
       exit="exit"
       variants={pageVariants}
-      key={`manage-tokens-${forceUpdate}`}
+      key="manage-tokens"
     >
       <GradientHighlight />
       <Header>
@@ -508,42 +546,75 @@ const ManageTokens: React.FC = () => {
         {customTokens.length > 0 ? (
           <motion.div variants={listVariants}>
             <AnimatePresence>
-              {customTokens.map(symbol => (
-                <TokenItem 
-                  key={`token-${symbol}-${isNewlyAdded(symbol) ? 'new' : 'existing'}`}
-                  variants={isNewlyAdded(symbol) ? newItemVariants : itemVariants}
-                  layout
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  style={{
-                    boxShadow: isNewlyAdded(symbol) 
-                      ? '0 0 0 1px rgba(139, 92, 246, 0.3), 0 4px 12px rgba(139, 92, 246, 0.15)' 
-                      : undefined,
-                    borderColor: isNewlyAdded(symbol) 
-                      ? 'rgba(139, 92, 246, 0.2)' 
-                      : undefined
-                  }}
-                >
-                  <TokenInfo>
-                    <div className="token-symbol">
-                      {symbol}
-                      {isNewlyAdded(symbol) && (
-                        <NewTokenBadge>NEW</NewTokenBadge>
-                      )}
-                    </div>
-                    <div className="token-id">{getCryptoId(symbol)}</div>
-                  </TokenInfo>
-                  <DeleteButton
-                    onClick={() => handleDeleteToken(symbol)}
-                    title="Delete token"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
+              {customTokens.map(symbol => {
+                // Get crypto ID and image URL
+                const id = getCryptoId(symbol);
+                const imageUrl = id ? tokenMetadata[id]?.image : null;
+                
+                return (
+                  <TokenItem
+                    key={`token-${symbol}-${isNewlyAdded(symbol) ? 'new' : 'existing'}`}
+                    variants={isNewlyAdded(symbol) ? newItemVariants : itemVariants}
+                    layout
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                    style={{
+                      boxShadow: isNewlyAdded(symbol) 
+                        ? '0 0 0 1px rgba(139, 92, 246, 0.3), 0 4px 12px rgba(139, 92, 246, 0.15)' 
+                        : undefined,
+                      borderColor: isNewlyAdded(symbol) 
+                        ? 'rgba(139, 92, 246, 0.2)' 
+                        : undefined
+                    }}
                   >
-                    <FiTrash2 size={20} />
-                  </DeleteButton>
-                </TokenItem>
-              ))}
+                    {/* Icon Section */}
+                    <IconContainer>
+                      {imageUrl ? (
+                        <>
+                          <StyledTokenIcon 
+                            src={imageUrl} 
+                            alt={`${symbol} icon`}
+                            onError={handleImageError} 
+                          />
+                          {/* Hidden fallback for error case */}
+                          <StyledTokenFallbackIcon 
+                            className="fallback-icon" 
+                            style={{ display: 'none', position: 'absolute', top: 0, left: 0 }}
+                          >
+                            {symbol.charAt(0).toUpperCase()}
+                          </StyledTokenFallbackIcon>
+                        </>
+                      ) : (
+                        <StyledTokenFallbackIcon className="fallback-icon">
+                          {symbol.charAt(0).toUpperCase()}
+                        </StyledTokenFallbackIcon>
+                      )}
+                    </IconContainer>
+                    
+                    {/* Info Section */}
+                    <TokenInfo>
+                      <div className="token-symbol">
+                        {symbol}
+                        {isNewlyAdded(symbol) && (
+                          <NewTokenBadge>NEW</NewTokenBadge>
+                        )}
+                      </div>
+                      <div className="token-id">{id || 'Loading...'}</div>
+                    </TokenInfo>
+                    
+                    {/* Delete Button */}
+                    <DeleteButton
+                      onClick={() => handleDeleteToken(symbol)}
+                      title="Delete token"
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                    >
+                      <FiTrash2 size={20} />
+                    </DeleteButton>
+                  </TokenItem>
+                );
+              })}
             </AnimatePresence>
           </motion.div>
         ) : (
