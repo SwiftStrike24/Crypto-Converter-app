@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { initUpdateHandlers } from './updateHandler';
@@ -92,6 +92,9 @@ const getIconPath = () => {
 let mainWindow: BrowserWindow | null = null;
 let dialogWindow: BrowserWindow | null = null;
 let isQuitting = false;
+
+// Keep track of internal browser windows
+let coingeckoWindow: BrowserWindow | null = null;
 
 function cleanupAndExit(shouldRelaunch = false) {
   isQuitting = true;
@@ -508,7 +511,10 @@ function setupIpcHandlers() {
   // Handle get-app-version request
   ipcMain.handle('get-app-version', () => {
     // Try multiple sources for the most accurate version
-    return appVersion || app.getVersion() || process.env.npm_package_version || '';
+    const packageVersion = app.getVersion();
+    const envVersion = process.env.APP_VERSION;
+    // Prefer env version if set, otherwise use package.json version
+    return envVersion || packageVersion || 'unknown';
   });
   
   // Handle get-env-vars request
@@ -536,4 +542,110 @@ function setupIpcHandlers() {
   ipcMain.on('quit-app', () => {
     app.quit();
   });
+
+  // Handle opening external links securely
+  ipcMain.handle('open-external-link', async (_event, url) => {
+    try {
+      await shell.openExternal(url);
+      return { success: true };
+    } catch (error) {
+      console.error('Failed to open external link:', url, error);
+      const message = error instanceof Error ? error.message : 'Unknown error opening link';
+      return { success: false, error: message };
+    }
+  });
+
+  // Handle opening links INTERNALLY (Singleton pattern for CoinGecko)
+  ipcMain.on('open-link-in-app', (_event, url) => {
+    // Check if CoinGecko window exists and is usable
+    if (coingeckoWindow && !coingeckoWindow.isDestroyed()) {
+      const normalizeUrl = (inputUrl: string): string => {
+        try {
+          const parsed = new URL(inputUrl);
+          // Rebuild without hash and search, remove trailing slash from pathname
+          return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/$/, '')}`;
+        } catch (e) {
+          console.warn('Failed to normalize URL:', inputUrl, e);
+          return inputUrl; // Return original if parsing fails
+        }
+      };
+      
+      const currentURL = coingeckoWindow.webContents.getURL();
+      const normalizedCurrentURL = normalizeUrl(currentURL);
+      const normalizedRequestedURL = normalizeUrl(url);
+
+      console.log(`CoinGecko window open. Normalized Current: ${normalizedCurrentURL}, Normalized Req: ${normalizedRequestedURL}`);
+
+      // ONLY load URL if normalized URLs are different
+      if (normalizedCurrentURL !== normalizedRequestedURL) {
+        console.log('Loading new URL into existing CoinGecko window.');
+        coingeckoWindow.loadURL(url);
+      } else {
+        console.log('Requested URL is the same as current. Focusing window only.');
+        // DO NOTHING here except focus/restore below
+      }
+
+      // Always focus and restore if minimized
+      if (coingeckoWindow.isMinimized()) {
+        coingeckoWindow.restore();
+      }
+      coingeckoWindow.focus();
+
+    } else {
+      console.log('Creating new CoinGecko window.');
+      // Create a new window and store the reference ONLY if creation succeeds
+      const newWindow = createInternalBrowserWindow(url);
+      if (newWindow) { // Check if window creation succeeded
+          coingeckoWindow = newWindow;
+      }
+    }
+  });
+}
+
+// Call setup function
+setupIpcHandlers();
+
+function createInternalBrowserWindow(url: string) {
+  if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+    console.error('Attempted to open invalid internal URL:', url);
+    return;
+  }
+
+  const { workArea } = screen.getPrimaryDisplay();
+  const width = Math.max(800, Math.round(workArea.width * 0.7));
+  const height = Math.max(600, Math.round(workArea.height * 0.7));
+
+  const newWindow = new BrowserWindow({
+    width: width,
+    height: height,
+    x: Math.round(workArea.x + (workArea.width - width) / 2),
+    y: Math.round(workArea.y + (workArea.height - height) / 2),
+    title: 'Loading...', // Will be updated by the page
+    icon: getIconPath(),
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false, // Disable Node.js integration for external content
+      contextIsolation: true, // Enable context isolation (recommended)
+      sandbox: false, // Sandboxing can add complexity, disable for now unless needed
+      webSecurity: true,
+      plugins: false, // Disable plugins
+      devTools: IS_DEV // Only enable DevTools in development
+    }
+  });
+
+  newWindow.loadURL(url);
+
+  newWindow.webContents.on('did-finish-load', () => {
+    newWindow.setTitle(newWindow.webContents.getTitle());
+  });
+
+  // Clean up when the window is closed
+  newWindow.on('closed', () => {
+    // Only clear the specific coingeckoWindow variable
+    if (newWindow === coingeckoWindow) {
+      coingeckoWindow = null;
+    }
+  });
+
+  return newWindow;
 }

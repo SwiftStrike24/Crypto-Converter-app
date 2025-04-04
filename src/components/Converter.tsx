@@ -3,6 +3,7 @@ import styled, { keyframes, css } from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
 import { useNavigate } from 'react-router-dom';
 import { FaMagnifyingGlassChart } from 'react-icons/fa6';
+import { ipcRenderer } from 'electron';
 
 // Constants
 const ICON_CACHE_PREFIX = 'crypto_icon_';
@@ -491,6 +492,25 @@ const ChartIcon = () => (
 const AnalysisIcon = () => (
   <FaMagnifyingGlassChart />
 );
+
+// Styled component for CoinGecko link
+const CoinGeckoLink = styled.button`
+  background: none;
+  border: none;
+  color: #8b5cf6;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 12px;
+  margin-top: 10px;
+  padding: 4px;
+  align-self: center;
+  transition: color 0.2s ease;
+  -webkit-app-region: no-drag;
+
+  &:hover {
+    color: #a78bfa;
+  }
+`;
 
 const Converter: React.FC<ConverterProps> = ({ 
   onCryptoChange, 
@@ -1113,6 +1133,17 @@ const Converter: React.FC<ConverterProps> = ({
     }
   };
 
+  const handleOpenCoinGecko = () => {
+    const id = getCryptoId(selectedCrypto);
+    if (id) {
+      const url = `https://www.coingecko.com/en/coins/${id}`;
+      console.log('Opening CoinGecko link in-app:', url);
+      ipcRenderer.send('open-link-in-app', url);
+    } else {
+      console.warn('Cannot open CoinGecko link: Could not find ID for', selectedCrypto);
+    }
+  };
+
   return (
     <ConverterContainer>
       <InputGroup>
@@ -1364,6 +1395,13 @@ const Converter: React.FC<ConverterProps> = ({
               : `${selectedCrypto} ${formatNumber(cryptoAmount, true)}`}
           </Amount>
         </ResultBox>
+      )}
+
+      {/* Add CoinGecko button */}
+      {getCryptoId(selectedCrypto) && (
+        <CoinGeckoLink onClick={handleOpenCoinGecko}>
+          View {selectedCrypto} on CoinGecko
+        </CoinGeckoLink>
       )}
 
       <ButtonWrapper className="right-button" style={{ bottom: '20px', right: '20px' }}>
