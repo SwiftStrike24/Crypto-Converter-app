@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import debounce from 'lodash/debounce';
-import axios from 'axios';
+import axios, { AxiosError, CancelTokenSource } from 'axios';
+import { useCrypto } from '../context/CryptoContext';
 
 // Interfaces (Consider moving ICryptoResult to a shared types file)
 export interface ICryptoResult {
@@ -34,27 +35,35 @@ const API_CONFIG = {
     PRO_TIER: { MAX_CALLS_PER_MINUTE: 100, COOLDOWN_PERIOD: 60 * 1000 }
   },
   PROXY_URLS: [
-    'https://api.coingecko.com/api/v3', 
-    'https://corsproxy.org/?https://api.coingecko.com/api/v3', 
-    'https://api.allorigins.win/raw?url=https://api.coingecko.com/api/v3'
+    'https://api.coingecko.com/api/v3'
   ]
+};
+
+// API config specific to search - potentially different base/fallbacks
+const SEARCH_API_CONFIG = {
+  BASE_URL: 'https://api.coingecko.com/api/v3',
+  // FALLBACK_URL: 'https://your-proxy-or-alternative-search-api.com', // Disabled for now
+  TIMEOUT: 5000, // 5 seconds timeout for search requests
+  RETRY_DELAY_BASE: 1000, // 1 second base delay
+  MAX_RETRIES: 3 // Reduced max retries for search
 };
 
 export function useTokenSearch() {
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState<ICryptoResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [isSearching, setIsSearching] = useState(false); // Indicates active API call/debounce period
+  const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usingFallbackApi, setUsingFallbackApi] = useState(false);
   const [currentProxyIndex, setCurrentProxyIndex] = useState(0);
   const [apiStatus, setApiStatus] = useState<ApiStatusType>('available');
-  const [hasPaidPlan, setHasPaidPlan] = useState<boolean>(false);
+  const { isApiRateLimited } = useCrypto();
 
   // Refs for internal state and logic
   const searchCache = useRef<Map<string, SearchCache>>(new Map());
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const retryCount = useRef<number>(0);
+  const searchAbortController = useRef<CancelTokenSource | null>(null);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef<number>(0);
   const lastApiCall = useRef<number>(0);
   const apiCallsThisMinute = useRef<number>(0);
   const apiRateLimitResetTime = useRef<number>(0);
@@ -75,17 +84,15 @@ export function useTokenSearch() {
             headers: { 'x-cg-pro-api-key': savedApiKey },
             timeout: 5000
           });
-          setHasPaidPlan(true);
           console.log('Valid CoinGecko Pro API key detected');
         } catch {
-          setHasPaidPlan(false);
           console.log('Using free tier CoinGecko API');
         }
       };
       checkApiKey();
     }
 
-    const rateLimitConfig = hasPaidPlan ? API_CONFIG.COINGECKO_RATE_LIMIT.PRO_TIER : API_CONFIG.COINGECKO_RATE_LIMIT.FREE_TIER;
+    const rateLimitConfig = apiKeyRef.current ? API_CONFIG.COINGECKO_RATE_LIMIT.PRO_TIER : API_CONFIG.COINGECKO_RATE_LIMIT.FREE_TIER;
     const resetInterval = setInterval(() => { apiCallsThisMinute.current = 0; }, rateLimitConfig.COOLDOWN_PERIOD);
     
     const recoveryInterval = setInterval(() => {
@@ -99,9 +106,9 @@ export function useTokenSearch() {
       clearInterval(resetInterval);
       clearInterval(recoveryInterval);
       if (coinGeckoRecoveryTimer.current) clearTimeout(coinGeckoRecoveryTimer.current);
-      abortControllerRef.current?.abort();
+      searchAbortController.current?.cancel();
     };
-  }, [usingFallbackApi, hasPaidPlan]);
+  }, [usingFallbackApi]);
 
   // Clear results when search term is empty
    useEffect(() => {
@@ -161,26 +168,26 @@ export function useTokenSearch() {
       apiCallsThisMinute.current = 0;
       return false;
     }
-    const rateLimitConfig = hasPaidPlan ? API_CONFIG.COINGECKO_RATE_LIMIT.PRO_TIER : API_CONFIG.COINGECKO_RATE_LIMIT.FREE_TIER;
+    const rateLimitConfig = apiKeyRef.current ? API_CONFIG.COINGECKO_RATE_LIMIT.PRO_TIER : API_CONFIG.COINGECKO_RATE_LIMIT.FREE_TIER;
     return apiCallsThisMinute.current >= rateLimitConfig.MAX_CALLS_PER_MINUTE;
-  }, [hasPaidPlan]);
+  }, [apiKeyRef]);
 
   const trackApiCall = useCallback((resetAfter?: number): void => {
     apiCallsThisMinute.current++;
     lastApiCall.current = Date.now();
-    const rateLimitConfig = hasPaidPlan ? API_CONFIG.COINGECKO_RATE_LIMIT.PRO_TIER : API_CONFIG.COINGECKO_RATE_LIMIT.FREE_TIER;
+    const rateLimitConfig = apiKeyRef.current ? API_CONFIG.COINGECKO_RATE_LIMIT.PRO_TIER : API_CONFIG.COINGECKO_RATE_LIMIT.FREE_TIER;
     if (apiCallsThisMinute.current >= rateLimitConfig.MAX_CALLS_PER_MINUTE) {
       const cooldownTime = resetAfter ?? rateLimitConfig.COOLDOWN_PERIOD;
       apiRateLimitResetTime.current = Date.now() + cooldownTime;
       console.log(`Rate limit reached, cooling down for ${Math.ceil(cooldownTime / 1000)}s`);
     }
-  }, [hasPaidPlan]);
+  }, [apiKeyRef]);
 
   const searchWithCoinGeckoApi = useCallback(async (query: string, signal: AbortSignal): Promise<ICryptoResult[]> => {
     if (isRateLimited()) throw new Error('Rate limit exceeded.');
 
     // Pro API attempt
-    if (hasPaidPlan && apiKeyRef.current) {
+    if (apiKeyRef.current) {
       try {
         const response = await axios.get(`${API_CONFIG.COINGECKO_PRO_BASE_URL}/search`, {
           params: { query },
@@ -233,7 +240,7 @@ export function useTokenSearch() {
       }
     }
     throw lastError || new Error('All CoinGecko API attempts failed');
-  }, [isRateLimited, hasPaidPlan, currentProxyIndex, trackApiCall]);
+  }, [isRateLimited, apiKeyRef, currentProxyIndex, trackApiCall]);
 
   const searchWithFallbackApi = useCallback(async (query: string, signal: AbortSignal): Promise<ICryptoResult[]> => {
     try {
@@ -252,146 +259,172 @@ export function useTokenSearch() {
   // --- Main Search Logic --- 
 
   const performSearch = useCallback(async (query: string) => {
-    if (!query.trim()) return;
+    let lastError: any; // Declare lastError here
 
-    const cached = getCachedResults(query);
-    if (cached) {
-      setResults(cached);
-      setLoading(false);
-      setIsSearching(false);
+    if (!query) {
+      setResults([]);
       setError(null);
+      setIsSearching(false);
+      setApiStatus('available');
       return;
     }
 
-    abortControllerRef.current?.abort();
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    setLoading(true);
-    setIsSearching(true); // Set searching state immediately
-    setError(null);
-
-    // Ensure minimum delay between API calls
-    const now = Date.now();
-    const timeSinceLast = now - lastApiCall.current;
-    if (timeSinceLast < 1000) await new Promise(resolve => setTimeout(resolve, 1000 - timeSinceLast));
-    lastApiCall.current = Date.now();
-
-    try {
-      let searchResults: ICryptoResult[] = [];
-      if (!usingFallbackApi) {
-        try {
-          setApiStatus('available');
-          searchResults = await searchWithCoinGeckoApi(query, controller.signal);
-          retryCount.current = 0;
-          // Stay on CoinGecko if successful
-        } catch (error: any) {
-          console.warn('CoinGecko failed, switching to fallback:', error.message);
-          setUsingFallbackApi(true);
-          setApiStatus('unavailable');
-          lastFallbackTime.current = Date.now();
-          // Schedule potential recovery attempt
-          if (coinGeckoRecoveryTimer.current) clearTimeout(coinGeckoRecoveryTimer.current);
-          coinGeckoRecoveryTimer.current = setTimeout(() => setUsingFallbackApi(false), 10 * 60 * 1000);
-          
-          searchResults = await searchWithFallbackApi(query, controller.signal); 
-        }
-      } else {
-        // Already using fallback
-        setApiStatus('unavailable');
-        searchResults = await searchWithFallbackApi(query, controller.signal);
-        lastFallbackTime.current = Date.now(); // Update last fallback time
-      }
-
-      cacheResults(query, searchResults);
-      setResults(searchResults);
-      setError(null);
-    } catch (error: any) {
-      console.error('Search error:', error);
-      if (axios.isAxiosError(error)) {
-        if (error.response?.status === 429) {
-          setError('API rate limit hit. Please wait a moment.'); setApiStatus('limited');
-        } else if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-          setError('Network timeout. Check connection.');
-        } else {
-          setError('Failed to fetch tokens. Please retry.');
-        }
-      } else if (error.name === 'AbortError') {
-        return; // Aborted, do nothing
-      } else {
-        setError('An unexpected error occurred.');
-      }
-
-      // Retry logic
-      if (retryCount.current < API_CONFIG.RETRY_ATTEMPTS) {
-        retryCount.current++;
-        const delay = API_CONFIG.RETRY_DELAY * Math.pow(2, retryCount.current - 1);
-        console.log(`Search failed, retrying in ${delay}ms (attempt ${retryCount.current})`);
-        setTimeout(() => performSearch(query), delay); 
-      } else {
-        // Max retries reached, potentially show cached if available
-        const cachedFallback = getCachedResults(query);
-        if (cachedFallback && cachedFallback.length > 0) {
-          setResults(cachedFallback);
-          setError('API issues. Showing cached results.');
-        } else {
-          setResults([]); // Ensure results are cleared if no cache
-        }
-      }
-    } finally {
-      setLoading(false);
-      // Delay resetting isSearching slightly for smoother UI transition
-      setTimeout(() => {
-          // Check if the controller associated with this search is still the current one
-          if (abortControllerRef.current === controller) {
-             setIsSearching(false);
-          }
-      }, API_CONFIG.SEARCH_DEBOUNCE); // Align with debounce time
+    // Abort previous request if any
+    if (searchAbortController.current) {
+      searchAbortController.current.cancel('New search initiated');
     }
-  }, [
-    usingFallbackApi, 
-    getCachedResults, 
-    cacheResults, 
-    searchWithCoinGeckoApi, 
-    searchWithFallbackApi
-    // Dependencies are internal helpers or other state managed by the hook
-  ]);
+    searchAbortController.current = axios.CancelToken.source();
 
-  // Debounced version of the search performer
-  const debouncedSearch = useCallback(
-    debounce((term: string) => {
-      performSearch(term);
-    }, API_CONFIG.SEARCH_DEBOUNCE),
-    [performSearch] // performSearch is memoized with its dependencies
-  );
-
-  // --- Exposed Functions --- 
-
-  // Function to manually trigger a retry (resets fallback state)
-  const retrySearch = useCallback(() => {
-    console.log('Manual retry initiated...');
-    retryCount.current = 0; // Reset retry counter
-    setUsingFallbackApi(false); // Attempt primary API again
+    setIsSearching(true);
     setError(null);
-    performSearch(searchTerm);
-  }, [searchTerm, performSearch]);
+    setApiStatus('available'); // Assume available initially
 
-  // Handler for input changes
-  const handleSearchChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    // *** Check shared rate limit status ***
+    if (isApiRateLimited('coingecko')) {
+      setError('Search temporarily unavailable due to API limits. Please try again shortly.');
+      setIsSearching(false);
+      setApiStatus('limited');
+      setResults([]); // Clear results when rate limited
+      return; // Stop processing if rate limited
+    }
+
+    let currentAttempt = 0;
+    while (currentAttempt <= SEARCH_API_CONFIG.MAX_RETRIES) {
+      try {
+        const response = await axios.get(`${SEARCH_API_CONFIG.BASE_URL}/search`, {
+          params: { query },
+          cancelToken: searchAbortController.current.token,
+          timeout: SEARCH_API_CONFIG.TIMEOUT
+        });
+
+        const searchData = response.data;
+        if (searchData && searchData.coins) {
+          const formattedResults = searchData.coins.map((coin: any) => ({
+            id: coin.id,
+            symbol: coin.symbol,
+            name: coin.name,
+            image: coin.large || coin.thumb
+          }));
+          setResults(formattedResults);
+          setError(null);
+          setApiStatus('available');
+          setIsSearching(false);
+          retryCountRef.current = 0; // Reset retry count on success
+          return; // Success, exit the loop
+        }
+        // Handle case where response is ok but no coins found
+        setResults([]);
+        setError(null);
+        setIsSearching(false);
+        retryCountRef.current = 0;
+        return;
+
+      } catch (err: any) {
+        if (axios.isCancel(err)) {
+          console.log('Search request cancelled:', err.message);
+          setIsSearching(false); // Ensure loading state is off if cancelled
+          return; // Don't retry if cancelled
+        }
+
+        console.error(`Search attempt ${currentAttempt + 1} failed:`, err);
+        lastError = err; // Store last error for final message
+        currentAttempt++;
+
+        // Specific handling for 429 Rate Limit error
+        if (axios.isAxiosError(err) && err.response?.status === 429) {
+          setError('Search API rate limit hit. Please wait before searching again.');
+          setApiStatus('limited');
+          setIsSearching(false);
+          setResults([]); // Clear results on rate limit
+          // No automatic retry for 429 on search, user needs to wait
+          return;
+        }
+
+        if (currentAttempt <= SEARCH_API_CONFIG.MAX_RETRIES) {
+          const delay = SEARCH_API_CONFIG.RETRY_DELAY_BASE * Math.pow(2, currentAttempt - 1);
+          console.log(`Retrying search in ${delay}ms (attempt ${currentAttempt})`);
+          await new Promise(resolve => { retryTimeoutRef.current = setTimeout(resolve, delay); });
+        } else {
+          // Max retries reached
+          let finalErrorMessage = 'Search failed after multiple attempts.';
+          if (lastError instanceof AxiosError && lastError.message) {
+            finalErrorMessage = `Search failed: ${lastError.message}`;
+          } else if (lastError instanceof Error) {
+            finalErrorMessage = `Search failed: ${lastError.message}`;
+          }
+          setError(finalErrorMessage);
+          setApiStatus('unavailable');
+          setResults([]);
+        }
+      }
+    } // End while loop
+
+    setIsSearching(false); // Ensure loading state is off after all attempts
+
+  }, [isApiRateLimited]); // Add dependency
+
+  // --- Debounced Search Handler ---
+  const debouncedSearch = useRef(
+    debounce((query: string) => {
+      performSearch(query);
+    }, 500) // Keep debounce reasonable (e.g., 500ms)
+  ).current;
+
+  // --- Input Change Handler ---
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const newSearchTerm = event.target.value;
     setSearchTerm(newSearchTerm);
     if (newSearchTerm.trim()) {
-        setIsSearching(true); // Set searching immediately for input feedback
-        debouncedSearch(newSearchTerm);
+      debouncedSearch(newSearchTerm.trim());
     } else {
-        debouncedSearch.cancel(); // Cancel pending debounce calls
-        abortControllerRef.current?.abort(); // Abort any active API call
-        setIsSearching(false);
-        setResults([]);
-        setError(null);
+      // Clear results and abort ongoing search if input is cleared
+      if (searchAbortController.current) {
+        searchAbortController.current.cancel('Search cleared');
+      }
+      setResults([]);
+      setError(null);
+      setIsSearching(false);
+      setApiStatus('available');
+      debouncedSearch.cancel(); // Cancel any pending debounced calls
     }
-  }, [debouncedSearch]);
+  };
 
+  // --- Manual Retry Function ---
+  const retrySearch = () => {
+    if (searchTerm.trim()) {
+      // *** Check rate limit BEFORE retrying ***
+      if (isApiRateLimited('coingecko')) {
+        // Optionally, calculate remaining time if needed, but a generic message is fine
+        // const remainingCooldown = Math.ceil((apiStatus.current.rateLimitCooldownUntil - Date.now()) / 1000);
+        setError('API rate limit is still active. Please wait a bit longer before retrying.');
+        setApiStatus('limited');
+        setIsSearching(false); // Ensure loading state is off
+        return; // Don't proceed with retry
+      }
+
+      // Reset error and attempt search if rate limit is not active
+      setError(null);
+      retryCountRef.current = 0;
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+      performSearch(searchTerm.trim());
+    }
+  };
+
+  // Cleanup timeouts and abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (searchAbortController.current) {
+        searchAbortController.current.cancel('Component unmounted');
+      }
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+      debouncedSearch.cancel();
+    };
+  }, [debouncedSearch]);
 
   return {
     searchTerm,
@@ -400,10 +433,7 @@ export function useTokenSearch() {
     isSearching, // More specific state for active search/debounce period
     error,
     apiStatus,
-    hasPaidPlan,
     retrySearch,
     handleSearchChange, // Expose the change handler
-    // Potentially expose setSearchTerm if direct setting is needed externally
-    // setSearchTerm 
   };
 } 

@@ -17,6 +17,7 @@ interface CryptoContextType {
   defaultCryptoIds: { [key: string]: string };
   checkAndUpdateMissingIcons: () => Promise<number>;
   setTokenMetadata: React.Dispatch<React.SetStateAction<Record<string, any>>>;
+  isApiRateLimited: (apiName: 'coingecko' | 'cryptocompare') => boolean;
 }
 
 interface CacheData {
@@ -84,12 +85,12 @@ const API_CONFIG = {
     BASE_URL: 'https://api.coingecko.com/api/v3',
     FALLBACK_URLS: [
       'https://api.coingecko.com/api/v3',
-      'https://coingecko.azurewebsites.net/api/proxy',
-      'https://api.coincap.io/v2'
+      // 'https://coingecko.azurewebsites.net/api/proxy', // Removed unreliable proxy
+      // 'https://api.coincap.io/v2' // Temporarily disable coincap fallback for simplicity
     ],
     CACHE_DURATION: 10 * 60 * 1000, // 10 minutes
     BATCH_SIZE: 25,
-    REQUEST_SPACING: 500, // milliseconds between requests
+    REQUEST_SPACING: 1000, // milliseconds between requests (increased from 500ms)
     RETRY_ATTEMPTS: 5
   },
   CRYPTOCOMPARE: {
@@ -104,6 +105,7 @@ interface ApiStatus {
   providerIndex: number;
   lastRequestTime: number;
   consecutiveErrors: number;
+  rateLimitCooldownUntil: number; // Timestamp until which rate limit is active
 }
 
 export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -141,10 +143,11 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   
   // Advanced API status tracking
   const apiStatus = useRef<ApiStatus>({
-    activeProviders: ['coingecko', 'cryptocompare'],
+    activeProviders: ['coingecko'], // Simplified to only use coingecko for now
     providerIndex: 0,
     lastRequestTime: 0,
-    consecutiveErrors: 0
+    consecutiveErrors: 0,
+    rateLimitCooldownUntil: 0 // Initialize cooldown timestamp
   });
   
   // Track which symbols are pending price updates
@@ -648,254 +651,87 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const fetchWithSmartRetry = async (url: string, config: any): Promise<any> => {
     let lastError;
     const maxRetries = API_CONFIG.COINGECKO.RETRY_ATTEMPTS;
-    
-    // Ensure we start with CoinGecko for every new request sequence
-    const initialProvider = 'coingecko';
-    const initialProviderIndex = apiStatus.current.activeProviders.indexOf(initialProvider);
-    
-    // If our current provider is not CoinGecko, reset it
-    if (apiStatus.current.providerIndex !== initialProviderIndex && initialProviderIndex >= 0) {
-      apiStatus.current.providerIndex = initialProviderIndex;
+
+    // *** Add upfront rate limit check ***
+    if (isApiRateLimited('coingecko')) {
+      const cooldownSeconds = Math.ceil((apiStatus.current.rateLimitCooldownUntil - Date.now()) / 1000);
+      console.warn(`[fetchWithSmartRetry] Rate limit active. Cooldown: ${cooldownSeconds}s. Aborting request.`);
+      throw new Error(`API rate limit active. Please wait ${cooldownSeconds} seconds.`);
     }
-    
-    // Track which providers we've already tried for this request
+
+    // Ensure we start with the primary provider (index 0)
+    apiStatus.current.providerIndex = 0;
     const triedProviders = new Set<string>();
-    
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
+      // Check rate limit before each attempt inside the loop as well
+      if (isApiRateLimited('coingecko')) {
+        const cooldownSeconds = Math.ceil((apiStatus.current.rateLimitCooldownUntil - Date.now()) / 1000);
+        console.warn(`[fetchWithSmartRetry] Rate limit active during retry. Cooldown: ${cooldownSeconds}s. Aborting.`);
+        throw lastError || new Error(`API rate limit active during retry. Please wait ${cooldownSeconds} seconds.`);
+      }
+
       try {
-        // Use the current provider index
         const currentProvider = apiStatus.current.activeProviders[apiStatus.current.providerIndex];
         triedProviders.add(currentProvider);
-        
-        // If we're not using the primary provider, adjust the URL
+
         let targetUrl = url;
+        // Simplified: Only use the primary URL for now (index 0)
+        // Fallback logic removed for simplicity to address CORS/reliability issues
         if (apiStatus.current.providerIndex > 0) {
-          // For fallback providers, adjust the URL or parameters as needed
-          if (currentProvider === 'cryptocompare') {
-            // Check if we're fetching currency prices (simple/price endpoint)
-            const isSimplePrice = url.includes('/simple/price');
-            const isMarketData = url.includes('/coins/markets');
-            
-            if (isSimplePrice || isMarketData) {
-              try {
-                // Use CryptoCompare as fallback
-                const fallbackResponse = await fallbackToCryptoCompare(config.params.ids, isSimplePrice);
-                
-                // If we got valid data and this was a success, increment success counter
-                if (fallbackResponse && fallbackResponse.data && 
-                   (Array.isArray(fallbackResponse.data) || Object.keys(fallbackResponse.data).length > 0)) {
-                  // Success with fallback - but immediately reset to CoinGecko for next time
-                  setTimeout(() => {
-                    if (initialProviderIndex >= 0) {
-                      apiStatus.current.providerIndex = initialProviderIndex;
-                    }
-                  }, 0);
-                  
-                  return fallbackResponse;
-                } else {
-                  throw new Error('Empty response from fallback API');
-                }
-              } catch (fallbackError) {
-                console.warn('Fallback to CryptoCompare failed, trying another method');
-                // If CryptoCompare fallback fails, try proxy or return to CoinGecko
-                // This prevents getting stuck in the CryptoCompare provider
-                apiStatus.current.providerIndex = initialProviderIndex;
-                // Continue to the next attempt
-                continue;
-              }
-            }
-          } else {
-            // Use an alternative proxy URL
-            const fallbackIndex = apiStatus.current.providerIndex - 1;
-            targetUrl = API_CONFIG.COINGECKO.FALLBACK_URLS[fallbackIndex] || url;
-          }
+           console.warn('Fallback provider logic currently disabled.');
+           // Skip to next attempt or break if only one provider
+           if (apiStatus.current.activeProviders.length === 1) break;
+           apiStatus.current.providerIndex = (apiStatus.current.providerIndex + 1) % apiStatus.current.activeProviders.length;
+           continue; // Try next provider (if any) or fail
         }
-        
-        // Space out requests intelligently
+
+        // Space out requests
         const now = Date.now();
         const timeSinceLastRequest = now - apiStatus.current.lastRequestTime;
         const minSpacingTime = API_CONFIG.COINGECKO.REQUEST_SPACING;
-        
         if (timeSinceLastRequest < minSpacingTime) {
           await new Promise(resolve => setTimeout(resolve, minSpacingTime - timeSinceLastRequest));
         }
-        
+
         // Make the request
+        console.debug(`[fetchWithSmartRetry] Attempt ${attempt + 1}: GET ${targetUrl}`);
         const response = await axios.get(targetUrl, config);
-        
-        // Update last request time
         apiStatus.current.lastRequestTime = Date.now();
-        
-        // Reset error count on success
-        apiStatus.current.consecutiveErrors = 0;
-        
-        // On successful request, ensure we return to CoinGecko for the next request
-        // But only do this if we're not already using CoinGecko
-        if (currentProvider !== initialProvider && initialProviderIndex >= 0) {
-          setTimeout(() => {
-            apiStatus.current.providerIndex = initialProviderIndex;
-          }, 0);
-        }
-        
-        return response;
+        apiStatus.current.consecutiveErrors = 0; // Reset errors on success
+        return response; // Success
+
       } catch (error: any) {
         lastError = error;
-        
-        // Check if all providers have been tried
-        if (triedProviders.size >= apiStatus.current.activeProviders.length) {
-          // If all providers failed, reset to CoinGecko for next time
-          if (initialProviderIndex >= 0) {
-            apiStatus.current.providerIndex = initialProviderIndex;
-          }
-          
-          // Try with a larger exponential backoff before giving up
-          const finalBackoff = API_CONFIG.COINGECKO.REQUEST_SPACING * Math.pow(2, attempt + 1);
-          if (attempt < maxRetries - 1) {
-            await new Promise(resolve => setTimeout(resolve, finalBackoff));
-            
-            // Clear tried providers to give them another chance with more delay
-            triedProviders.clear();
-            continue;
-          }
-          
-          break;
-        }
-        
-        // Try the next provider for the next attempt
-        apiStatus.current.providerIndex = (apiStatus.current.providerIndex + 1) % apiStatus.current.activeProviders.length;
-        
-        // Add exponential backoff
-        const backoffTime = Math.min(API_CONFIG.COINGECKO.REQUEST_SPACING * Math.pow(2, attempt), 10000);
-        await new Promise(resolve => setTimeout(resolve, backoffTime));
-      }
-    }
-    
-    // Always reset to CoinGecko after all retries
-    if (initialProviderIndex >= 0) {
-      apiStatus.current.providerIndex = initialProviderIndex;
-    }
-    
-    // If all retries failed, throw the last error
-    throw lastError || new Error('All API attempts failed');
-  };
+        apiStatus.current.lastRequestTime = Date.now(); // Update time even on error
+        apiStatus.current.consecutiveErrors++;
+        console.error(`[fetchWithSmartRetry] Attempt ${attempt + 1} failed:`, error.message);
 
-  // Fallback to CryptoCompare API when CoinGecko is unavailable
-  const fallbackToCryptoCompare = async (coinIds: string, isSimplePrice: boolean = true): Promise<any> => {
-    // Convert CoinGecko IDs to symbols
-    const allIds = coinIds.split(',');
-    const symbols = allIds.map(id => {
-      // Find the symbol for this ID by looking through cryptoIds
-      const symbol = Object.keys(cryptoIds).find(
-        sym => cryptoIds[sym].toLowerCase() === id.toLowerCase()
-      );
-      return symbol || id; // Fall back to using the ID if symbol not found
-    });
-    
-    // A set of commonly supported symbols on CryptoCompare
-    const commonSymbols = new Set([
-      'BTC', 'ETH', 'USDT', 'USDC', 'BNB', 'XRP', 'ADA', 'DOGE', 'SOL', 'DOT',
-      'AVAX', 'MATIC', 'SHIB', 'LINK', 'LTC', 'UNI', 'ATOM', 'XLM', 'NEAR'
-    ]);
-    
-    // Filter symbols to only include those that are more likely to be supported
-    // Skip long symbols, lowercase symbols, and very new or obscure tokens
-    const likelySymbols = symbols.filter(symbol => {
-      if (!symbol) return false;
-      
-      const upperSymbol = symbol.toUpperCase();
-      
-      // Always include common tokens
-      if (commonSymbols.has(upperSymbol)) return true;
-      
-      // Skip symbols that are likely to be unsupported
-      // - Very long symbols are often newer tokens
-      // - Symbols with special characters
-      // - Lowercase symbols are often newer tokens
-      if (symbol.length > 5) return false;
-      if (/[^A-Z0-9]/.test(upperSymbol)) return false;
-      
-      return true;
-    });
-    
-    if (likelySymbols.length === 0) {
-      // If no likely symbols, fail fast - throw error to try another provider
-      throw new Error('No supported symbols for CryptoCompare');
-    }
-    
-    // Fetch data from CryptoCompare
-    const results = [];
-    const priceData: Record<string, any> = {};
-    
-    for (const symbol of likelySymbols) {
-      try {
-        const upperSymbol = symbol.toUpperCase();
-        const response = await axios.get(API_CONFIG.CRYPTOCOMPARE.BASE_URL, {
-          params: {
-            market: 'binance',
-            instrument: `${upperSymbol}-USDT`,
-            limit: 1,
-            aggregate: 1,
-            fill: 'true',
-            apply_mapping: 'true',
-            response_format: 'JSON',
-            api_key: import.meta.env.VITE_CRYPTOCOMPARE_API_KEY || ''
-          },
-          timeout: 6000 // Shorter timeout for fallback
-        });
-        
-        if (response.data?.Data?.[0]) {
-          const price = parseFloat(response.data.Data[0].CLOSE);
-          
-          if (isSimplePrice) {
-            // For simple/price endpoint, format as CoinGecko expects
-            const id = cryptoIds[symbol];
-            if (id) {
-              priceData[id] = {
-                usd: price,
-                eur: price * 0.92, // Approximate conversion
-                cad: price * 1.36  // Approximate conversion
-              };
-            }
-          } else {
-            // For coins/markets endpoint, format as needed
-            const id = cryptoIds[symbol];
-            const data = {
-              id: id,
-              symbol: symbol,
-              name: symbol,
-              current_price: price,
-              image: null,
-              market_cap_rank: null
-            };
-            results.push(data);
-          }
+        // *** Specific 429 handling ***
+        if (axios.isAxiosError(error) && error.response?.status === 429) {
+          const cooldownDuration = MIN_API_INTERVAL * 2; // Cooldown for 60 seconds on 429
+          apiStatus.current.rateLimitCooldownUntil = Date.now() + cooldownDuration;
+          console.warn(`[fetchWithSmartRetry] Received 429. Rate limit cooldown activated for ${cooldownDuration / 1000}s.`);
+          // Throw immediately on 429, don't cycle providers for this error
+          throw new Error(`API rate limit hit (429). Cooldown active.`);
         }
-      } catch (error: any) {
-        if (axios.isAxiosError(error) && error.response?.status === 404) {
-          // Log specifically that this pair was not found on CryptoCompare/Binance
-          console.warn(`[CryptoContext] Fallback failed: ${symbol}-USDT not found on CryptoCompare (Binance market). Skipping.`);
+
+        // Simplified: Only retry the primary provider with backoff
+        // Fallback provider cycling removed
+        if (attempt < maxRetries - 1) {
+           const backoffTime = Math.min(API_CONFIG.COINGECKO.REQUEST_SPACING * Math.pow(2, attempt), 15000); // Max 15s backoff
+           console.log(`[fetchWithSmartRetry] Waiting ${backoffTime}ms before retry...`);
+           await new Promise(resolve => setTimeout(resolve, backoffTime));
         } else {
-          // Log other errors, but still continue
-          console.error(`[CryptoContext] Error during CryptoCompare fallback for ${symbol}:`, error.message);
+           console.error(`[fetchWithSmartRetry] Max retries (${maxRetries}) reached. Failing request.`);
+           break; // Max retries reached
         }
-        // Continue with the next symbol even if one fails
-        continue;
       }
     }
-    
-    // If we got no results, throw an error to try another provider
-    if (isSimplePrice && Object.keys(priceData).length === 0) {
-      throw new Error('No valid price data from CryptoCompare');
-    }
-    
-    if (!isSimplePrice && results.length === 0) {
-      throw new Error('No valid market data from CryptoCompare');
-    }
-    
-    // Return in the format expected from CoinGecko
-    return isSimplePrice 
-      ? { data: priceData } 
-      : { data: results };
+
+    // If loop finishes without success, throw the last recorded error
+    console.error('[fetchWithSmartRetry] All attempts failed.');
+    throw lastError || new Error('All API attempts failed after retries.');
   };
 
   // Enhanced getCachedPrices with localStorage fallback
@@ -1252,6 +1088,31 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, [cryptoIds, queuePriceUpdate, fetchTokenMetadata, getCachedPrices, setCachePrices]);
 
+  // Enhanced function to fetch metadata in controlled batches with delays
+  const fetchMetadataInBatches = async (tokenIds: string[]) => {
+    const BATCH_FETCH_SIZE = 10; // Fetch metadata for 10 tokens at a time
+    const DELAY_BETWEEN_BATCHES = API_CONFIG.COINGECKO.REQUEST_SPACING * 3; // Use 3x spacing between batches
+
+    for (let i = 0; i < tokenIds.length; i += BATCH_FETCH_SIZE) {
+      const batch = tokenIds.slice(i, i + BATCH_FETCH_SIZE);
+      if (batch.length > 0) {
+        try {
+          await fetchTokenMetadata(batch);
+          // Dispatch update after each successful batch
+          window.dispatchEvent(new CustomEvent('cryptoMetadataUpdated'));
+        } catch (error) {
+          console.error(`Error fetching metadata batch: ${batch.join(',')}`, error);
+          // Decide if we should retry or skip this batch - for now, we continue
+        }
+
+        // Add delay before fetching the next batch, unless it's the last one
+        if (i + BATCH_FETCH_SIZE < tokenIds.length) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+        }
+      }
+    }
+  };
+
   // Enhanced addCryptos with instantaneous updates and no loading indicators
   const addCryptos = useCallback(async (tokens: { symbol: string; id: string }[]) => {
     if (!tokens.length) return;
@@ -1263,15 +1124,13 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const highPrioritySymbols: string[] = [];
     const newTokenIds: string[] = [];
     
-    // Create a dispatch event to notify all components of token additions immediately
     const tokenUpdateEvent = new CustomEvent('cryptoTokensUpdated', {
-      detail: { 
+      detail: {
         action: 'add',
         tokens: tokens.map(t => t.symbol.toUpperCase())
       }
     });
 
-    // Remove default tokens from storage object
     Object.keys(defaultCryptoIds).forEach(key => {
       delete storageIds[key];
     });
@@ -1280,28 +1139,18 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const upperSymbol = symbol.toUpperCase();
       const lowerId = id.toLowerCase();
       
-      // Only add if it's a new token or has a different ID
       if (newCryptoIds[upperSymbol] !== lowerId) {
         newCryptoIds[upperSymbol] = lowerId;
         storageIds[upperSymbol] = lowerId;
         newSymbols.push(upperSymbol);
         newTokenIds.push(lowerId);
-        
-        // Add to pending updates
         pendingPriceUpdates.current.add(upperSymbol);
-        
-        // Add placeholder price
         if (!newPrices[upperSymbol]) {
           newPrices[upperSymbol] = getEstimatedPrice(upperSymbol);
         }
-        
-        // Add to high priority list for immediate update
         highPrioritySymbols.push(upperSymbol);
-        
-        // Cache a minimal icon placeholder for immediate display
         const iconCacheKey = `${ICON_CACHE_PREFIX}${upperSymbol.toLowerCase()}`;
         if (!localStorage.getItem(iconCacheKey)) {
-          // Create a simple data URI for the token's first letter
           const canvas = document.createElement('canvas');
           canvas.width = 32;
           canvas.height = 32;
@@ -1311,84 +1160,43 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             ctx.beginPath();
             ctx.arc(16, 16, 16, 0, Math.PI * 2);
             ctx.fill();
-            
             ctx.fillStyle = 'white';
             ctx.font = 'bold 14px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(upperSymbol.charAt(0).toUpperCase(), 16, 16);
-            
             const dataUrl = canvas.toDataURL('image/png');
-            // Cache the placeholder icon temporarily
             localStorage.setItem(iconCacheKey, dataUrl);
           }
         }
       }
     });
     
-    // No actual changes made
     if (newSymbols.length === 0) return;
     
-    // Update state with all new tokens at once 
     setCryptoIds(newCryptoIds);
     
-    // Update available cryptos list
     setAvailableCryptos(prev => {
       const defaultTokens = Object.keys(defaultCryptoIds);
-      // Get existing custom tokens, but filter out any that might already exist
       const existingCustomTokens = prev.filter(token =>
         !defaultTokens.includes(token) && !newSymbols.includes(token)
       );
-
-      // All custom tokens (old and new) sorted alphabetically
       const allCustomTokens = [...existingCustomTokens, ...newSymbols].sort();
-
-      // Return with default tokens first, then custom tokens
       return [...defaultTokens, ...allCustomTokens];
     });
     
-    // Set initial prices
     setPrices(newPrices);
-    
-    // Save custom tokens to localStorage
     localStorage.setItem(STORAGE_KEY, JSON.stringify(storageIds));
-    
+
     // Immediately dispatch the event to update UI components
     window.dispatchEvent(tokenUpdateEvent);
-    
+
     // Queue immediate price update with high priority
     queuePriceUpdate(highPrioritySymbols, true);
-    
-    // Start fetching metadata immediately in the background
-    setTimeout(async () => {
-      await fetchTokenMetadata(newTokenIds);
-      
-      // Update token metadata to ensure UI shows proper symbols
-      setTokenMetadata(updatedMetadata => {
-        const newMetadata = { ...updatedMetadata };
-        
-        // Ensure each new token has at least minimal metadata
-        newTokenIds.forEach((id, index) => {
-          if (newMetadata[id]) {
-            // Ensure the metadata has required fields for UI rendering
-            newMetadata[id] = {
-              ...newMetadata[id],
-              symbol: newSymbols[index],
-              name: newMetadata[id].name || newSymbols[index],
-              image: newMetadata[id].image || null
-            };
-          }
-        });
-        return newMetadata;
-      });
-      
-      // Dispatch another update event after metadata is updated
-      window.dispatchEvent(new CustomEvent('cryptoMetadataUpdated'));
-      
-      // Trigger immediate price update
-      updatePrices(true);
-    }, 0);
-  }, [cryptoIds, prices, queuePriceUpdate, fetchTokenMetadata, tokenMetadata, updatePrices]);
+
+    // Start fetching metadata immediately in the background, in controlled batches
+    fetchMetadataInBatches(newTokenIds);
+  }, [cryptoIds, prices, queuePriceUpdate, fetchTokenMetadata, tokenMetadata, getEstimatedPrice]);
 
   const deleteCrypto = useCallback((symbol: string) => {
     // Don't allow deletion of default tokens
@@ -1560,6 +1368,21 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, []);
 
+  // Function to check if a specific API is currently rate-limited
+  const isApiRateLimited = useCallback((apiName: 'coingecko' | 'cryptocompare'): boolean => {
+    if (apiName === 'coingecko') {
+      if (apiStatus.current.rateLimitCooldownUntil > Date.now()) {
+        return true; // Cooldown is active
+      }
+      // Optional: Keep consecutive error check as a secondary fallback?
+      // if (apiStatus.current.consecutiveErrors > 3) {
+      //   return true;
+      // }
+    }
+    // Add similar logic for cryptocompare if needed
+    return false;
+  }, []);
+
   return (
     <CryptoContext.Provider
       value={{
@@ -1577,7 +1400,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         tokenMetadata,
         defaultCryptoIds,
         checkAndUpdateMissingIcons,
-        setTokenMetadata
+        setTokenMetadata,
+        isApiRateLimited
       }}
     >
       {children}
