@@ -60,87 +60,101 @@ function TechnicalAnalysisWidget({
   currency = 'USD'
 }: TechnicalAnalysisWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const scriptRef = useRef<HTMLScriptElement | null>(null); // Ref for script cleanup
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null); // Ref for timeout cleanup
   const [error, setError] = useState<string | null>(null);
+  const widgetKey = `${market}-${cryptoId}-${interval}-${currency}`; // Unique key
 
   useEffect(() => {
-    let script: HTMLScriptElement | null = null;
-    
-    const initWidget = () => {
-      if (!containerRef.current) return;
-
-      // Clear previous content
-      containerRef.current.innerHTML = '';
-
-      // Create the exact DOM structure
-      const widgetContainer = document.createElement('div');
-      widgetContainer.className = 'tradingview-widget-container';
-
-      const widgetDiv = document.createElement('div');
-      widgetDiv.className = 'tradingview-widget-container__widget';
-      widgetContainer.appendChild(widgetDiv);
-
-      // Handle different market symbol formats
-      let symbol;
-      if (market === 'PYTH') {
-        symbol = `BINANCE:${cryptoId}USDT`; // Using BINANCE for better compatibility
-      } else if (market === 'CRYPTO') {
-        symbol = `CRYPTO:${cryptoId}${currency}`;
-      } else {
-        symbol = `${market}:${cryptoId}USDT`;
+    const cleanupWidget = () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
-      
-      console.log(`🔄 Loading Technical Analysis for ${symbol}...`);
-
-      try {
-        // Create and load script
-        script = document.createElement('script');
-        script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js';
-        script.type = 'text/javascript';
-        script.async = true;
-
-        const widgetConfig = {
-          "interval": interval,
-          "width": "100%",
-          "isTransparent": true,
-          "height": "100%",
-          "symbol": symbol,
-          "showIntervalTabs": true,
-          "locale": "en",
-          "colorTheme": "dark",
-          "displayMode": "single"
-        };
-
-        script.innerHTML = JSON.stringify(widgetConfig);
-        widgetContainer.appendChild(script);
-
-        // Add error handling
-        script.onerror = () => {
-          setError('Failed to load technical analysis');
-          console.error('Failed to load TradingView script');
-        };
-
-        // Append the complete structure to the container
-        containerRef.current.appendChild(widgetContainer);
-
-      } catch (err) {
-        console.error('Error initializing widget:', err);
-        setError('Failed to initialize technical analysis');
-      }
-    };
-
-    // Initialize widget
-    initWidget();
-
-    // Cleanup
-    return () => {
-      if (script && script.parentNode) {
-        script.parentNode.removeChild(script);
+      if (scriptRef.current && scriptRef.current.parentNode) {
+        scriptRef.current.parentNode.removeChild(scriptRef.current);
+        scriptRef.current = null;
       }
       if (containerRef.current) {
         containerRef.current.innerHTML = '';
       }
+      setError(null);
     };
-  }, [cryptoId, market, interval, currency]);
+
+    // Ensure ref is available
+    if (!containerRef.current) {
+        console.warn('TechnicalAnalysisWidget container ref not ready yet.');
+        return;
+    }
+
+    // Run cleanup first
+    cleanupWidget();
+
+    // Create unique target container
+    const widgetTargetId = `technalysis-widget-${widgetKey}`;
+    const widgetInnerContainer = document.createElement('div');
+    widgetInnerContainer.id = widgetTargetId;
+    widgetInnerContainer.style.height = '100%';
+    widgetInnerContainer.style.width = '100%';
+    containerRef.current.appendChild(widgetInnerContainer);
+
+    // Handle different market symbol formats
+    let symbol;
+    if (market === 'PYTH') {
+      symbol = `BINANCE:${cryptoId}USDT`; // Using BINANCE for better compatibility
+    } else if (market === 'CRYPTO') {
+      symbol = `CRYPTO:${cryptoId}${currency}`;
+    } else {
+      symbol = `${market}:${cryptoId}USDT`;
+    }
+    
+    console.log(`🔄 Loading Technical Analysis for ${symbol}...`);
+
+    try {
+      // Create script element
+      const script = document.createElement('script');
+      script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-technical-analysis.js';
+      script.type = 'text/javascript';
+      script.async = true;
+      scriptRef.current = script; // Store ref for cleanup
+
+      const widgetConfig = {
+        "interval": interval,
+        "width": "100%",
+        "isTransparent": true,
+        "height": "100%",
+        "symbol": symbol,
+        "showIntervalTabs": true,
+        "locale": "en",
+        "colorTheme": "dark",
+        "displayMode": "single",
+        "container_id": widgetTargetId // Target the unique container
+      };
+
+      script.innerHTML = JSON.stringify(widgetConfig);
+
+      // Add error handling
+      script.onerror = () => {
+        setError('Failed to load technical analysis script');
+        console.error('Failed to load TradingView script for technical analysis');
+      };
+
+      // Defer appending script
+      timeoutRef.current = setTimeout(() => {
+        if (widgetInnerContainer.isConnected) {
+          widgetInnerContainer.appendChild(script);
+        }
+      }, 0);
+
+    } catch (err) {
+      console.error('Error initializing technical analysis widget:', err);
+      setError('Failed to initialize technical analysis');
+    }
+
+    // Cleanup function for useEffect
+    return cleanupWidget;
+
+  }, [cryptoId, market, interval, currency, widgetKey]);
 
   return (
     <WidgetContainer>

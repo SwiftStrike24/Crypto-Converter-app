@@ -602,9 +602,6 @@ function setupIpcHandlers() {
   });
 }
 
-// Call setup function
-setupIpcHandlers();
-
 function createInternalBrowserWindow(url: string) {
   if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
     console.error('Attempted to open invalid internal URL:', url);
