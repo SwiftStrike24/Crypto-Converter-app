@@ -63,25 +63,33 @@ const getCurrencySymbol = (currency: string): string => {
 // Format price with appropriate decimal places
 const formatPrice = (price: number): string => {
   if (price >= 1000) {
+    // e.g., 1,234.56
     return price.toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     });
   } else if (price >= 1) {
+    // e.g., 12.34
     return price.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 2 // Change max to 2 for consistency >= $1
     });
   } else if (price >= 0.01) {
+    // e.g., 0.1646 
     return price.toLocaleString(undefined, {
-      minimumFractionDigits: 4,
-      maximumFractionDigits: 6
+      minimumFractionDigits: 4, // Change min to 4
+      maximumFractionDigits: 4  // Change max to 4
     });
-  } else {
+  } else if (price > 0) {
+    // e.g., 0.00123456 or 0.00001234
+    // Keep showing more precision for very small numbers
     return price.toLocaleString(undefined, {
       minimumFractionDigits: 6,
       maximumFractionDigits: 8
     });
+  } else { 
+    // Handle zero or invalid price
+    return '0.00'; // Or some other placeholder
   }
 };
 

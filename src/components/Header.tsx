@@ -256,35 +256,6 @@ const UpdateButtonSpinner = styled.div`
   }
 `;
 
-const ErrorIcon = styled.div<{ $isError?: boolean }>`
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  transition: all 0.2s;
-  background: ${props => props.$isError ? '#ff4444' : 'transparent'};
-  
-  &:hover {
-    background: ${props => props.$isError ? '#ff6666' : 'transparent'};
-    transform: scale(1.05);
-  }
-
-  &:active {
-    transform: scale(0.95);
-  }
-
-  svg {
-    width: 12px;
-    height: 12px;
-    color: white;
-  }
-`;
-
 interface HeaderProps {
   selectedCrypto: string;
   selectedFiat: string;
@@ -377,97 +348,57 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
     return `${hours}h ago`;
   };
 
-  const getOptimalDecimals = (price: number): number => {
-    if (price >= 10) return 2;      // For values >= 10, show 2 decimals (e.g., 123.45)
-    if (price >= 0.1) return 2;     // For values between 0.1 and 10, show 2 decimals (e.g., 0.55)
-    if (price >= 0.01) return 3;    // For values between 0.01 and 0.1, show 3 decimals (e.g., 0.055)
-    if (price >= 0.001) return 4;   // For values between 0.001 and 0.01, show 4 decimals (e.g., 0.0055)
-    if (price >= 0.0001) return 5;  // For values between 0.0001 and 0.001, show 5 decimals (e.g., 0.00055)
-    
-    // For very small values, count leading zeros and show 1-2 significant digits
-    const priceStr = price.toString();
-    if (priceStr.includes('e-')) {
-      // Handle scientific notation for extremely small values
-      const [_, exponent] = priceStr.split('e-');
-      return parseInt(exponent) + 1; // Show one significant digit
-    }
-    
-    // Count leading zeros for small decimal values
-    const match = priceStr.match(/0\.0*/);
-    if (match) {
-      const leadingZeros = match[0].length - 2; // Subtract 2 for "0."
-      return leadingZeros + 2; // Show 2 significant digits
-    }
-    
-    return 6; // Default fallback
-  };
-
   const formatPrice = (price: number, fiat: string): string => {
-    // For very small numbers (like BONK at $0.00001094)
-    if (price < 0.0001) {
-      // Count significant digits based on the size of the number
-      const decimals = getOptimalDecimals(price);
-      const formattedValue = price.toFixed(decimals);
-      
-      // Add the appropriate currency symbol
-      switch (fiat) {
-        case 'USD': return `$${formattedValue}`;
-        case 'CAD': return `CA$${formattedValue}`;
-        case 'EUR': return `€${formattedValue.replace('.', ',')}`;
-        case 'GBP': return `£${formattedValue}`;
-        case 'JPY': return `¥${formattedValue}`;
-        case 'AUD': return `A$${formattedValue}`;
-        default: return `${fiat} ${formattedValue}`;
-      }
-    }
-    
-    // For normal numbers, use locale formatting with appropriate decimals
-    const decimals = getOptimalDecimals(price);
-    
-    // Format based on currency
-    switch (fiat) {
-      case 'USD':
-        return `$${price.toLocaleString('en-US', {
-          minimumFractionDigits: decimals,
-          maximumFractionDigits: decimals
-        })}`;
-      case 'CAD':
-        return `CA$${price.toLocaleString('en-CA', {
-          minimumFractionDigits: decimals,
-          maximumFractionDigits: decimals
-        })}`;
-      case 'EUR':
-        const formattedEuro = price.toLocaleString('de-DE', {
-          minimumFractionDigits: decimals,
-          maximumFractionDigits: decimals,
-          useGrouping: true
+    let formattedValue: string;
+
+    // SPECIAL CASE: Handle stablecoins or prices very close to 1
+    if (price > 0.999 && price < 1.001) {
+        formattedValue = (1).toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
         });
-        return `€${formattedEuro.replace(/€\s?/g, '')}`;
-      case 'GBP':
-        return `£${price.toLocaleString('en-GB', {
-          minimumFractionDigits: decimals,
-          maximumFractionDigits: decimals
-        })}`;
-      case 'JPY':
-        // JPY typically doesn't use decimal places
-        return `¥${price.toLocaleString('ja-JP', {
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 0
-        })}`;
-      case 'AUD':
-        return `A$${price.toLocaleString('en-AU', {
-          minimumFractionDigits: decimals,
-          maximumFractionDigits: decimals
-        })}`;
-      default:
-        const formatter = new Intl.NumberFormat(
-          fiat === 'USD' ? 'en-US' : fiat === 'EUR' ? 'de-DE' : 'en-CA', 
-          { 
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals
-          }
-        );
-        return `${fiat} ${formatter.format(price)}`;
+    }
+    // Use the refined logic similar to LivePrice.tsx
+    else if (price >= 1000) {
+      // e.g., 1,234.56
+      formattedValue = price.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    } else if (price >= 1) {
+      // e.g., 12.34
+      formattedValue = price.toLocaleString(undefined, {
+        minimumFractionDigits: 2, 
+        maximumFractionDigits: 2
+      });
+    } else if (price >= 0.01) {
+      // e.g., 0.1646 
+      formattedValue = price.toLocaleString(undefined, {
+        minimumFractionDigits: 4, 
+        maximumFractionDigits: 4
+      });
+    } else if (price > 0) {
+      // e.g., 0.00123456 or 0.00001234
+      formattedValue = price.toLocaleString(undefined, {
+        minimumFractionDigits: 6,
+        maximumFractionDigits: 8
+      });
+    } else { 
+      // Handle zero or invalid price
+      formattedValue = '0.00';
+    }
+
+    // Add the appropriate currency symbol (using a simpler approach)
+    switch (fiat.toUpperCase()) {
+      case 'USD': return `$${formattedValue}`;
+      case 'EUR': return `€${formattedValue}`;
+      case 'GBP': return `£${formattedValue}`;
+      case 'JPY': return `¥${formattedValue}`;
+      case 'CAD': return `CA$${formattedValue}`;
+      case 'AUD': return `A$${formattedValue}`;
+      case 'CNY': return `¥${formattedValue}`;
+      case 'INR': return `₹${formattedValue}`;
+      default: return `${fiat.toUpperCase()} ${formattedValue}`;
     }
   };
 
