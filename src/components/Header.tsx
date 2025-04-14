@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import styled from 'styled-components';
+import styled, { css } from 'styled-components';
 import { GiPowerButton } from "react-icons/gi";
 import { IoMdAdd } from "react-icons/io";
 import { FiRefreshCw, FiX, FiCheck } from "react-icons/fi";
@@ -38,12 +38,13 @@ const PowerButton = styled.button`
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   background: #ff5f57;
   
   &:hover {
     background: #ff3b30;
     transform: scale(1.05);
+    box-shadow: 0 0 12px rgba(255, 59, 48, 0.5);
   }
 
   &:active {
@@ -67,12 +68,13 @@ const UpdateButton = styled.button`
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   background: #8b5cf6;
   
   &:hover {
     background: #9f7aea;
     transform: scale(1.05);
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.6);
   }
 
   &:active {
@@ -92,20 +94,49 @@ const IconButton = styled.button`
   border: none;
   color: white;
   cursor: pointer;
-  padding: 5px;
+  padding: 6px;
   margin-right: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 6px;
+  position: relative;
 
   &:hover {
     color: #8b5cf6;
     transform: scale(1.1);
+    background: rgba(139, 92, 246, 0.1);
   }
 
   &:active {
     transform: scale(0.95);
+  }
+  
+  /* Purple glow effect for buttons */
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 6px;
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  
+  &:hover::after {
+    opacity: 1;
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);
+    animation: iconPulse 2s infinite;
+  }
+  
+  @keyframes iconPulse {
+    0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
+    70% { box-shadow: 0 0 0 6px rgba(139, 92, 246, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
   }
 `;
 
@@ -193,12 +224,12 @@ const PriceChange = styled.span<{ $isPositive: boolean | null }>`
       props.$isPositive === null 
         ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.15)' 
         : props.$isPositive 
-          ? 'inset 0 0 0 1px rgba(16, 185, 129, 0.3), 0 2px 4px rgba(0, 0, 0, 0.15)' 
-          : 'inset 0 0 0 1px rgba(255, 68, 68, 0.3), 0 2px 4px rgba(0, 0, 0, 0.15)'
+          ? 'inset 0 0 0 1px rgba(16, 185, 129, 0.3), 0 2px 4px rgba(0, 0, 0, 0.15), 0 0 12px rgba(16, 185, 129, 0.2)' 
+          : 'inset 0 0 0 1px rgba(255, 68, 68, 0.3), 0 2px 4px rgba(0, 0, 0, 0.15), 0 0 12px rgba(255, 68, 68, 0.2)'
     };
   }
   
-  /* Pulse animation on data refresh */
+  /* Pulse animation on data refresh with enhanced glow */
   animation: ${props => 
     props.$isPositive !== null 
       ? 'pricePulse 1.5s ease-out' 
@@ -230,16 +261,35 @@ const PriceChange = styled.span<{ $isPositive: boolean | null }>`
   }
   
   @keyframes pricePulse {
-    0% { transform: scale(0.95); opacity: 0.7; }
-    50% { transform: scale(1.05); opacity: 1; }
-    100% { transform: scale(1); opacity: 1; }
+    0% { 
+      transform: scale(0.95); 
+      opacity: 0.7; 
+      filter: brightness(0.9);
+    }
+    50% { 
+      transform: scale(1.05); 
+      opacity: 1; 
+      filter: brightness(1.1);
+      box-shadow: ${props => 
+        props.$isPositive === null 
+          ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.15)' 
+          : props.$isPositive 
+            ? 'inset 0 0 0 1px rgba(16, 185, 129, 0.3), 0 2px 4px rgba(0, 0, 0, 0.15), 0 0 16px rgba(16, 185, 129, 0.3)' 
+            : 'inset 0 0 0 1px rgba(255, 68, 68, 0.3), 0 2px 4px rgba(0, 0, 0, 0.15), 0 0 16px rgba(255, 68, 68, 0.3)'
+      };
+    }
+    100% { 
+      transform: scale(1); 
+      opacity: 1; 
+      filter: brightness(1);
+    }
   }
   
   @keyframes shimmer {
     0% { opacity: 0; transform: translateX(-100%) rotate(30deg); }
-    20% { opacity: 0.2; }
-    30% { opacity: 0.4; }
-    40% { opacity: 0.2; }
+    20% { opacity: 0.3; }
+    30% { opacity: 0.5; }
+    40% { opacity: 0.3; }
     60% { opacity: 0; }
     100% { opacity: 0; transform: translateX(100%) rotate(30deg); }
   }
@@ -265,12 +315,23 @@ const RetryButton = styled.button`
   color: #8b5cf6;
   cursor: pointer;
   font-size: 12px;
-  padding: 0;
+  padding: 4px 8px;
   margin-left: 8px;
-  transition: color 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 
   &:hover {
     color: #9f7aea;
+    background: rgba(139, 92, 246, 0.1);
+    box-shadow: 0 0 8px rgba(139, 92, 246, 0.4);
+    transform: translateY(-1px);
+  }
+  
+  &:active {
+    transform: translateY(0) scale(0.95);
   }
 `;
 
@@ -285,75 +346,229 @@ const LastUpdated = styled.span`
   transition: opacity 0.2s ease;
 `;
 
-const Tooltip = styled.div<{ $isVisible: boolean }>`
+// --- Tooltip Styles ---
+const Tooltip = styled.div<{
+    $position: 'top' | 'bottom';
+}>`
+  position: absolute;
+  padding: 8px 12px;
+  background: rgba(25, 25, 35, 0.95);
+  color: #f0f0f0;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(139, 92, 246, 0.15);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  z-index: 1001;
+  line-height: 1.4;
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s 0.3s;
+  letter-spacing: 0.3px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  /* Position Above/Below */
+  ${props => props.$position === 'top' && css`
+    bottom: calc(100% + 8px);
+    &::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border-width: 5px;
+      border-style: solid;
+      border-color: rgba(25, 25, 35, 0.95) transparent transparent transparent;
+      filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
+    }
+  `}
+  ${props => props.$position === 'bottom' && css`
+    top: calc(100% + 8px);
+     &::after {
+       content: '';
+       position: absolute;
+       bottom: 100%;
+       left: 50%;
+       transform: translateX(-50%);
+       border-width: 5px;
+       border-style: solid;
+       border-color: transparent transparent rgba(25, 25, 35, 0.95) transparent;
+       filter: drop-shadow(0 -1px 1px rgba(0, 0, 0, 0.1));
+    }
+  `}
+`;
+
+// Wrapper to control hover state for tooltips
+const HoverButtonWrapper = styled.div<{
+    $tooltipVisible: boolean;
+    $tooltipPosition: 'top' | 'bottom';
+    $tooltipStyle: React.CSSProperties;
+}>`
+  position: relative;
+  display: inline-flex;
+  z-index: 10;
+  transition: transform 0.2s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+
+  ${Tooltip} {
+      opacity: ${props => props.$tooltipVisible ? 1 : 0};
+      visibility: ${props => props.$tooltipVisible ? 'visible' : 'hidden'};
+      transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s ${props => props.$tooltipVisible ? '0s' : '0.3s'};
+      z-index: ${props => props.$tooltipVisible ? (props.className?.includes('control-button') ? 9999 : 1001) : -1};
+
+      // Apply transform directly from the style state
+      transform: ${props => props.$tooltipStyle.transform || 'translateX(-50%) translateY(4px)'};
+
+      // Purple glow effect, etc. (remain the same)
+      box-shadow: ${props => props.$tooltipVisible
+        ? '0 4px 12px rgba(0, 0, 0, 0.3), 0 0 8px rgba(139, 92, 246, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.2)'
+        : '0 4px 12px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(139, 92, 246, 0.15)'
+      };
+
+      &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0) 60%);
+        border-radius: 6px;
+        opacity: ${props => props.$tooltipVisible ? 1 : 0};
+        transition: opacity 0.3s ease;
+        z-index: -1;
+      }
+  }
+
+  &:hover ${Tooltip} {
+    animation: ${props => props.$tooltipVisible ? 'tooltipPulse 2s infinite' : 'none'};
+  }
+
+  @keyframes tooltipPulse {
+    0% { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 8px rgba(139, 92, 246, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.2); }
+    50% { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 16px rgba(139, 92, 246, 0.6), 0 0 0 1px rgba(139, 92, 246, 0.3); }
+    100% { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 8px rgba(139, 92, 246, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.2); }
+  }
+`;
+// --- End Tooltip Styles ---
+
+
+// --- Styles for the Update Check Tooltip (Restyled) ---
+const UpdateTooltipContainer = styled.div<{ $isVisible: boolean }>`
   position: absolute;
   top: 40px;
   right: 10px;
   width: 220px;
-  background: #1a1a2e;
+  background: rgba(25, 25, 35, 0.95);
   border-radius: 8px;
-  padding: 12px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
-  border: 1px solid #8b5cf6;
-  color: white;
+  padding: 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  color: #f0f0f0;
   z-index: 1000;
   opacity: ${props => props.$isVisible ? 1 : 0};
   visibility: ${props => props.$isVisible ? 'visible' : 'hidden'};
   transform: ${props => props.$isVisible ? 'translateY(0)' : 'translateY(-10px)'};
-  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0.3s;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   font-size: 12px;
+  backdrop-filter: blur(8px);
+  letter-spacing: 0.2px;
+  
+  /* Purple glow effect when visible */
+  ${props => props.$isVisible && css`
+    animation: updateTooltipPulse 3s infinite;
+    
+    @keyframes updateTooltipPulse {
+      0% { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.2); }
+      50% { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 10px rgba(139, 92, 246, 0.3), 0 0 0 1px rgba(139, 92, 246, 0.3); }
+      100% { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.2); }
+    }
+  `}
 `;
 
-const TooltipTitle = styled.div`
+const UpdateTooltipTitle = styled.div`
   font-size: 14px;
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   color: #8b5cf6;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.15);
+  padding-bottom: 8px;
 `;
 
-const TooltipContent = styled.div`
+const UpdateTooltipContent = styled.div`
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.6;
+  color: rgba(240, 240, 240, 0.9);
 `;
 
-const CloseButton = styled.button`
+const UpdateCloseButton = styled.button`
   background: none;
   border: none;
   color: #8b5cf6;
   cursor: pointer;
-  padding: 4px;
+  padding: 6px;
+  margin-left: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: all 0.2s;
-
+  transition: all 0.2s ease;
+  
   &:hover {
-    background: rgba(139, 92, 246, 0.1);
+    background: rgba(139, 92, 246, 0.15);
     transform: scale(1.1);
+    box-shadow: 0 0 10px rgba(139, 92, 246, 0.4);
+  }
+
+  &:active {
+    transform: scale(0.95);
   }
 `;
 
-const TooltipIcon = styled.div`
+const UpdateTooltipIcon = styled.div<{ $type: 'success' | 'error' }>`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: #10b981;
+  background: ${props => props.$type === 'success' ? '#10b981' : '#ff4444'};
   color: white;
   margin-right: 8px;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px ${props => props.$type === 'success' ? 'rgba(16, 185, 129, 0.6)' : 'rgba(255, 68, 68, 0.6)'};
+  
+  /* Inner glow effect */
+  position: relative;
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 50%;
+    box-shadow: inset 0 0 4px ${props => props.$type === 'success' ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.4)'};
+  }
 `;
 
-const TooltipHeader = styled.div`
+const UpdateTooltipHeader = styled.div`
   display: flex;
   align-items: center;
-  margin-bottom: 8px;
 `;
+// --- End Update Check Tooltip Styles ---
+
 
 const UpdateButtonSpinner = styled.div`
   animation: spin 1s linear infinite;
@@ -362,11 +577,22 @@ const UpdateButtonSpinner = styled.div`
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
   }
+  
+  /* Add subtle glow effect when spinning */
+  svg {
+    filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.6));
+  }
 `;
 
 interface HeaderProps {
   selectedCrypto: string;
   selectedFiat: string;
+}
+
+interface TooltipState {
+  visible: boolean;
+  position: 'top' | 'bottom';
+  style: React.CSSProperties;
 }
 
 const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
@@ -376,41 +602,234 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<any>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
-  const [tooltipVisible, setTooltipVisible] = useState(false);
-  const [tooltipMessage, setTooltipMessage] = useState('');
-  const [tooltipType, setTooltipType] = useState<'success' | 'error'>('success');
-  const tooltipTimeoutRef = useRef<number | null>(null);
+  const [updateTooltipVisible, setUpdateTooltipVisible] = useState(false);
+  const [updateTooltipMessage, setUpdateTooltipMessage] = useState('');
+  const [updateTooltipType, setUpdateTooltipType] = useState<'success' | 'error'>('success');
+  const updateTooltipTimeoutRef = useRef<number | null>(null);
   const { prices, loading, error, lastUpdated, updatePrices, isPending } = useCrypto();
 
-  // Clear tooltip timeout on unmount
+  // State for individual tooltip visibility and position
+  const [tooltipState, setTooltipState] = useState<Record<string, TooltipState>>({
+    add: { visible: false, position: 'top', style: {} },
+    manage: { visible: false, position: 'top', style: {} },
+    update: { visible: false, position: 'top', style: {} },
+    quit: { visible: false, position: 'top', style: {} },
+  });
+
+  // Refs for tooltips
+  const addTooltipRef = useRef<HTMLDivElement>(null);
+  const manageTooltipRef = useRef<HTMLDivElement>(null);
+  const updateHoverTooltipRef = useRef<HTMLDivElement>(null);
+  const quitTooltipRef = useRef<HTMLDivElement>(null);
+
+  const tooltipRefs: Record<string, React.RefObject<HTMLDivElement>> = {
+      add: addTooltipRef,
+      manage: manageTooltipRef,
+      update: updateHoverTooltipRef,
+      quit: quitTooltipRef
+  };
+
+  // Debounce timer ref
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMouseEnter = useCallback((key: string) => {
+    if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+    }
+
+    hoverTimeoutRef.current = setTimeout(() => {
+        const buttonWrapper = tooltipRefs[key]?.current?.closest('.button-wrapper-class');
+        const tooltipElement = tooltipRefs[key]?.current;
+
+        if (!buttonWrapper || !tooltipElement) return;
+
+        // Ensure tooltip is rendered to get offsetWidth
+        tooltipElement.style.position = 'absolute'; // Position relative to wrapper for offsetWidth
+        tooltipElement.style.visibility = 'hidden'; // Keep hidden during measurement
+        tooltipElement.style.opacity = '0';
+
+        requestAnimationFrame(() => {
+            const tooltipWidth = tooltipElement.offsetWidth;
+            const tooltipHeight = tooltipElement.offsetHeight;
+            const buttonRect = buttonWrapper.getBoundingClientRect();
+            const container = document.getElementById('root') ?? document.body;
+            const containerRect = container.getBoundingClientRect();
+
+            // --- Vertical Positioning (remains the same) ---
+            let preferredPosition: 'top' | 'bottom' = 'top';
+            const spaceAbove = buttonRect.top - containerRect.top;
+            const spaceBelow = containerRect.bottom - buttonRect.bottom;
+            const tooltipHeightWithGap = tooltipHeight + 10;
+
+            if (tooltipHeightWithGap > spaceAbove && tooltipHeightWithGap <= spaceBelow) {
+                preferredPosition = 'bottom';
+            } else if (tooltipHeightWithGap > spaceAbove && tooltipHeightWithGap > spaceBelow) {
+                preferredPosition = spaceBelow > spaceAbove ? 'bottom' : 'top';
+            } else {
+                preferredPosition = 'top';
+            }
+
+            // --- Horizontal Positioning & Style Calculation ---
+            const calculatedStyle: React.CSSProperties = {};
+            const buffer = 5;
+
+            // Calculate positions relative to the container
+            const buttonLeftRel = buttonRect.left - containerRect.left;
+            const buttonRightRel = buttonRect.right - containerRect.left;
+            const buttonCenterRel = buttonLeftRel + buttonRect.width / 2;
+            const containerWidth = containerRect.width;
+
+            // Default: Center tooltip relative to button center
+            calculatedStyle.left = `${buttonCenterRel}px`;
+            calculatedStyle.transform = 'translateX(-50%)';
+            let tooltipLeftEdgeRel = buttonCenterRel - tooltipWidth / 2;
+            let tooltipRightEdgeRel = buttonCenterRel + tooltipWidth / 2;
+
+            // Check for overflow with default centering
+            const centeredOverflowLeft = tooltipLeftEdgeRel < buffer;
+            const centeredOverflowRight = tooltipRightEdgeRel > containerWidth - buffer;
+
+            if (centeredOverflowLeft && !centeredOverflowRight) {
+                // Pin Left
+                calculatedStyle.left = `${buffer}px`;
+                calculatedStyle.transform = 'translateX(0)';
+            } else if (!centeredOverflowLeft && centeredOverflowRight) {
+                // Pin Right
+                calculatedStyle.left = 'auto';
+                calculatedStyle.right = `${buffer}px`;
+                calculatedStyle.transform = 'translateX(0)';
+            } else if (centeredOverflowLeft && centeredOverflowRight) {
+                 // Tooltip wider than container - Pin Left
+                 calculatedStyle.left = `${buffer}px`;
+                 calculatedStyle.transform = 'translateX(0)';
+            }
+            // Else: Default Centering is fine
+
+            // Specific refined handling for control buttons
+            if (buttonWrapper.classList.contains('control-button')) {
+                // Try aligning right edge of tooltip with right edge of button
+                const rightAlignLeftEdge = buttonRightRel - tooltipWidth;
+                const rightAlignOverflowLeft = rightAlignLeftEdge < buffer;
+
+                if (!rightAlignOverflowLeft) {
+                    // Right alignment fits without left overflow
+                    calculatedStyle.left = 'auto';
+                    calculatedStyle.right = `0px`; // Relative to button wrapper
+                    calculatedStyle.transform = 'translateX(0)';
+                } else {
+                    // Right alignment overflows left, try left alignment
+                    const leftAlignRightEdge = buttonLeftRel + tooltipWidth;
+                    const leftAlignOverflowRight = leftAlignRightEdge > containerWidth - buffer;
+
+                    if (!leftAlignOverflowRight) {
+                        // Left alignment fits without right overflow
+                        calculatedStyle.left = `0px`; // Relative to button wrapper
+                        calculatedStyle.right = 'auto';
+                        calculatedStyle.transform = 'translateX(0)';
+                    } else {
+                         // Neither edge alignment works, fallback to previous container pinning logic
+                         // Recalculate centered edges
+                         tooltipLeftEdgeRel = buttonCenterRel - tooltipWidth / 2;
+                         tooltipRightEdgeRel = buttonCenterRel + tooltipWidth / 2;
+                         const newCenteredOverflowLeft = tooltipLeftEdgeRel < buffer;
+                         const newCenteredOverflowRight = tooltipRightEdgeRel > containerWidth - buffer;
+
+                         if (newCenteredOverflowLeft && !newCenteredOverflowRight) {
+                             calculatedStyle.left = `${buffer}px`;
+                             calculatedStyle.transform = 'translateX(0)';
+                         } else if (!newCenteredOverflowLeft && newCenteredOverflowRight) {
+                             calculatedStyle.left = 'auto';
+                             calculatedStyle.right = `${buffer}px`;
+                             calculatedStyle.transform = 'translateX(0)';
+                         } else {
+                             // Fallback: center if possible, else pin left
+                             calculatedStyle.left = '50%';
+                             calculatedStyle.transform = 'translateX(-50%)';
+                              if (buttonCenterRel - tooltipWidth / 2 < buffer) {
+                                 calculatedStyle.left = `${buffer}px`;
+                                 calculatedStyle.transform = 'translateX(0)';
+                              }
+                         }
+                    }
+                }
+            }
+
+            // Create the final style object for the VISIBLE state (reset vertical offset)
+            const finalStyle: React.CSSProperties = {
+                ...calculatedStyle,
+                // Reset vertical transform part for visible state
+                transform: `${calculatedStyle.transform?.toString().replace(/ translateY\([^)]+\)/, '') || ''} translateY(0)`,
+            };
+            // Create style for the HIDDEN state (initial vertical offset)
+            const initialStyle: React.CSSProperties = {
+                 ...calculatedStyle,
+                 // Keep initial vertical transform offset
+                 transform: `${calculatedStyle.transform?.toString().replace(/ translateY\([^)]+\)/, '') || ''} translateY(${preferredPosition === 'top' ? '4px' : '-4px'})`,
+            };
+
+
+            // Reset temporary styles before applying state
+            tooltipElement.style.visibility = '';
+            tooltipElement.style.opacity = '';
+            tooltipElement.style.position = '';
+
+            setTooltipState(prev => ({
+                ...prev,
+                [key]: {
+                    visible: true,
+                    position: preferredPosition,
+                    style: initialStyle, // Store initial style with offset
+                 },
+            }));
+
+            // Trigger transition by applying final style shortly after
+             requestAnimationFrame(() => {
+                 setTooltipState(prev => ({
+                    ...prev,
+                    [key]: { ...prev[key], visible: true, style: finalStyle }
+                 }));
+             });
+
+        });
+    }, 50);
+  }, [tooltipRefs]);
+
+  const handleMouseLeave = useCallback((key: string) => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    setTooltipState(prev => ({ ...prev, [key]: { ...prev[key], visible: false } }));
+  }, []);
+
+  // Clear update tooltip timeout on unmount
   useEffect(() => {
     return () => {
-      if (tooltipTimeoutRef.current) {
-        window.clearTimeout(tooltipTimeoutRef.current);
+      if (updateTooltipTimeoutRef.current) {
+        window.clearTimeout(updateTooltipTimeoutRef.current);
       }
     };
   }, []);
 
-  const showTooltip = (message: string, type: 'success' | 'error' = 'success') => {
-    setTooltipMessage(message);
-    setTooltipType(type);
-    setTooltipVisible(true);
+  const showUpdateTooltip = (message: string, type: 'success' | 'error' = 'success') => {
+    setUpdateTooltipMessage(message);
+    setUpdateTooltipType(type);
+    setUpdateTooltipVisible(true);
     
     // Auto-hide tooltip after 5 seconds
-    if (tooltipTimeoutRef.current) {
-      window.clearTimeout(tooltipTimeoutRef.current);
+    if (updateTooltipTimeoutRef.current) {
+      window.clearTimeout(updateTooltipTimeoutRef.current);
     }
     
-    tooltipTimeoutRef.current = window.setTimeout(() => {
-      setTooltipVisible(false);
+    updateTooltipTimeoutRef.current = window.setTimeout(() => {
+      setUpdateTooltipVisible(false);
     }, 5000);
   };
 
-  const hideTooltip = () => {
-    setTooltipVisible(false);
-    if (tooltipTimeoutRef.current) {
-      window.clearTimeout(tooltipTimeoutRef.current);
-      tooltipTimeoutRef.current = null;
+  const hideUpdateTooltip = () => {
+    setUpdateTooltipVisible(false);
+    if (updateTooltipTimeoutRef.current) {
+      window.clearTimeout(updateTooltipTimeoutRef.current);
+      updateTooltipTimeoutRef.current = null;
     }
   };
 
@@ -430,14 +849,12 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
         setUpdateInfo(result);
         setIsUpdateDialogOpen(true);
       } else {
-        // Show tooltip notification instead of desktop notification
         const versionToShow = result.latestVersion || result.currentVersion || '';
-        showTooltip(`You're already using the latest version (${versionToShow}).`);
+        showUpdateTooltip(`You're already using the latest version (${versionToShow}).`);
       }
     } catch (error) {
       console.error('Error checking for updates:', error);
-      // Show error tooltip
-      showTooltip('Could not check for updates. Please try again later.', 'error');
+      showUpdateTooltip('Could not check for updates. Please try again later.', 'error');
     } finally {
       setIsCheckingUpdate(false);
     }
@@ -587,12 +1004,44 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   return (
     <HeaderContainer>
       <IconsContainer>
-        <IconButton onClick={() => navigate('/add-tokens')} title="Add tokens">
-          <IoMdAdd size={20} />
-        </IconButton>
-        <IconButton onClick={() => navigate('/manage-tokens')} title="Manage tokens">
-          <FiTrash2 size={18} />
-        </IconButton>
+        <HoverButtonWrapper
+          className="button-wrapper-class"
+          $tooltipVisible={tooltipState.add.visible}
+          $tooltipPosition={tooltipState.add.position}
+          $tooltipStyle={tooltipState.add.style}
+          onMouseEnter={() => handleMouseEnter('add')}
+          onMouseLeave={() => handleMouseLeave('add')}
+        >
+          <IconButton onClick={() => navigate('/add-tokens')}>
+            <IoMdAdd size={20} />
+          </IconButton>
+          <Tooltip
+            ref={addTooltipRef}
+            $position={tooltipState.add.position}
+            style={tooltipState.add.style}
+          >
+            Add Tokens
+          </Tooltip>
+        </HoverButtonWrapper>
+        <HoverButtonWrapper
+          className="button-wrapper-class"
+          $tooltipVisible={tooltipState.manage.visible}
+          $tooltipPosition={tooltipState.manage.position}
+          $tooltipStyle={tooltipState.manage.style}
+          onMouseEnter={() => handleMouseEnter('manage')}
+          onMouseLeave={() => handleMouseLeave('manage')}
+        >
+          <IconButton onClick={() => navigate('/manage-tokens')}>
+            <FiTrash2 size={18} />
+          </IconButton>
+          <Tooltip
+            ref={manageTooltipRef}
+            $position={tooltipState.manage.position}
+            style={tooltipState.manage.style}
+          >
+            Manage Tokens
+          </Tooltip>
+        </HoverButtonWrapper>
       </IconsContainer>
 
       {showPrice && (
@@ -605,40 +1054,61 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
       )}
 
       <WindowControls>
-        <UpdateButton 
-          onClick={handleCheckUpdate} 
-          title="Check for updates"
-          disabled={isCheckingUpdate}
+        <HoverButtonWrapper
+          className="control-button button-wrapper-class"
+          $tooltipVisible={tooltipState.update.visible}
+          $tooltipPosition={tooltipState.update.position}
+          $tooltipStyle={tooltipState.update.style}
+          onMouseEnter={() => handleMouseEnter('update')}
+          onMouseLeave={() => handleMouseLeave('update')}
         >
-          {isCheckingUpdate ? (
-            <UpdateButtonSpinner>
-              <FiRefreshCw />
-            </UpdateButtonSpinner>
-          ) : (
-            <FiRefreshCw />
-          )}
-        </UpdateButton>
-        <PowerButton onClick={handleQuit} title="Quit application">
-          <GiPowerButton />
-        </PowerButton>
+          <UpdateButton onClick={handleCheckUpdate} disabled={isCheckingUpdate}>
+            {isCheckingUpdate ? <UpdateButtonSpinner><FiRefreshCw /></UpdateButtonSpinner> : <FiRefreshCw />}
+          </UpdateButton>
+          <Tooltip
+            ref={updateHoverTooltipRef}
+            $position={tooltipState.update.position}
+            style={tooltipState.update.style}
+          >
+            Check for Updates
+          </Tooltip>
+        </HoverButtonWrapper>
+        <HoverButtonWrapper
+          className="control-button button-wrapper-class"
+          $tooltipVisible={tooltipState.quit.visible}
+          $tooltipPosition={tooltipState.quit.position}
+          $tooltipStyle={tooltipState.quit.style}
+          onMouseEnter={() => handleMouseEnter('quit')}
+          onMouseLeave={() => handleMouseLeave('quit')}
+        >
+          <PowerButton onClick={handleQuit}>
+            <GiPowerButton />
+          </PowerButton>
+          <Tooltip
+            ref={quitTooltipRef}
+            $position={tooltipState.quit.position}
+            style={tooltipState.quit.style}
+          >
+            Quit Application
+          </Tooltip>
+        </HoverButtonWrapper>
         
-        {/* Tooltip notification */}
-        <Tooltip $isVisible={tooltipVisible}>
-          <TooltipTitle>
-            <TooltipHeader>
-              <TooltipIcon>
-                {tooltipType === 'success' ? <FiCheck size={16} /> : <FiX size={16} />}
-              </TooltipIcon>
-              {tooltipType === 'success' ? 'Update Check' : 'Update Error'}
-            </TooltipHeader>
-            <CloseButton onClick={hideTooltip}>
+        <UpdateTooltipContainer $isVisible={updateTooltipVisible}>
+          <UpdateTooltipTitle>
+            <UpdateTooltipHeader>
+              <UpdateTooltipIcon $type={updateTooltipType}>
+                {updateTooltipType === 'success' ? <FiCheck size={14} /> : <FiX size={14} />}
+              </UpdateTooltipIcon>
+              <span>{updateTooltipType === 'success' ? 'Update Check' : 'Update Error'}</span>
+            </UpdateTooltipHeader>
+            <UpdateCloseButton onClick={hideUpdateTooltip}>
               <FiX size={16} />
-            </CloseButton>
-          </TooltipTitle>
-          <TooltipContent>
-            {tooltipMessage}
-          </TooltipContent>
-        </Tooltip>
+            </UpdateCloseButton>
+          </UpdateTooltipTitle>
+          <UpdateTooltipContent>
+            {updateTooltipMessage}
+          </UpdateTooltipContent>
+        </UpdateTooltipContainer>
       </WindowControls>
       
       <AddCryptoModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />

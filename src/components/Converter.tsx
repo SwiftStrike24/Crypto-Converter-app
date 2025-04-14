@@ -358,22 +358,29 @@ interface ConverterProps {
 
 const Tooltip = styled.div`
   position: absolute;
-  bottom: calc(100% + 12px);
+  bottom: calc(100% + 8px);
   padding: 8px 12px;
-  background: rgba(17, 17, 17, 0.95);
-  color: white;
-  font-size: 13px;
+  background: rgba(25, 25, 35, 0.95);
+  color: #f0f0f0;
+  font-size: 12px;
+  font-weight: 500;
   border-radius: 6px;
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(139, 92, 246, 0.15);
   backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  z-index: 1000;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  z-index: 1001;
+  line-height: 1.4;
+  letter-spacing: 0.3px;
 
-  /* Right button tooltip */
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+
   .right-button & {
     left: auto;
     right: 0;
@@ -381,19 +388,20 @@ const Tooltip = styled.div`
     
     &::after {
       left: auto;
-      right: 18px;
+      right: 15px;
+      transform: translateX(0);
     }
   }
 
-  /* Left button tooltip */
   .left-button & {
     left: 0;
     right: auto;
     transform: translateY(4px);
     
     &::after {
-      left: 18px;
+      left: 15px;
       right: auto;
+      transform: translateX(0);
     }
   }
 
@@ -401,49 +409,91 @@ const Tooltip = styled.div`
     content: '';
     position: absolute;
     top: 100%;
-    border-width: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 5px;
     border-style: solid;
-    border-color: rgba(17, 17, 17, 0.95) transparent transparent transparent;
+    border-color: rgba(25, 25, 35, 0.95) transparent transparent transparent;
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
+  }
+  
+  /* Subtle gradient and shimmer effect */
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0) 60%);
+    border-radius: 6px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: -1;
   }
 `;
 
-const ButtonWrapper = styled.div`
+const ButtonWrapper = styled.div<{ $tooltipStyle?: React.CSSProperties }>`
   position: fixed;
-  z-index: 10; /* Lower z-index than dropdown */
-  transition: all 0.3s ease;
+  z-index: 10;
+  transition: transform 0.3s ease;
   
-  &:hover {
+  &:has(> button:hover) {
     transform: translateY(-2px);
+  }
+  
+  &:has(> button:hover) ${Tooltip} {
+    opacity: 1;
+    visibility: visible;
+    transform: ${props => props.$tooltipStyle?.transform ?? 'translateX(-50%)'} translateY(0);
+    left: ${props => props.$tooltipStyle?.left ?? '50%'};
+    right: ${props => props.$tooltipStyle?.right ?? 'auto'};
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 8px rgba(139, 92, 246, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.2);
+    animation: tooltipPulse 2s infinite;
+    
+    &::before {
+      opacity: 1;
+    }
+  }
+  
+  @keyframes tooltipPulse {
+    0% { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 8px rgba(139, 92, 246, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.2); }
+    50% { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 16px rgba(139, 92, 246, 0.6), 0 0 0 1px rgba(139, 92, 246, 0.3); }
+    100% { box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 8px rgba(139, 92, 246, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.2); }
   }
 `;
 
 const ChartButton = styled.button`
   position: relative;
-  background: transparent;
+  background: rgba(25, 25, 35, 0.5);
   color: #8b5cf6;
-  border: 2px solid rgba(139, 92, 246, 0.3);
+  border: 1px solid rgba(139, 92, 246, 0.2);
   border-radius: 50%;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   transform-origin: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2), 0 0 0 rgba(139, 92, 246, 0);
   
   &:hover {
-    transform: translateY(-2px) scale(1.05);
-    border-color: #8b5cf6;
-    color: #7c3aed;
-    background: rgba(139, 92, 246, 0.1);
+    transform: scale(1.08);
+    border-color: rgba(139, 92, 246, 0.5);
+    color: #a78bfa;
+    background: rgba(139, 92, 246, 0.15);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2), 0 0 12px rgba(139, 92, 246, 0.4);
+    animation: buttonGlow 2s infinite;
   }
 
   &:active {
     transform: translateY(0) scale(0.95);
     background: rgba(139, 92, 246, 0.2);
+    animation: none;
   }
 
   svg {
@@ -456,6 +506,12 @@ const ChartButton = styled.button`
   &:hover svg {
     transform: scale(1.1);
     filter: drop-shadow(0 4px 8px rgba(139, 92, 246, 0.3));
+  }
+
+  @keyframes buttonGlow {
+    0% { box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2), 0 0 8px rgba(139, 92, 246, 0.3); }
+    50% { box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2), 0 0 16px rgba(139, 92, 246, 0.5); }
+    100% { box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2), 0 0 8px rgba(139, 92, 246, 0.3); }
   }
 
   @media (max-width: 768px) {
@@ -504,11 +560,18 @@ const CoinGeckoLink = styled.button`
   margin-top: 10px;
   padding: 4px;
   align-self: center;
-  transition: color 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   -webkit-app-region: no-drag;
+  position: relative;
+  z-index: 1;
 
   &:hover {
     color: #a78bfa;
+    text-shadow: 0 0 8px rgba(139, 92, 246, 0.4);
+  }
+  
+  &:active {
+    transform: scale(0.97);
   }
 `;
 
@@ -1149,6 +1212,88 @@ const Converter: React.FC<ConverterProps> = ({
     }
   };
 
+  // State for tooltip styles
+  const [chartTooltipStyle, setChartTooltipStyle] = useState<React.CSSProperties>({});
+  const [analysisTooltipStyle, setAnalysisTooltipStyle] = useState<React.CSSProperties>({});
+
+  // Refs for tooltips and buttons
+  const chartButtonRef = useRef<HTMLButtonElement>(null);
+  const analysisButtonRef = useRef<HTMLButtonElement>(null);
+  const chartTooltipRef = useRef<HTMLDivElement>(null);
+  const analysisTooltipRef = useRef<HTMLDivElement>(null);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const calculateTooltipStyle = (buttonRef: React.RefObject<HTMLButtonElement>, tooltipRef: React.RefObject<HTMLDivElement>): React.CSSProperties => {
+    if (!buttonRef.current || !tooltipRef.current) return {};
+
+    const buttonRect = buttonRef.current.getBoundingClientRect();
+    const tooltipWidth = tooltipRef.current.offsetWidth; // Use offsetWidth after rendering
+    const appContainer = document.querySelector('#root > div'); // Assuming AppContainer is the main div in root
+    const containerRect = appContainer?.getBoundingClientRect() ?? { left: 0, right: window.innerWidth };
+    const buffer = 5;
+
+    let finalStyle: React.CSSProperties = {
+        left: '50%',
+        right: 'auto',
+        transform: 'translateX(-50%)' // Default center
+    };
+
+    const buttonCenter = buttonRect.left + buttonRect.width / 2;
+    let tooltipLeftEdge = buttonCenter - tooltipWidth / 2;
+    let tooltipRightEdge = buttonCenter + tooltipWidth / 2;
+
+    // Check container boundaries
+    if (tooltipLeftEdge < containerRect.left + buffer) {
+        finalStyle.left = `${buffer - buttonRect.left}px`; // Position relative to button
+        finalStyle.right = 'auto';
+        finalStyle.transform = 'translateX(0)';
+    } else if (tooltipRightEdge > containerRect.right - buffer) {
+        finalStyle.left = 'auto';
+        finalStyle.right = `${buffer}px`;
+        finalStyle.transform = 'translateX(0)';
+    }
+
+    // Add the initial vertical offset for the hidden state
+    finalStyle.transform = `${finalStyle.transform || ''} translateY(4px)`;
+
+    return finalStyle;
+  };
+
+  // Debounced style calculation on hover
+  const handleButtonHover = (type: 'chart' | 'analysis') => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+
+    hoverTimeoutRef.current = setTimeout(() => {
+      let style: React.CSSProperties = {};
+      if (type === 'chart' && chartButtonRef.current && chartTooltipRef.current) {
+          // Temporarily show tooltip to measure
+          chartTooltipRef.current.style.visibility = 'visible';
+          chartTooltipRef.current.style.opacity = '0';
+          style = calculateTooltipStyle(chartButtonRef, chartTooltipRef);
+          // Hide tooltip again
+          chartTooltipRef.current.style.visibility = '';
+          chartTooltipRef.current.style.opacity = '';
+          setChartTooltipStyle(style);
+      } else if (type === 'analysis' && analysisButtonRef.current && analysisTooltipRef.current) {
+          // Temporarily show tooltip to measure
+          analysisTooltipRef.current.style.visibility = 'visible';
+          analysisTooltipRef.current.style.opacity = '0';
+          style = calculateTooltipStyle(analysisButtonRef, analysisTooltipRef);
+           // Hide tooltip again
+          analysisTooltipRef.current.style.visibility = '';
+          analysisTooltipRef.current.style.opacity = '';
+          setAnalysisTooltipStyle(style);
+      }
+    }, 50); // Debounce slightly
+  };
+
+  const handleButtonLeave = () => {
+      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+      // Optionally reset styles on leave, or let them persist until next hover
+      // setChartTooltipStyle({});
+      // setAnalysisTooltipStyle({});
+  };
+
   return (
     <ConverterContainer>
       <InputGroup>
@@ -1409,28 +1554,40 @@ const Converter: React.FC<ConverterProps> = ({
         </CoinGeckoLink>
       )}
 
-      <ButtonWrapper className="right-button" style={{ bottom: '20px', right: '20px' }}>
-        <ChartButton onClick={() => navigate('/chart', { 
-          state: { 
-            cryptoId: selectedCrypto, 
-            currency: selectedFiat 
+      <ButtonWrapper
+        $tooltipStyle={chartTooltipStyle}
+        className="right-button"
+        style={{ bottom: '20px', right: '20px' }}
+        onMouseEnter={() => handleButtonHover('chart')}
+        onMouseLeave={handleButtonLeave}
+      >
+        <ChartButton ref={chartButtonRef} onClick={() => navigate('/chart', {
+          state: {
+            cryptoId: selectedCrypto,
+            currency: selectedFiat
           }
         })}>
           <ChartIcon />
         </ChartButton>
-        <Tooltip>View Price Chart</Tooltip>
+        <Tooltip ref={chartTooltipRef}>View Price Chart</Tooltip>
       </ButtonWrapper>
 
-      <ButtonWrapper className="left-button" style={{ bottom: '20px', left: '20px' }}>
-        <AnalysisButton onClick={() => navigate('/analysis', { 
-          state: { 
-            cryptoId: selectedCrypto, 
-            currency: selectedFiat 
+      <ButtonWrapper
+        $tooltipStyle={analysisTooltipStyle}
+        className="left-button"
+        style={{ bottom: '20px', left: '20px' }}
+        onMouseEnter={() => handleButtonHover('analysis')}
+        onMouseLeave={handleButtonLeave}
+      >
+        <AnalysisButton ref={analysisButtonRef} onClick={() => navigate('/analysis', {
+          state: {
+            cryptoId: selectedCrypto,
+            currency: selectedFiat
           }
         })}>
           <AnalysisIcon />
         </AnalysisButton>
-        <Tooltip>Technical Analysis</Tooltip>
+        <Tooltip ref={analysisTooltipRef}>Technical Analysis</Tooltip>
       </ButtonWrapper>
     </ConverterContainer>
   );
