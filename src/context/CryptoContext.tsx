@@ -1,8 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 
+interface CryptoPriceData {
+  price: number;
+  change24h: number | null; // Can be null if API doesn't provide it
+}
+
 interface CryptoContextType {
-  prices: Record<string, Record<string, number>>;
+  prices: Record<string, Record<string, CryptoPriceData>>;
   loading: boolean;
   error: string | null;
   updatePrices: (force?: boolean) => Promise<void>;
@@ -21,7 +26,7 @@ interface CryptoContextType {
 }
 
 interface CacheData {
-  prices: Record<string, Record<string, number>>;
+  prices: Record<string, Record<string, CryptoPriceData>>;
   timestamp: number;
 }
 
@@ -110,7 +115,7 @@ interface ApiStatus {
 
 export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // State for crypto prices and loading status
-  const [prices, setPrices] = useState<Record<string, Record<string, number>>>({});
+  const [prices, setPrices] = useState<Record<string, Record<string, CryptoPriceData>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -174,14 +179,13 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   // Get estimated price for a symbol based on similar tokens
-  const getEstimatedPrice = (symbol: string): Record<string, number> => {
-    // Use default values for known tokens
-    if (CONVERSION_RATES[symbol]) {
-      return CONVERSION_RATES[symbol];
-    }
-    
-    // For unknown tokens, use USDC as a placeholder (stable coin value)
-    return CONVERSION_RATES.USDC;
+  const getEstimatedPrice = (symbol: string): Record<string, CryptoPriceData> => {
+    const rates = CONVERSION_RATES[symbol] || CONVERSION_RATES.USDC;
+    return {
+      usd: { price: rates.usd, change24h: null },
+      eur: { price: rates.eur, change24h: null },
+      cad: { price: rates.cad, change24h: null },
+    };
   };
 
   // Load cache from localStorage on init
@@ -735,7 +739,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Enhanced getCachedPrices with localStorage fallback
-  const getCachedPrices = () => {
+  const getCachedPrices = (): Record<string, Record<string, CryptoPriceData>> | null => {
     if (cache.current) {
       const now = Date.now();
       const age = now - cache.current.timestamp;
@@ -758,7 +762,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       const cachedPricesJson = localStorage.getItem(CACHE_STORAGE_KEY);
       if (cachedPricesJson) {
-        const cachedData = JSON.parse(cachedPricesJson);
+        const cachedData: CacheData = JSON.parse(cachedPricesJson);
         if (cachedData && cachedData.timestamp && Date.now() - cachedData.timestamp < CACHE_DURATION) {
           cache.current = cachedData;
           return cachedData.prices;
@@ -772,8 +776,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Enhanced setCachePrices with localStorage persistence
-  const setCachePrices = (newPrices: Record<string, Record<string, number>>) => {
-    const cacheData = {
+  const setCachePrices = (newPrices: Record<string, Record<string, CryptoPriceData>>) => {
+    const cacheData: CacheData = {
       prices: newPrices,
       timestamp: Date.now()
     };
@@ -865,12 +869,13 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let requestSuccessful = false;
 
       try {
-        // Use smart retry function that tries multiple providers
+        // Use /simple/price to get specific changes for all fiats
         const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/simple/price`, {
           params: {
             ids: relevantIds.join(','),
-            vs_currencies: 'usd,eur,cad',
-            precision: 18
+            vs_currencies: 'usd,eur,cad', // Request all three fiat currencies
+            include_24hr_change: true, // Explicitly request 24h change
+            precision: 'full' // Request full precision
           },
           timeout: 10000
         });
@@ -889,11 +894,21 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       symbolsToProcess.forEach(symbol => {
         const id = cryptoIds[symbol];
-        if (id && priceData[id]) {
+        const tokenPriceData = priceData[id]; // Get data for this specific crypto ID
+
+        if (id && tokenPriceData) {
+          // Extract specific price and change for each fiat
+          const usdPrice = tokenPriceData.usd;
+          const usdChange = tokenPriceData.usd_24h_change ?? null;
+          const eurPrice = tokenPriceData.eur;
+          const eurChange = tokenPriceData.eur_24h_change ?? null;
+          const cadPrice = tokenPriceData.cad;
+          const cadChange = tokenPriceData.cad_24h_change ?? null;
+
           newPrices[symbol] = {
-            usd: priceData[id].usd,
-            eur: priceData[id].eur,
-            cad: priceData[id].cad
+            usd: { price: usdPrice, change24h: usdChange },
+            eur: { price: eurPrice, change24h: eurChange },
+            cad: { price: cadPrice, change24h: cadChange }
           };
         } else if (!requestSuccessful) {
           // Use estimated prices for failed requests
@@ -1035,10 +1050,10 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Add placeholder price immediately with more realistic value
     setPrices(prev => {
       // Create a more realistic price estimate based on token symbol patterns
-      const estimatedPrice = getEstimatedPrice(upperSymbol);
+      const estimatedPriceData = getEstimatedPrice(upperSymbol);
       return {
         ...prev,
-        [upperSymbol]: estimatedPrice
+        [upperSymbol]: estimatedPriceData
       };
     });
 
@@ -1058,21 +1073,30 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         params: {
           ids: lowerId,
           vs_currencies: 'usd,eur,cad',
-          precision: 'full'
+          precision: 'full',
+          include_24hr_change: true
         },
         timeout: 5000 // Short timeout for faster response
       });
       
       if (response.data && response.data[lowerId]) {
+        const data = response.data[lowerId];
         // Update prices with actual API data
         setPrices(prev => ({
           ...prev,
-          [upperSymbol]: response.data[lowerId]
+          [upperSymbol]: {
+            usd: { price: data.usd, change24h: data.usd_24h_change ?? null },
+            eur: { price: data.eur, change24h: data.eur_24h_change ?? null },
+            cad: { price: data.cad, change24h: data.cad_24h_change ?? null },
+          }
         }));
         
         // Update cache with new data
         const cachedPrices = getCachedPrices() || {};
-        cachedPrices[upperSymbol] = response.data[lowerId];
+        if (!cachedPrices[upperSymbol]) cachedPrices[upperSymbol] = {};
+        cachedPrices[upperSymbol].usd = { price: data.usd, change24h: data.usd_24h_change ?? null };
+        cachedPrices[upperSymbol].eur = { price: data.eur, change24h: data.eur_24h_change ?? null };
+        cachedPrices[upperSymbol].cad = { price: data.cad, change24h: data.cad_24h_change ?? null };
         setCachePrices(cachedPrices);
       }
     } catch (error) {
@@ -1086,7 +1110,10 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Dispatch event after metadata is updated
       window.dispatchEvent(new CustomEvent('cryptoMetadataUpdated'));
     });
-  }, [cryptoIds, queuePriceUpdate, fetchTokenMetadata, getCachedPrices, setCachePrices]);
+
+    // *** Also trigger a price update specifically for the new token ***
+    queuePriceUpdate([upperSymbol], true); // Ensure price (including % change) is fetched
+  }, [cryptoIds, queuePriceUpdate, fetchTokenMetadata, getCachedPrices, setCachePrices, getEstimatedPrice]);
 
   // Enhanced function to fetch metadata in controlled batches with delays
   const fetchMetadataInBatches = async (tokenIds: string[]) => {

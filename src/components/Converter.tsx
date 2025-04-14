@@ -777,10 +777,15 @@ const Converter: React.FC<ConverterProps> = ({
       return 1; // Default placeholder (will be improved with estimated values)
     }
     
-    if (!prices[crypto] || !prices[crypto][fiat.toLowerCase()]) {
-      return 0;
+    // Access the price data object
+    const priceData = prices[crypto]?.[fiat.toLowerCase()];
+
+    // Return the price if it exists, otherwise return 0 or handle error
+    if (!priceData?.price) {
+      return 0; // Or handle appropriately, e.g., throw an error or return null/undefined
     }
-    return prices[crypto][fiat.toLowerCase()];
+    
+    return priceData.price; // <-- Return only the price number
   };
 
   const formatNumber = (value: string, isCrypto: boolean): string => {

@@ -119,8 +119,8 @@ const ExchangeRate = styled.div<{ $isError?: boolean }>`
   color: ${props => props.$isError ? '#ff4444' : '#ffffff'};
   margin-right: 10px;
   display: flex;
-  align-items: center;
-  gap: 5px;
+  align-items: baseline;
+  gap: 8px;
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
@@ -134,6 +134,114 @@ const ExchangeRate = styled.div<{ $isError?: boolean }>`
 
   &:hover .last-updated {
     opacity: 1;
+  }
+`;
+
+const PriceChange = styled.span<{ $isPositive: boolean | null }>`
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  position: relative;
+  overflow: hidden;
+  backdrop-filter: blur(8px);
+  display: inline-flex;
+  align-items: center;
+  letter-spacing: 0.3px;
+  
+  /* Modern gradient backgrounds with depth effect */
+  background: ${props => 
+    props.$isPositive === null 
+      ? 'rgba(255, 255, 255, 0.1)' 
+      : props.$isPositive 
+        ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.15) 100%)' 
+        : 'linear-gradient(135deg, rgba(255, 68, 68, 0.2) 0%, rgba(255, 68, 68, 0.15) 100%)'
+  };
+  
+  /* Subtle 3D-like border effect */
+  box-shadow: ${props => 
+    props.$isPositive === null 
+      ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.1)' 
+      : props.$isPositive 
+        ? 'inset 0 0 0 1px rgba(16, 185, 129, 0.2), 0 1px 2px rgba(0, 0, 0, 0.1)' 
+        : 'inset 0 0 0 1px rgba(255, 68, 68, 0.2), 0 1px 2px rgba(0, 0, 0, 0.1)'
+  };
+  
+  /* Text color and glow effect */
+  color: ${props => 
+    props.$isPositive === null 
+      ? 'rgba(255, 255, 255, 0.6)' 
+      : props.$isPositive 
+        ? '#10b981' 
+        : '#ff4444'
+  };
+  
+  /* Enhanced text glow effect */
+  text-shadow: ${props => 
+    props.$isPositive === null 
+      ? 'none' 
+      : props.$isPositive 
+        ? '0 0 8px rgba(16, 185, 129, 0.4)' 
+        : '0 0 8px rgba(255, 68, 68, 0.4)'
+  };
+  
+  /* Hover effect for interactive feel */
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: ${props => 
+      props.$isPositive === null 
+        ? 'inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.15)' 
+        : props.$isPositive 
+          ? 'inset 0 0 0 1px rgba(16, 185, 129, 0.3), 0 2px 4px rgba(0, 0, 0, 0.15)' 
+          : 'inset 0 0 0 1px rgba(255, 68, 68, 0.3), 0 2px 4px rgba(0, 0, 0, 0.15)'
+    };
+  }
+  
+  /* Pulse animation on data refresh */
+  animation: ${props => 
+    props.$isPositive !== null 
+      ? 'pricePulse 1.5s ease-out' 
+      : 'none'
+  };
+  
+  /* Subtle shimmer effect */
+  &::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(
+      circle, 
+      ${props => 
+        props.$isPositive === null
+          ? 'rgba(255, 255, 255, 0.1)'
+          : props.$isPositive
+            ? 'rgba(16, 185, 129, 0.1)'
+            : 'rgba(255, 68, 68, 0.1)'
+      } 0%, 
+      transparent 70%
+    );
+    opacity: 0;
+    transform: rotate(30deg);
+    animation: shimmer 3s linear infinite;
+  }
+  
+  @keyframes pricePulse {
+    0% { transform: scale(0.95); opacity: 0.7; }
+    50% { transform: scale(1.05); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  
+  @keyframes shimmer {
+    0% { opacity: 0; transform: translateX(-100%) rotate(30deg); }
+    20% { opacity: 0.2; }
+    30% { opacity: 0.4; }
+    40% { opacity: 0.2; }
+    60% { opacity: 0; }
+    100% { opacity: 0; transform: translateX(100%) rotate(30deg); }
   }
 `;
 
@@ -406,7 +514,8 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const showPrice = location.pathname === '/';
 
   const getPrice = () => {
-    if (loading) return <LoadingDot />;
+    if (loading && !prices[selectedCrypto]) return <LoadingDot />; // Show loading only if no price exists
+
     if (error) {
       return (
         <>
@@ -416,43 +525,63 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
       );
     }
     
-    // Check if the token is pending price update
-    if (isPending(selectedCrypto)) {
-      // Instead of showing loading state, try to display any available data for this token
-      
-      // First attempt: use any possible stored data for this token
-      if (prices[selectedCrypto]) {
-        const price = prices[selectedCrypto][selectedFiat.toLowerCase()];
-        if (price) {
-          return formatPrice(price, selectedFiat);
-        }
-      }
-      
-      // Second attempt: check localStorage for cached price
-      try {
-        const priceCacheKey = `crypto_price_${selectedCrypto.toLowerCase()}`;
-        const cachedData = localStorage.getItem(priceCacheKey);
-        if (cachedData) {
-          const priceData = JSON.parse(cachedData);
-          if (priceData && priceData[selectedFiat.toLowerCase()]) {
-            return formatPrice(priceData[selectedFiat.toLowerCase()], selectedFiat);
-          }
-        }
-      } catch (e) {
-        // Ignore cache errors
-      }
-      
-      // Fallback: Show the symbol with a placeholder dash
-      return `${selectedCrypto} —`;
+    const currentPriceData = prices[selectedCrypto]?.[selectedFiat.toLowerCase()];
+    const isDataPending = isPending(selectedCrypto);
+
+    // If data is pending and we have no cached data at all for this fiat, show loading
+    if (isDataPending && !currentPriceData?.price) {
+        return (
+            <>
+              {selectedCrypto} <LoadingDot />
+            </>
+          );
     }
     
-    if (!prices[selectedCrypto]) return 'N/A';
-    
-    const price = prices[selectedCrypto][selectedFiat.toLowerCase()];
-    if (!price) return 'N/A';
+    // If we don't have any price data (even after loading/pending check)
+    if (!currentPriceData?.price) {
+        // Try localStorage cache as a last resort before showing N/A
+        try {
+            const priceCacheKey = `crypto_price_${selectedCrypto.toLowerCase()}`;
+            const cachedStorageData = localStorage.getItem(priceCacheKey);
+            if (cachedStorageData) {
+                const priceStorageData = JSON.parse(cachedStorageData);
+                const fiatPriceData = priceStorageData?.[selectedFiat.toLowerCase()];
+                if (fiatPriceData?.price) {
+                    return (
+                        <>
+                          {formatPrice(fiatPriceData.price, selectedFiat)}
+                          {/* Show placeholder for change when using storage cache */}
+                          <PriceChange $isPositive={null}>--%</PriceChange> 
+                        </>
+                      );
+                }
+            }
+          } catch (e) { /* Ignore cache errors */ }
+        
+        // If still no data, return N/A
+        return 'N/A';
+    }
 
-    // Use the new formatPrice function for consistent formatting
-    return formatPrice(price, selectedFiat);
+    // We have price data (current or cached)
+    const formattedPrice = formatPrice(currentPriceData.price, selectedFiat);
+    const changePercent = currentPriceData.change24h;
+
+    return (
+      <>
+        {formattedPrice}
+        {typeof changePercent === 'number' ? (
+          <PriceChange $isPositive={changePercent >= 0}>
+            {`${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`}
+          </PriceChange>
+        ) : isDataPending ? (
+          // Show loading indicator for percentage if price is available but data is pending
+          <PriceChange $isPositive={null}>...</PriceChange> 
+        ) : (
+          // Show placeholder if change is genuinely null (and not pending)
+          <PriceChange $isPositive={null}>--%</PriceChange> 
+        )}
+      </>
+    );
   };
 
   return (
