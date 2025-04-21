@@ -26,27 +26,53 @@ const RangeBar: React.FC<RangeBarProps> = ({ low, current, high, currency }) => 
     
     let formattedValue: string;
     
+    // Determine significant digits and format based on value magnitude
     if (value >= 1000) {
+      const minDigits = short ? 0 : 2;
+      const maxDigits = 2;
       formattedValue = value.toLocaleString(undefined, {
-        minimumFractionDigits: short ? 0 : 2,
-        maximumFractionDigits: 2
+        minimumFractionDigits: minDigits,
+        maximumFractionDigits: maxDigits
       });
     } else if (value >= 1) {
+      const minDigits = short ? 0 : 2;
+      const maxDigits = short ? 2 : 4;
       formattedValue = value.toLocaleString(undefined, {
-        minimumFractionDigits: short ? 0 : 2,
-        maximumFractionDigits: short ? 2 : 4
+        minimumFractionDigits: minDigits,
+        maximumFractionDigits: maxDigits
       });
     } else if (value >= 0.01) {
+      const minDigits = short ? 2 : 4;
+      const maxDigits = short ? 4 : 6;
       formattedValue = value.toLocaleString(undefined, {
-        minimumFractionDigits: short ? 2 : 4,
-        maximumFractionDigits: short ? 4 : 6
+        minimumFractionDigits: minDigits,
+        maximumFractionDigits: maxDigits
       });
     } else if (value > 0) {
-      formattedValue = short ? value.toFixed(4) : value.toLocaleString(undefined, {
-        minimumFractionDigits: 6,
-        maximumFractionDigits: 8
+      // For very small numbers, show more precision
+      let minDigits = 6; // Default min for small numbers
+      let maxDigits = 10; // Default max for small numbers
+      
+      if (short) {
+          const valueString = value.toFixed(maxDigits); // Use maxDigits for initial string
+          const firstSignificantIndex = valueString.search(/[1-9]/);
+          if (firstSignificantIndex > 1) { // Check if it's after '0.'
+              // Show 2-3 significant digits after the leading zeros
+              maxDigits = Math.min(firstSignificantIndex + 2, maxDigits);
+              minDigits = maxDigits; // Keep min and max the same for short
+          } else {
+              // If significant digit is close to decimal, use standard short logic
+              maxDigits = 4;
+              minDigits = 4;
+          }
+      }
+      
+      formattedValue = value.toLocaleString(undefined, {
+          minimumFractionDigits: minDigits,
+          maximumFractionDigits: maxDigits
       });
-    } else {
+      
+    } else { // value is 0 or less
       formattedValue = '0.00';
     }
     
