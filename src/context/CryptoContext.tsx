@@ -4,6 +4,8 @@ import axios from 'axios';
 interface CryptoPriceData {
   price: number;
   change24h: number | null; // Can be null if API doesn't provide it
+  low24h?: number | null; // New field for 24h low
+  high24h?: number | null; // New field for 24h high
 }
 
 interface CryptoContextType {
@@ -68,6 +70,7 @@ const METADATA_CACHE_KEY = 'cryptovertx-metadata-cache';
 const METADATA_CACHE_DURATION = 14 * 24 * 60 * 60 * 1000; // 14 days for metadata (increased from 7)
 const ICON_CACHE_PREFIX = 'crypto_icon_';
 const MAX_METADATA_REQUESTS_PER_SESSION = 1000; // Limit metadata API calls per session
+const LOW_HIGH_CACHE_DURATION = 60 * 60 * 1000; // 60 minutes
 
 // Popular tokens to preload
 const POPULAR_TOKENS = [
@@ -165,6 +168,9 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const metadataRequestCount = useRef<number>(0);
 
   const tokenIconCache = useRef<Record<string, string>>({});
+
+  // Track when we last fetched low/high data for each symbol
+  const lowHighLastFetch = useRef<Record<string, number>>({});
 
   const clearUpdateTimeout = () => {
     if (updateTimeout.current) {
@@ -868,24 +874,89 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       let priceData: Record<string, any> = {};
       let requestSuccessful = false;
 
-      try {
-        // Use /simple/price to get specific changes for all fiats
-        const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/simple/price`, {
-          params: {
-            ids: relevantIds.join(','),
-            vs_currencies: 'usd,eur,cad', // Request all three fiat currencies
-            include_24hr_change: true, // Explicitly request 24h change
-            precision: 'full' // Request full precision
-          },
-          timeout: 10000
-        });
-        
-        priceData = response.data;
-        lastApiCall.current = Date.now();
-        requestSuccessful = true;
-      } catch (error) {
-        // Error is already handled in fetchWithSmartRetry
-        apiStatus.current.consecutiveErrors++;
+      // Determine which symbols need low/high data refresh
+      const symbolsNeedingLowHigh = symbolsToProcess.filter(symbol => {
+        const lastFetch = lowHighLastFetch.current[symbol] || 0;
+        return now - lastFetch > LOW_HIGH_CACHE_DURATION;
+      });
+
+      // If any symbols need low/high data, use /coins/markets
+      if (symbolsNeedingLowHigh.length > 0) {
+        try {
+          // Use /coins/markets to get full price data including low/high
+          const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/coins/markets`, {
+            params: {
+              vs_currency: 'usd',
+              ids: relevantIds.join(','),
+              per_page: MAX_BATCH_SIZE,
+              page: 1,
+              sparkline: false,
+              price_change_percentage: '24h'
+            },
+            timeout: 10000
+          });
+          
+          if (response.data && Array.isArray(response.data)) {
+            // Convert array response to map for easier access
+            const marketsData: Record<string, any> = {};
+            response.data.forEach((coin: any) => {
+              marketsData[coin.id] = coin;
+            });
+            
+            priceData = marketsData;
+            
+            // Update lastFetch timestamps for all symbols that got low/high data
+            symbolsNeedingLowHigh.forEach(symbol => {
+              lowHighLastFetch.current[symbol] = now;
+            });
+          }
+          
+          lastApiCall.current = Date.now();
+          requestSuccessful = true;
+        } catch (error) {
+          // Error is already handled in fetchWithSmartRetry
+          apiStatus.current.consecutiveErrors++;
+          
+          // Fallback to /simple/price if /coins/markets fails
+          try {
+            const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/simple/price`, {
+              params: {
+                ids: relevantIds.join(','),
+                vs_currencies: 'usd,eur,cad',
+                include_24hr_change: true,
+                precision: 'full'
+              },
+              timeout: 10000
+            });
+            
+            priceData = response.data;
+            lastApiCall.current = Date.now();
+            requestSuccessful = true;
+          } catch (fallbackError) {
+            // Both attempts failed
+            apiStatus.current.consecutiveErrors++;
+          }
+        }
+      } else {
+        // If no symbols need low/high, use simpler /simple/price endpoint
+        try {
+          const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/simple/price`, {
+            params: {
+              ids: relevantIds.join(','),
+              vs_currencies: 'usd,eur,cad',
+              include_24hr_change: true,
+              precision: 'full'
+            },
+            timeout: 10000
+          });
+          
+          priceData = response.data;
+          lastApiCall.current = Date.now();
+          requestSuccessful = true;
+        } catch (error) {
+          // Error is already handled in fetchWithSmartRetry
+          apiStatus.current.consecutiveErrors++;
+        }
       }
 
       // Update prices with merged data
@@ -897,19 +968,72 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const tokenPriceData = priceData[id]; // Get data for this specific crypto ID
 
         if (id && tokenPriceData) {
-          // Extract specific price and change for each fiat
-          const usdPrice = tokenPriceData.usd;
-          const usdChange = tokenPriceData.usd_24h_change ?? null;
-          const eurPrice = tokenPriceData.eur;
-          const eurChange = tokenPriceData.eur_24h_change ?? null;
-          const cadPrice = tokenPriceData.cad;
-          const cadChange = tokenPriceData.cad_24h_change ?? null;
-
-          newPrices[symbol] = {
-            usd: { price: usdPrice, change24h: usdChange },
-            eur: { price: eurPrice, change24h: eurChange },
-            cad: { price: cadPrice, change24h: cadChange }
-          };
+          if ('current_price' in tokenPriceData) {
+            // Process data from /coins/markets
+            const usdPrice = tokenPriceData.current_price;
+            const usdChange = tokenPriceData.price_change_percentage_24h ?? null;
+            const usdLow = tokenPriceData.low_24h ?? null;
+            const usdHigh = tokenPriceData.high_24h ?? null;
+            
+            // We only have USD values from /coins/markets, convert for other currencies
+            const ratioEUR = 0.92; // Approximate EUR/USD rate
+            const ratioCAD = 1.36; // Approximate CAD/USD rate
+            
+            newPrices[symbol] = {
+              usd: { 
+                price: usdPrice, 
+                change24h: usdChange,
+                low24h: usdLow,
+                high24h: usdHigh
+              },
+              eur: { 
+                price: usdPrice * ratioEUR, 
+                change24h: usdChange,
+                low24h: usdLow ? usdLow * ratioEUR : null,
+                high24h: usdHigh ? usdHigh * ratioEUR : null
+              },
+              cad: { 
+                price: usdPrice * ratioCAD, 
+                change24h: usdChange,
+                low24h: usdLow ? usdLow * ratioCAD : null,
+                high24h: usdHigh ? usdHigh * ratioCAD : null
+              }
+            };
+          } else {
+            // Process data from /simple/price
+            const usdPrice = tokenPriceData.usd;
+            const usdChange = tokenPriceData.usd_24h_change ?? null;
+            const eurPrice = tokenPriceData.eur;
+            const eurChange = tokenPriceData.eur_24h_change ?? null;
+            const cadPrice = tokenPriceData.cad;
+            const cadChange = tokenPriceData.cad_24h_change ?? null;
+            
+            // For price update from simple/price, preserve existing low/high if available
+            const existingUsdData = existingPrices[symbol]?.usd;
+            const existingEurData = existingPrices[symbol]?.eur;
+            const existingCadData = existingPrices[symbol]?.cad;
+            
+            newPrices[symbol] = {
+              usd: { 
+                price: usdPrice, 
+                change24h: usdChange,
+                low24h: existingUsdData?.low24h ?? null,
+                high24h: existingUsdData?.high24h ?? null
+              },
+              eur: { 
+                price: eurPrice, 
+                change24h: eurChange,
+                low24h: existingEurData?.low24h ?? null,
+                high24h: existingEurData?.high24h ?? null
+              },
+              cad: { 
+                price: cadPrice, 
+                change24h: cadChange,
+                low24h: existingCadData?.low24h ?? null,
+                high24h: existingCadData?.high24h ?? null
+              }
+            };
+          }
         } else if (!requestSuccessful) {
           // Use estimated prices for failed requests
           newPrices[symbol] = getEstimatedPrice(symbol);

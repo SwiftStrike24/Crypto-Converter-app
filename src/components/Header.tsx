@@ -9,6 +9,7 @@ import { useCrypto } from '../context/CryptoContext';
 import AddCryptoModal from './AddCryptoModal';
 import UpdateDialog from './UpdateDialog';
 import { checkForUpdates } from '../services/updateService';
+import RangeBar from './RangeBar';
 
 const HeaderContainer = styled.div`
   display: flex;
@@ -507,9 +508,9 @@ const UpdateTooltipTitle = styled.div`
 `;
 
 const UpdateTooltipContent = styled.div`
+  padding: 5px 12px 8px;
   font-size: 12px;
-  line-height: 1.6;
-  color: rgba(240, 240, 240, 0.9);
+  line-height: 1.4;
 `;
 
 const UpdateCloseButton = styled.button`
@@ -594,6 +595,14 @@ interface TooltipState {
   position: 'top' | 'bottom';
   style: React.CSSProperties;
 }
+
+const RangeBarWrapper = styled.div`
+  width: 100%;
+  max-width: 250px;
+  margin: 22px auto 0;
+  padding: 0 8px;
+  clear: both;
+`;
 
 const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const navigate = useNavigate();
@@ -1001,6 +1010,29 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
     );
   };
 
+  const getRangeBar = () => {
+    if (loading && !prices[selectedCrypto]) return null; // Don't show range if no price data
+    if (error) return null; // Don't show range bar on error
+
+    const priceData = prices[selectedCrypto]?.[selectedFiat.toLowerCase()];
+    
+    // Only show range bar if we have all the necessary data
+    if (priceData?.low24h && priceData?.high24h && priceData?.price) {
+      return (
+        <RangeBarWrapper>
+          <RangeBar 
+            low={priceData.low24h}
+            high={priceData.high24h}
+            current={priceData.price}
+            currency={selectedFiat}
+          />
+        </RangeBarWrapper>
+      );
+    }
+    
+    return null;
+  };
+
   return (
     <HeaderContainer>
       <IconsContainer>
@@ -1052,6 +1084,8 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
           {getPrice()}
         </ExchangeRate>
       )}
+
+      {showPrice && getRangeBar()}
 
       <WindowControls>
         <HoverButtonWrapper
