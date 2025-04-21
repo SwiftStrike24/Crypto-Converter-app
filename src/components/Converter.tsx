@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, CSSProperties } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
 import { useNavigate } from 'react-router-dom';
@@ -226,6 +226,7 @@ const DropdownMenu = styled.div<{ $isOpen: boolean }>`
   z-index: 1000; /* Ensure it's above other elements */
   display: ${props => props.$isOpen ? 'block' : 'none'};
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding-bottom: 15px;
   
   &::-webkit-scrollbar {
     width: 6px;
@@ -593,10 +594,14 @@ const Converter: React.FC<ConverterProps> = ({
   const [fiatDropdownOpen, setFiatDropdownOpen] = useState(false);
   const [cryptoSearchTerm, setCryptoSearchTerm] = useState('');
   const [preloadedIcons, setPreloadedIcons] = useState<Set<string>>(new Set());
+  const [cryptoDropdownStyle, setCryptoDropdownStyle] = useState<CSSProperties>({});
+  const [fiatDropdownStyle, setFiatDropdownStyle] = useState<CSSProperties>({});
   
   // Refs for handling outside clicks and scrolling
   const cryptoDropdownRef = useRef<HTMLDivElement>(null);
   const fiatDropdownRef = useRef<HTMLDivElement>(null);
+  const cryptoButtonRef = useRef<HTMLButtonElement>(null);
+  const fiatButtonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const cryptoInputRef = useRef<HTMLInputElement>(null);
   const fiatInputRef = useRef<HTMLInputElement>(null);
@@ -1230,7 +1235,7 @@ const Converter: React.FC<ConverterProps> = ({
     const tooltipWidth = tooltipRef.current.offsetWidth; // Use offsetWidth after rendering
     const appContainer = document.querySelector('#root > div'); // Assuming AppContainer is the main div in root
     const containerRect = appContainer?.getBoundingClientRect() ?? { left: 0, right: window.innerWidth };
-    const buffer = 5;
+    const buffer = 15;
 
     let finalStyle: React.CSSProperties = {
         left: '50%',
@@ -1294,6 +1299,71 @@ const Converter: React.FC<ConverterProps> = ({
       // setAnalysisTooltipStyle({});
   };
 
+  // Dynamically calculate dropdown position
+  useEffect(() => {
+    const calculatePosition = (buttonRef: React.RefObject<HTMLButtonElement>, dropdownRef: React.RefObject<HTMLDivElement>, setStyle: React.Dispatch<React.SetStateAction<CSSProperties>>) => {
+      if (buttonRef.current && dropdownRef.current) {
+        const buttonRect = buttonRef.current.getBoundingClientRect();
+        const dropdownHeight = dropdownRef.current.offsetHeight || 200; // Use actual height or estimate
+        const spaceBelow = window.innerHeight - buttonRect.bottom;
+        const spaceAbove = buttonRect.top;
+        const buffer = 15; // Increased buffer
+
+        if (spaceBelow < dropdownHeight + buffer && spaceAbove > dropdownHeight) {
+          // Open upwards if not enough space below, but enough space above
+          setStyle({ bottom: 'calc(100% + 4px)', top: 'auto' });
+        } else {
+          // Default: open downwards
+          setStyle({ top: 'calc(100% + 4px)', bottom: 'auto' });
+        }
+      } else {
+        // Reset if refs aren't ready
+        setStyle({});
+      }
+    };
+
+    if (cryptoDropdownOpen) {
+      // Use a timeout to allow the dropdown to render and get its height
+      const timer = setTimeout(() => {
+        calculatePosition(cryptoButtonRef, dropdownRef, setCryptoDropdownStyle);
+      }, 0);
+      return () => clearTimeout(timer);
+    } else {
+      setCryptoDropdownStyle({}); // Reset when closed
+    }
+  }, [cryptoDropdownOpen]);
+
+  useEffect(() => {
+    const calculatePosition = (buttonRef: React.RefObject<HTMLButtonElement>, dropdownRef: React.RefObject<HTMLDivElement>, setStyle: React.Dispatch<React.SetStateAction<CSSProperties>>) => {
+      if (buttonRef.current && dropdownRef.current) {
+        const buttonRect = buttonRef.current.getBoundingClientRect();
+        // Use a fixed estimate for fiat dropdown as it's not virtualized and has fewer items
+        const dropdownHeight = 150; 
+        const spaceBelow = window.innerHeight - buttonRect.bottom;
+        const spaceAbove = buttonRect.top;
+        const buffer = 15; // Increased buffer
+
+        if (spaceBelow < dropdownHeight + buffer && spaceAbove > dropdownHeight) {
+          setStyle({ bottom: 'calc(100% + 4px)', top: 'auto' });
+        } else {
+          setStyle({ top: 'calc(100% + 4px)', bottom: 'auto' });
+        }
+      } else {
+        setStyle({});
+      }
+    };
+
+    if (fiatDropdownOpen) {
+      // Use a timeout for consistency, though height is estimated
+       const timer = setTimeout(() => {
+         calculatePosition(fiatButtonRef, fiatDropdownRef, setFiatDropdownStyle);
+       }, 0);
+       return () => clearTimeout(timer);
+    } else {
+      setFiatDropdownStyle({}); // Reset when closed
+    }
+  }, [fiatDropdownOpen]);
+
   return (
     <ConverterContainer>
       <InputGroup>
@@ -1309,6 +1379,7 @@ const Converter: React.FC<ConverterProps> = ({
         />
         <SelectContainer ref={cryptoDropdownRef}>
           <SelectButton 
+            ref={cryptoButtonRef}
             onClick={() => setCryptoDropdownOpen(!cryptoDropdownOpen)}
             aria-label="Select cryptocurrency"
             aria-expanded={cryptoDropdownOpen}
@@ -1360,6 +1431,7 @@ const Converter: React.FC<ConverterProps> = ({
             $isOpen={cryptoDropdownOpen} 
             ref={dropdownRef as React.RefObject<HTMLDivElement>}
             onScroll={handleDropdownScroll}
+            style={cryptoDropdownStyle}
           >
             <SearchInput 
               type="text" 
@@ -1458,6 +1530,7 @@ const Converter: React.FC<ConverterProps> = ({
         />
         <SelectContainer ref={fiatDropdownRef}>
           <SelectButton 
+            ref={fiatButtonRef}
             onClick={() => setFiatDropdownOpen(!fiatDropdownOpen)}
             aria-label="Select fiat currency"
             aria-expanded={fiatDropdownOpen}
@@ -1496,7 +1569,11 @@ const Converter: React.FC<ConverterProps> = ({
               <path d="M1 1L6 5L11 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </SelectButton>
-          <DropdownMenu $isOpen={fiatDropdownOpen}>
+          <DropdownMenu 
+            $isOpen={fiatDropdownOpen}
+            style={fiatDropdownStyle}
+            ref={fiatDropdownRef as React.RefObject<HTMLDivElement>}
+          >
             {fiats.map((fiat) => (
               <DropdownItem
                 key={fiat}
