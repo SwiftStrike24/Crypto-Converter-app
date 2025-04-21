@@ -10,11 +10,11 @@ This document summarizes the current state of the Crypto Converter application b
 
 ## Core Architecture
 
-*   **Framework:** Electron application (v27.1.2).
+*   **Framework:** Electron application (v27.1.2 - *Note: Consider updating to a more recent stable version for latest features/security*).
 *   **Frontend:** React (v18), built using Vite (v5).
 *   **Language:** TypeScript (v5, strict mode enabled).
 *   **Process:** Standard Electron Main (`src/electron/main.ts`) and Renderer structure.
-*   **Packaging:** Electron Builder (v24).
+*   **Packaging:** Electron Builder (v24 - *Note: Consider updating to a more recent stable version for latest features/signing*).
 
 ## State Management
 
@@ -37,11 +37,11 @@ This document summarizes the current state of the Crypto Converter application b
 
 ## UI and Styling
 
-*   **Component Library:** Material-UI (MUI v6).
+*   **Component Library:** Material-UI (MUI v6 - *Note: This appears to be a pre-release version; stable is v5*).
 *   **Styling:** `styled-components` (v6) for CSS-in-JS.
 *   **Icons:** `react-icons`.
 *   **Charting:** `recharts` (v2).
-*   **Navigation:** `react-router-dom` (v7).
+*   **Navigation:** `react-router-dom` (v7 - *Note: This appears to be a pre-release version; stable is v6*).
 *   **Key Components:**
     *   `Converter.tsx`: Core conversion UI.
     *   `AddCryptoModal.tsx`: Modal for searching and adding new tokens.
@@ -55,7 +55,7 @@ This document summarizes the current state of the Crypto Converter application b
 
 *   **Package Manager:** `pnpm`.
 *   **Build Tool:** Vite for React frontend assets.
-*   **Packaging:** Electron Builder (`electron-builder`). Configured for `asar` packaging, output to `release/${version}`, Windows targets (portable, nsis).
+*   **Packaging:** Electron Builder (`electron-builder` v24 - *Note: Consider updating*). Configured for `asar` packaging, output to `release/${version}`, Windows targets (portable, nsis).
 *   **Scripts (`package.json`):**
     *   `pnpm dev`: Start Vite dev server for React frontend.
     *   `pnpm build`: Build React frontend assets.
@@ -87,9 +87,9 @@ This document summarizes the current state of the Crypto Converter application b
 *   `electron`: 27.1.2
 *   `typescript`: 5.3.2
 *   `vite`: 5.0.2
-*   `@mui/material`: 6.3.1
+*   `@mui/material`: 6.3.1 (*Note: Pre-release version*)
 *   `styled-components`: 6.1.13
-*   `react-router-dom`: 7.0.1
+*   `react-router-dom`: 7.0.1 (*Note: Pre-release version*)
 *   `axios`: 1.6.2
 *   `recharts`: 2.13.3
 *   `electron-builder`: 24.9.1
@@ -108,6 +108,7 @@ This document summarizes the current state of the Crypto Converter application b
 
 ## Areas for Potential Refinement
 
+*   **Dependency Versions:** Consider updating Electron and Electron Builder to latest stable versions. Verify stability of pre-release MUI and React Router versions.
 *   **Consistency:** Interface naming (`I` prefix usage). Centralization of shared constants.
 *   **Error Handling:** Implement more specific custom error types. Enhance user feedback on errors.
 *   **Testing:** Establish and implement a clear testing strategy (unit, integration, E2E).
