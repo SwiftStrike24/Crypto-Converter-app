@@ -4,7 +4,7 @@ description: Summary of the Crypto Converter app's current progress, architectur
 globs: 
 ---
 
-# Crypto Converter App - Progress & Conventions (v1.4.2)
+# Crypto Converter App - Progress & Conventions (v1.5.3)
 
 This document summarizes the current state of the Crypto Converter application based on the existing codebase and development patterns.
 
@@ -21,18 +21,25 @@ This document summarizes the current state of the Crypto Converter application b
 *   **Primary:** React Context API.
     *   `CryptoContext` (`src/context/CryptoContext.tsx`): Manages crypto prices (USD, EUR, CAD), 24h change, available tokens (default + custom), token metadata (name, symbol, image, rank), API status (loading, errors, rate limiting), caching, and batching logic for CoinGecko API calls. Persists custom tokens and caches to `localStorage`.
     *   `CryptoCompareContext` (`src/context/CryptoCompareContext.tsx`): Appears less integrated, potentially for historical data or as a fallback (uses `VITE_CRYPTOCOMPARE_API_KEY` from `.env`).
+    *   `ExchangeRatesContext` (`src/context/ExchangeRatesContext.tsx`): Manages live USD to CAD and EUR exchange rates for accurate fiat currency conversions throughout the app.
 
 ## API Integration (CoinGecko Centric)
 
 *   **Primary Source:** CoinGecko API (Free and Pro tiers).
     *   API Key: Managed via `.env` (`VITE_COINGECKO_API_KEY`) and checked in `useTokenSearch.ts`.
     *   Endpoints Used: `/simple/price`, `/coins/markets`, `/coins/{id}/market_chart`, `/coins/{id}`, `/search`, `/ping` (for key validation).
+*   **Secondary Sources:**
+    *   **Open Exchange Rates API**: Provides accurate USD to CAD and EUR conversion rates.
+        *   API Key: Managed via `.env` (`VITE_OPEN_EXCHANGE_RATES_APP_ID`).
+        *   Endpoints Used: `/latest.json` for current exchange rates.
+        *   1-hour caching strategy to stay within the free tier limit (1,000 requests/month).
+        *   Used for accurate fiat conversions in 24-hour price ranges and other calculations.
+    *   **CryptoCompare API**: Via `CryptoCompareContext` (key from `VITE_CRYPTOCOMPARE_API_KEY`).
 *   **Features:**
     *   **Rate Limiting:** Custom logic implemented in `useTokenSearch.ts` and `src/utils/rateLimiter.ts`, aware of Free vs. Pro limits (`COINGECKO_RATE_LIMITS`). Tracks calls per minute and implements cooldowns.
-    *   **Caching:** `localStorage` used for price data (`cryptovertx-price-cache`) and token metadata (`cryptovertx-metadata-cache`) with configurable durations (`CACHE_DURATION`, `METADATA_CACHE_DURATION`). Icon URLs are also cached (`ICON_CACHE_PREFIX`).
+    *   **Caching:** `localStorage` used for price data (`cryptovertx-price-cache`), token metadata (`cryptovertx-metadata-cache`), and exchange rates (`cryptovertx-exchange-rates`) with configurable durations. Icon URLs are also cached (`ICON_CACHE_PREFIX`).
     *   **Batching:** `CryptoContext` batches price update requests (`MAX_BATCH_SIZE`). Metadata fetching is also batched (`fetchMetadataInBatches`).
-    *   **Retries & Fallbacks:** `fetchWithSmartRetry` in `CryptoContext` and logic within `useTokenSearch` implement retry attempts with backoff. Some basic proxy/fallback URL handling exists but might be partially disabled (`useTokenSearch.ts`). `fetchWithFallback` utility exists in `src/utils/fetchWithFallback.ts`.
-*   **Secondary Source:** CryptoCompare API (via `CryptoCompareContext`, key from `VITE_CRYPTOCOMPARE_API_KEY`) - Usage seems limited compared to CoinGecko.
+    *   **Retries & Fallbacks:** Smart retry mechanisms with exponential backoff across all APIs. Fallback values provided for offline operation.
 *   **Update Service:** Cloudflare R2 via `@aws-sdk/client-s3` (requires `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` in `.env`).
 
 ## UI and Styling
@@ -67,6 +74,8 @@ This document summarizes the current state of the Crypto Converter application b
 ## Key Features Implemented
 
 *   Real-time crypto-to-fiat conversion.
+*   Live USD to CAD/EUR exchange rates for accurate fiat conversions (Open Exchange Rates API).
+*   Accurate 24-hour price ranges with proper fiat conversion.
 *   Dynamic addition and removal of cryptocurrencies (custom tokens stored locally).
 *   Search functionality for finding new tokens via CoinGecko API.
 *   Display of live prices, 24-hour percentage change.
@@ -103,7 +112,7 @@ This document summarizes the current state of the Crypto Converter application b
 *   **Constants:** Defined in relevant files for API details, caching, rate limits. Consider centralizing.
 *   **Error Handling:** `try/catch` blocks, state variables (`error`, `loading`), specific handling for API errors (e.g., 429 rate limit).
 *   **React:** Functional components and Hooks. Context for global state.
-*   **Environment Variables:** `.env` file used for API keys (`VITE_COINGECKO_API_KEY`, `VITE_CRYPTOCOMPARE_API_KEY`) and Cloudflare R2 credentials. Secure handling practices mentioned in README.
+*   **Environment Variables:** `.env` file used for API keys (`VITE_COINGECKO_API_KEY`, `VITE_CRYPTOCOMPARE_API_KEY`, `VITE_OPEN_EXCHANGE_RATES_APP_ID`) and Cloudflare R2 credentials. Secure handling practices mentioned in README.
 *   **Clean Code:** Adherence to principles like DRY, Single Responsibility. Meaningful names. Comments for complex logic.
 
 ## Areas for Potential Refinement

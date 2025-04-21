@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_COINGECKO_API_KEY: string
+  readonly VITE_OPEN_EXCHANGE_RATES_APP_ID: string
 }
 
 interface ImportMeta {

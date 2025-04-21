@@ -10,6 +10,7 @@ import ChartPage from './pages/ChartPage';
 import TechnicalAnalysisPage from './pages/TechnicalAnalysisPage';
 import { CryptoProvider } from './context/CryptoContext';
 import { CryptoCompareProvider } from './context/CryptoCompareContext';
+import { ExchangeRatesProvider } from './context/ExchangeRatesContext';
 import InstanceDialog from './pages/InstanceDialog';
 
 const AppContainer = styled.div<{ $isFullScreen?: boolean }>`
@@ -87,13 +88,15 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <CryptoProvider>
-      <CryptoCompareProvider>
-        <Router>
-          <AppContent />
-        </Router>
-      </CryptoCompareProvider>
-    </CryptoProvider>
+    <ExchangeRatesProvider>
+      <CryptoProvider>
+        <CryptoCompareProvider>
+          <Router>
+            <AppContent />
+          </Router>
+        </CryptoCompareProvider>
+      </CryptoProvider>
+    </ExchangeRatesProvider>
   );
 };
 

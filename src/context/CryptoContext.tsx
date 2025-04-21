@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
+import { useExchangeRates } from './ExchangeRatesContext';
 
 interface CryptoPriceData {
   price: number;
@@ -137,6 +138,17 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return stored ? { ...defaultCryptoIds, ...JSON.parse(stored) } : defaultCryptoIds;
   });
 
+  // Get exchange rates from our new context with safe fallback
+  let exchangeRatesContext;
+  try {
+    exchangeRatesContext = useExchangeRates();
+  } catch (error) {
+    console.warn('Exchange rates context not available, using fallback values');
+    exchangeRatesContext = { rates: { EUR: 0.92, CAD: 1.36 } };
+  }
+  
+  const { rates: exchangeRates } = exchangeRatesContext;
+
   // Refs for managing API requests and caching
   const cache = useRef<CacheData | null>(null);
   const lastApiCall = useRef<number>(0);
@@ -186,11 +198,17 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Get estimated price for a symbol based on similar tokens
   const getEstimatedPrice = (symbol: string): Record<string, CryptoPriceData> => {
-    const rates = CONVERSION_RATES[symbol] || CONVERSION_RATES.USDC;
+    const usdRate = CONVERSION_RATES[symbol]?.usd || CONVERSION_RATES.USDC.usd;
+    
+    // Use real exchange rates if available, otherwise fallback to the approximate values
+    // Make sure we have valid numbers even if the context isn't fully initialized
+    const ratioEUR = (exchangeRates?.EUR || 0.92);
+    const ratioCAD = (exchangeRates?.CAD || 1.36);
+    
     return {
-      usd: { price: rates.usd, change24h: null },
-      eur: { price: rates.eur, change24h: null },
-      cad: { price: rates.cad, change24h: null },
+      usd: { price: usdRate, change24h: null },
+      eur: { price: usdRate * ratioEUR, change24h: null },
+      cad: { price: usdRate * ratioCAD, change24h: null },
     };
   };
 
@@ -975,9 +993,9 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const usdLow = tokenPriceData.low_24h ?? null;
             const usdHigh = tokenPriceData.high_24h ?? null;
             
-            // We only have USD values from /coins/markets, convert for other currencies
-            const ratioEUR = 0.92; // Approximate EUR/USD rate
-            const ratioCAD = 1.36; // Approximate CAD/USD rate
+            // Use dynamic exchange rates instead of hardcoded values
+            const ratioEUR = exchangeRates?.EUR || 0.92; 
+            const ratioCAD = exchangeRates?.CAD || 1.36;
             
             newPrices[symbol] = {
               usd: { 
@@ -1088,7 +1106,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setLoading(false);
       requestQueue.current.lastProcessed = Date.now();
     }
-  }, [cryptoIds, handleApiError]);
+  }, [cryptoIds, handleApiError, exchangeRates]);
 
   // Enhanced queuePriceUpdate with priority handling
   const queuePriceUpdate = useCallback((symbols: string[], highPriority: boolean = false) => {
@@ -1237,7 +1255,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // *** Also trigger a price update specifically for the new token ***
     queuePriceUpdate([upperSymbol], true); // Ensure price (including % change) is fetched
-  }, [cryptoIds, queuePriceUpdate, fetchTokenMetadata, getCachedPrices, setCachePrices, getEstimatedPrice]);
+  }, [cryptoIds, queuePriceUpdate, fetchTokenMetadata, getCachedPrices, setCachePrices, getEstimatedPrice, exchangeRates]);
 
   // Enhanced function to fetch metadata in controlled batches with delays
   const fetchMetadataInBatches = async (tokenIds: string[]) => {
@@ -1347,7 +1365,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Start fetching metadata immediately in the background, in controlled batches
     fetchMetadataInBatches(newTokenIds);
-  }, [cryptoIds, prices, queuePriceUpdate, fetchTokenMetadata, tokenMetadata, getEstimatedPrice]);
+  }, [cryptoIds, prices, queuePriceUpdate, fetchTokenMetadata, tokenMetadata, getEstimatedPrice, exchangeRates]);
 
   const deleteCrypto = useCallback((symbol: string) => {
     // Don't allow deletion of default tokens
