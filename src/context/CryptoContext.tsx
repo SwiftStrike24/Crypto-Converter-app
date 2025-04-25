@@ -71,7 +71,6 @@ const METADATA_CACHE_KEY = 'cryptovertx-metadata-cache';
 const METADATA_CACHE_DURATION = 14 * 24 * 60 * 60 * 1000; // 14 days for metadata (increased from 7)
 const ICON_CACHE_PREFIX = 'crypto_icon_';
 const MAX_METADATA_REQUESTS_PER_SESSION = 1000; // Limit metadata API calls per session
-const LOW_HIGH_CACHE_DURATION = 60 * 60 * 1000; // 60 minutes
 
 // Popular tokens to preload
 const POPULAR_TOKENS = [
@@ -181,9 +180,6 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const tokenIconCache = useRef<Record<string, string>>({});
 
-  // Track when we last fetched low/high data for each symbol
-  const lowHighLastFetch = useRef<Record<string, number>>({});
-
   const clearUpdateTimeout = () => {
     if (updateTimeout.current) {
       clearTimeout(updateTimeout.current);
@@ -197,11 +193,10 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   // Get estimated price for a symbol based on similar tokens
-  const getEstimatedPrice = (symbol: string): Record<string, CryptoPriceData> => {
+  const getEstimatedPrice = useCallback((symbol: string): Record<string, CryptoPriceData> => {
     const usdRate = CONVERSION_RATES[symbol]?.usd || CONVERSION_RATES.USDC.usd;
     
     // Use real exchange rates if available, otherwise fallback to the approximate values
-    // Make sure we have valid numbers even if the context isn't fully initialized
     const ratioEUR = (exchangeRates?.EUR || 0.92);
     const ratioCAD = (exchangeRates?.CAD || 1.36);
     
@@ -210,7 +205,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       eur: { price: usdRate * ratioEUR, change24h: null },
       cad: { price: usdRate * ratioCAD, change24h: null },
     };
-  };
+  }, [exchangeRates]);
 
   // Load cache from localStorage on init
   useEffect(() => {
@@ -763,7 +758,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Enhanced getCachedPrices with localStorage fallback
-  const getCachedPrices = (): Record<string, Record<string, CryptoPriceData>> | null => {
+  const getCachedPrices = useCallback((): Record<string, Record<string, CryptoPriceData>> | null => {
     if (cache.current) {
       const now = Date.now();
       const age = now - cache.current.timestamp;
@@ -772,11 +767,6 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (age > CACHE_DURATION) {
         cache.current = null;
         return null;
-      }
-      
-      // If cache is getting old (>80% of duration), trigger a background refresh
-      if (age > CACHE_DURATION * 0.8 && !requestQueue.current.isProcessing) {
-        queuePriceUpdate(Array.from(requestQueue.current.pendingSymbols));
       }
       
       return cache.current.prices;
@@ -797,10 +787,10 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     
     return null;
-  };
+  }, []);
 
   // Enhanced setCachePrices with localStorage persistence
-  const setCachePrices = (newPrices: Record<string, Record<string, CryptoPriceData>>) => {
+  const setCachePrices = useCallback((newPrices: Record<string, Record<string, CryptoPriceData>>) => {
     const cacheData: CacheData = {
       prices: newPrices,
       timestamp: Date.now()
@@ -814,7 +804,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (error) {
       console.error('Error saving cache to localStorage:', error);
     }
-  };
+  }, []);
 
   const getCryptoId = useCallback((symbol: string) => {
     return cryptoIds[symbol];
@@ -839,14 +829,14 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     }
 
-    // Use cached data if available
-    const cachedPrices = getCachedPrices();
-    if (cachedPrices) {
-      setPrices(cachedPrices);
+    // Use memoized getCachedPrices
+    const cached = getCachedPrices();
+    if (cached) {
+      setPrices(cached);
     }
 
     return retryDelay;
-  }, []);
+  }, [getCachedPrices]);
 
   // Enhanced batch processing with smart API selection
   const processBatchRequests = useCallback(async () => {
@@ -886,77 +876,44 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (relevantIds.length === 0) {
         symbolsToProcess.forEach(symbol => pendingPriceUpdates.current.delete(symbol));
+        requestQueue.current.isProcessing = false; // Ensure processing flag is reset
+        setLoading(false); // Ensure loading state is reset
         return;
       }
 
       let priceData: Record<string, any> = {};
       let requestSuccessful = false;
 
-      // Determine which symbols need low/high data refresh
-      const symbolsNeedingLowHigh = symbolsToProcess.filter(symbol => {
-        const lastFetch = lowHighLastFetch.current[symbol] || 0;
-        return now - lastFetch > LOW_HIGH_CACHE_DURATION;
-      });
-
-      // If any symbols need low/high data, use /coins/markets
-      if (symbolsNeedingLowHigh.length > 0) {
-        try {
-          // Use /coins/markets to get full price data including low/high
-          const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/coins/markets`, {
-            params: {
-              vs_currency: 'usd',
-              ids: relevantIds.join(','),
-              per_page: MAX_BATCH_SIZE,
-              page: 1,
-              sparkline: false,
-              price_change_percentage: '24h'
-            },
-            timeout: 10000
+      // ** ALWAYS try /coins/markets first to get low/high data **
+      try {
+        const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/coins/markets`, {
+          params: {
+            vs_currency: 'usd',
+            ids: relevantIds.join(','),
+            per_page: MAX_BATCH_SIZE,
+            page: 1,
+            sparkline: false,
+            price_change_percentage: '24h'
+          },
+          timeout: 10000
+        });
+        
+        if (response.data && Array.isArray(response.data)) {
+          // Convert array response to map for easier access
+          const marketsData: Record<string, any> = {};
+          response.data.forEach((coin: any) => {
+            marketsData[coin.id] = coin;
           });
-          
-          if (response.data && Array.isArray(response.data)) {
-            // Convert array response to map for easier access
-            const marketsData: Record<string, any> = {};
-            response.data.forEach((coin: any) => {
-              marketsData[coin.id] = coin;
-            });
-            
-            priceData = marketsData;
-            
-            // Update lastFetch timestamps for all symbols that got low/high data
-            symbolsNeedingLowHigh.forEach(symbol => {
-              lowHighLastFetch.current[symbol] = now;
-            });
-          }
-          
-          lastApiCall.current = Date.now();
-          requestSuccessful = true;
-        } catch (error) {
-          // Error is already handled in fetchWithSmartRetry
-          apiStatus.current.consecutiveErrors++;
-          
-          // Fallback to /simple/price if /coins/markets fails
-          try {
-            const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/simple/price`, {
-              params: {
-                ids: relevantIds.join(','),
-                vs_currencies: 'usd,eur,cad',
-                include_24hr_change: true,
-                precision: 'full'
-              },
-              timeout: 10000
-            });
-            
-            priceData = response.data;
-            lastApiCall.current = Date.now();
-            requestSuccessful = true;
-          } catch (fallbackError) {
-            // Both attempts failed
-            apiStatus.current.consecutiveErrors++;
-          }
+          priceData = marketsData;
         }
-      } else {
-        // If no symbols need low/high, use simpler /simple/price endpoint
+
+        lastApiCall.current = Date.now();
+        requestSuccessful = true;
+      } catch (marketsError) {
+        console.warn('Failed to fetch from /coins/markets, falling back to /simple/price:', marketsError);
+        apiStatus.current.consecutiveErrors++; // Increment errors on markets fail
+
+        // ** Fallback to /simple/price ONLY if /coins/markets fails **
         try {
           const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/simple/price`, {
             params: {
@@ -967,13 +924,16 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             },
             timeout: 10000
           });
-          
+
           priceData = response.data;
           lastApiCall.current = Date.now();
+          // Mark as successful even if it's the fallback, as long as it didn't throw
           requestSuccessful = true;
-        } catch (error) {
-          // Error is already handled in fetchWithSmartRetry
+        } catch (simplePriceError) {
+          console.error('Fallback to /simple/price also failed:', simplePriceError);
+          // Both attempts failed
           apiStatus.current.consecutiveErrors++;
+          // Error is handled in fetchWithSmartRetry, requestSuccessful remains false
         }
       }
 
@@ -994,31 +954,31 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const usdHigh = tokenPriceData.high_24h ?? null;
             
             // Use dynamic exchange rates instead of hardcoded values
-            const ratioEUR = exchangeRates?.EUR || 0.92; 
+            const ratioEUR = exchangeRates?.EUR || 0.92;
             const ratioCAD = exchangeRates?.CAD || 1.36;
             
             newPrices[symbol] = {
-              usd: { 
-                price: usdPrice, 
+              usd: {
+                price: usdPrice,
                 change24h: usdChange,
                 low24h: usdLow,
                 high24h: usdHigh
               },
-              eur: { 
-                price: usdPrice * ratioEUR, 
+              eur: {
+                price: usdPrice * ratioEUR,
                 change24h: usdChange,
                 low24h: usdLow ? usdLow * ratioEUR : null,
                 high24h: usdHigh ? usdHigh * ratioEUR : null
               },
-              cad: { 
-                price: usdPrice * ratioCAD, 
+              cad: {
+                price: usdPrice * ratioCAD,
                 change24h: usdChange,
                 low24h: usdLow ? usdLow * ratioCAD : null,
                 high24h: usdHigh ? usdHigh * ratioCAD : null
               }
             };
           } else {
-            // Process data from /simple/price
+            // Process data from /simple/price (Fallback)
             const usdPrice = tokenPriceData.usd;
             const usdChange = tokenPriceData.usd_24h_change ?? null;
             const eurPrice = tokenPriceData.eur;
@@ -1032,28 +992,28 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const existingCadData = existingPrices[symbol]?.cad;
             
             newPrices[symbol] = {
-              usd: { 
-                price: usdPrice, 
+              usd: {
+                price: usdPrice,
                 change24h: usdChange,
-                low24h: existingUsdData?.low24h ?? null,
-                high24h: existingUsdData?.high24h ?? null
+                low24h: existingUsdData?.low24h ?? null, // Keep existing low/high
+                high24h: existingUsdData?.high24h ?? null // Keep existing low/high
               },
-              eur: { 
-                price: eurPrice, 
+              eur: {
+                price: eurPrice,
                 change24h: eurChange,
-                low24h: existingEurData?.low24h ?? null,
-                high24h: existingEurData?.high24h ?? null
+                low24h: existingEurData?.low24h ?? null, // Keep existing low/high
+                high24h: existingEurData?.high24h ?? null // Keep existing low/high
               },
-              cad: { 
-                price: cadPrice, 
+              cad: {
+                price: cadPrice,
                 change24h: cadChange,
-                low24h: existingCadData?.low24h ?? null,
-                high24h: existingCadData?.high24h ?? null
+                low24h: existingCadData?.low24h ?? null, // Keep existing low/high
+                high24h: existingCadData?.high24h ?? null // Keep existing low/high
               }
             };
           }
         } else if (!requestSuccessful) {
-          // Use estimated prices for failed requests
+          // Use estimated prices ONLY if ALL requests failed
           newPrices[symbol] = getEstimatedPrice(symbol);
         }
         // Remove from pending updates
@@ -1061,9 +1021,9 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
 
       setPrices(newPrices);
-      setCachePrices(newPrices);
+      setCachePrices(newPrices); // This already includes low/high if available
       setLastUpdated(new Date());
-      
+
       // Reset error indicators on success
       if (requestSuccessful) {
         setError(null);
@@ -1082,31 +1042,42 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         requestQueue.current.isProcessing = false;
       }
 
-    } catch (err) {
+    } catch (err) { // Catch errors that might occur outside the API calls themselves
+      console.error("Error during batch processing:", err);
       // Intelligent retry with exponential backoff
       const errorMultiplier = Math.min(apiStatus.current.consecutiveErrors + 1, 5);
       const retryDelay = MIN_API_INTERVAL * errorMultiplier;
-      
+
       apiStatus.current.consecutiveErrors++;
-      
+
       if (retryCount.current <= MAX_RETRIES) {
         retryCount.current++;
         updateTimeout.current = setTimeout(() => {
           requestQueue.current.isProcessing = false;
-          processBatchRequests();
+          processBatchRequests(); // Retry the whole batch process
         }, retryDelay);
       } else {
+        setError('Failed to update prices after multiple retries.');
         // Max retries reached, clear queue and reset
         const failedSymbols = Array.from(requestQueue.current.pendingSymbols);
         failedSymbols.forEach(symbol => pendingPriceUpdates.current.delete(symbol));
+        requestQueue.current.pendingSymbols.clear(); // Clear the queue
         requestQueue.current.isProcessing = false;
         retryCount.current = 0;
+        // Update state with cached prices as a fallback
+        const cachedPrices = getCachedPrices();
+        if(cachedPrices) setPrices(cachedPrices);
       }
     } finally {
-      setLoading(false);
+      // Always ensure loading is set to false and processing flag is reset,
+      // unless a retry is scheduled.
+      if (!updateTimeout.current) {
+          requestQueue.current.isProcessing = false;
+          setLoading(false);
+      }
       requestQueue.current.lastProcessed = Date.now();
     }
-  }, [cryptoIds, handleApiError, exchangeRates]);
+  }, [cryptoIds, handleApiError, exchangeRates, getCachedPrices, setCachePrices, getEstimatedPrice]); // Added missing dependencies
 
   // Enhanced queuePriceUpdate with priority handling
   const queuePriceUpdate = useCallback((symbols: string[], highPriority: boolean = false) => {
@@ -1139,9 +1110,9 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const now = Date.now();
 
     if (!force) {
-      const cachedPrices = getCachedPrices();
-      if (cachedPrices) {
-        setPrices(cachedPrices);
+      const cached = getCachedPrices();
+      if (cached) {
+        setPrices(cached);
         setLoading(false);
         setLastUpdated(new Date(cache.current?.timestamp || now));
         return;
@@ -1400,22 +1371,16 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, []);
 
-  // Update the useEffect to use the queue system
+  // Main interval useEffect: Depends on updatePrices
   useEffect(() => {
-    const updatePricesAndRetry = async () => {
-      try {
-        await updatePrices(true);
-      } catch (error) {
-        console.error('Failed to update prices:', error);
-        updateTimeout.current = setTimeout(() => updatePricesAndRetry(), 2000);
-      }
-    };
+    // Initial fetch
+    updatePrices(true);
 
-    updatePricesAndRetry();
-
+    // Set up interval
     const interval = setInterval(() => {
+      // Use updatePrices(false) which now contains the cache-check logic
       updatePrices(false);
-    }, CACHE_DURATION);
+    }, CACHE_DURATION / 2); // Check cache more frequently (e.g., every 5 mins)
 
     return () => {
       clearInterval(interval);
