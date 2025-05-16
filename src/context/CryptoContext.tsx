@@ -1,12 +1,61 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import axios from 'axios';
+import axios from 'axios'; // Restored for isAxiosError
 import { useExchangeRates } from './ExchangeRatesContext';
+import {
+  DEFAULT_CRYPTO_IDS,
+  CONVERSION_RATES,
+  STORAGE_KEY_CUSTOM_TOKENS,
+  PRICE_CACHE_DURATION,
+  MIN_API_INTERVAL,
+  API_RETRY_DELAY,
+  PRICE_UPDATE_BATCH_WINDOW,
+  PRICE_UPDATE_MAX_BATCH_SIZE,
+  PRELOAD_POPULAR_TOKENS_ENABLED,
+  CACHE_STORAGE_KEY_PRICES,
+  CACHE_STORAGE_KEY_METADATA,
+  METADATA_CACHE_DURATION,
+  ICON_CACHE_STORAGE_PREFIX,
+  MAX_METADATA_REQUESTS_PER_SESSION_LIMIT,
+  POPULAR_TOKEN_IDS_TO_PRELOAD,
+  API_CONFIG,
+  MAX_API_RETRIES,
+} from '../constants/cryptoConstants';
+import {
+  fetchCoinMarkets,
+  fetchSimplePrice,
+  searchCoinGecko,
+  isCoinGeckoApiRateLimited,
+} from '../services/crypto/cryptoApiService'; // Corrected path
+import {
+  getCachedData,
+  setCachedData,
+} from '../services/crypto/cryptoCacheService'; // Corrected path
 
 interface CryptoPriceData {
   price: number;
   change24h: number | null; // Can be null if API doesn't provide it
   low24h?: number | null; // New field for 24h low
   high24h?: number | null; // New field for 24h high
+}
+
+interface RequestQueue {
+  pendingSymbols: Set<string>;
+  isProcessing: boolean;
+  lastProcessed: number;
+  batchTimer: NodeJS.Timeout | null;
+}
+
+interface TokenMarketData {
+  id: string;
+  symbol: string;
+  name: string;
+  image?: string;
+  market_cap_rank?: number;
+  current_price?: number;
+  price_change_percentage_24h?: number;
+  low_24h?: number;
+  high_24h?: number;
+  // Add other fields as needed based on actual API response and usage
 }
 
 interface CryptoContextType {
@@ -22,134 +71,38 @@ interface CryptoContextType {
   getCryptoId: (symbol: string) => string | undefined;
   isPending: (symbol: string) => boolean;
   tokenMetadata: Record<string, any>;
-  defaultCryptoIds: { [key: string]: string };
+  defaultCryptoIds: { [key: string]: string }; // This prop can remain as it's used for initial state
   checkAndUpdateMissingIcons: () => Promise<number>;
   setTokenMetadata: React.Dispatch<React.SetStateAction<Record<string, any>>>;
-  isApiRateLimited: (apiName: 'coingecko' | 'cryptocompare') => boolean;
-}
-
-interface CacheData {
-  prices: Record<string, Record<string, CryptoPriceData>>;
-  timestamp: number;
+  isApiRateLimited: (apiName: 'coingecko' | 'cryptocompare') => boolean; // Signature remains, implementation changes
 }
 
 const CryptoContext = createContext<CryptoContextType | undefined>(undefined);
 
-// Map crypto symbols to CoinGecko IDs
-const defaultCryptoIds: { [key: string]: string } = {
-  BTC: 'bitcoin',
-  ETH: 'ethereum',
-  SOL: 'solana',
-  USDC: 'usd-coin',
-  XRP: 'ripple'
-};
-
-// Approximate conversion rates for estimating prices
-const CONVERSION_RATES: Record<string, Record<string, number>> = {
-  BTC: { usd: 65000, eur: 59800, cad: 88400 },
-  ETH: { usd: 3500, eur: 3220, cad: 4760 },
-  SOL: { usd: 145, eur: 133, cad: 197 },
-  USDC: { usd: 1, eur: 0.92, cad: 1.36 },
-  XRP: { usd: 0.52, eur: 0.48, cad: 0.71 }
-};
-
-const STORAGE_KEY = 'cryptovertx-tokens';
-
-// CoinGecko API configuration
-const API_BASE = 'https://api.coingecko.com/api/v3';
-
-// Cache and rate limiting configuration
-const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes cache (increased from 5 minutes)
-const MIN_API_INTERVAL = 30 * 1000; // 30 seconds between API calls (free tier limit)
-const MAX_RETRIES = 3;
-const RETRY_DELAY = 5000; // 5 seconds base delay for retries
-const BATCH_WINDOW = 500; // 500ms batch window (reduced from 1s)
-const MAX_BATCH_SIZE = 25; // Maximum number of tokens to request in a single batch
-const PRELOAD_POPULAR_TOKENS = true; // Enable preloading of popular tokens
-const CACHE_STORAGE_KEY = 'cryptovertx-price-cache';
-const METADATA_CACHE_KEY = 'cryptovertx-metadata-cache';
-const METADATA_CACHE_DURATION = 14 * 24 * 60 * 60 * 1000; // 14 days for metadata (increased from 7)
-const ICON_CACHE_PREFIX = 'crypto_icon_';
-const MAX_METADATA_REQUESTS_PER_SESSION = 1000; // Limit metadata API calls per session
-
-// Popular tokens to preload
-const POPULAR_TOKENS = [
-  'bitcoin', 'ethereum', 'solana', 'ripple', 'cardano', 
-  'polkadot', 'dogecoin', 'shiba-inu', 'avalanche-2', 'chainlink',
-  'uniswap', 'polygon', 'litecoin', 'binancecoin', 'tron'
-];
-
-// Add request queue interface
-interface RequestQueue {
-  pendingSymbols: Set<string>;
-  isProcessing: boolean;
-  lastProcessed: number;
-  batchTimer: NodeJS.Timeout | null;
-}
-
-// API configuration for 2025
-const API_CONFIG = {
-  COINGECKO: {
-    BASE_URL: 'https://api.coingecko.com/api/v3',
-    FALLBACK_URLS: [
-      'https://api.coingecko.com/api/v3',
-      // 'https://coingecko.azurewebsites.net/api/proxy', // Removed unreliable proxy
-      // 'https://api.coincap.io/v2' // Temporarily disable coincap fallback for simplicity
-    ],
-    CACHE_DURATION: 10 * 60 * 1000, // 10 minutes
-    BATCH_SIZE: 25,
-    REQUEST_SPACING: 1000, // milliseconds between requests (increased from 500ms)
-    RETRY_ATTEMPTS: 5
-  },
-  CRYPTOCOMPARE: {
-    BASE_URL: 'https://data-api.cryptocompare.com/spot/v1/historical/hours',
-    CACHE_DURATION: 15 * 60 * 1000 // 15 minutes
-  }
-};
-
-// Enhanced API status tracker
-interface ApiStatus {
-  activeProviders: string[];
-  providerIndex: number;
-  lastRequestTime: number;
-  consecutiveErrors: number;
-  rateLimitCooldownUntil: number; // Timestamp until which rate limit is active
-}
-
 export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // State for crypto prices and loading status
   const [prices, setPrices] = useState<Record<string, Record<string, CryptoPriceData>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [availableCryptos, setAvailableCryptos] = useState<string[]>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    // localStorage for custom tokens is not general caching, so it remains for now
+    const stored = localStorage.getItem(STORAGE_KEY_CUSTOM_TOKENS);
     if (stored) {
       const storedIds = JSON.parse(stored);
-      const defaultTokens = Object.keys(defaultCryptoIds);
+      const defaultTokens = Object.keys(DEFAULT_CRYPTO_IDS); // Updated variable name
       const customTokens = Object.keys(storedIds).filter(token => !defaultTokens.includes(token));
       return [...defaultTokens, ...customTokens.sort()];
     }
-    return Object.keys(defaultCryptoIds);
+    return Object.keys(DEFAULT_CRYPTO_IDS); // Updated variable name
   });
   const [cryptoIds, setCryptoIds] = useState<{ [key: string]: string }>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    return stored ? { ...defaultCryptoIds, ...JSON.parse(stored) } : defaultCryptoIds;
+    const stored = localStorage.getItem(STORAGE_KEY_CUSTOM_TOKENS);
+    return stored ? { ...DEFAULT_CRYPTO_IDS, ...JSON.parse(stored) } : DEFAULT_CRYPTO_IDS;
   });
 
-  // Get exchange rates from our new context with safe fallback
-  let exchangeRatesContext;
-  try {
-    exchangeRatesContext = useExchangeRates();
-  } catch (error) {
-    console.warn('Exchange rates context not available, using fallback values');
-    exchangeRatesContext = { rates: { EUR: 0.92, CAD: 1.36 } };
-  }
-  
-  const { rates: exchangeRates } = exchangeRatesContext;
+  const { rates: exchangeRates } = useExchangeRates();
 
-  // Refs for managing API requests and caching
-  const cache = useRef<CacheData | null>(null);
+  const cache = useRef<Record<string, Record<string, CryptoPriceData>> | null>(null);
   const lastApiCall = useRef<number>(0);
   const retryCount = useRef<number>(0);
   const updateTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -160,25 +113,31 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     batchTimer: null
   });
   
-  // Advanced API status tracking
-  const apiStatus = useRef<ApiStatus>({
-    activeProviders: ['coingecko'], // Simplified to only use coingecko for now
-    providerIndex: 0,
-    lastRequestTime: 0,
-    consecutiveErrors: 0,
-    rateLimitCooldownUntil: 0 // Initialize cooldown timestamp
-  });
-  
-  // Track which symbols are pending price updates
   const pendingPriceUpdates = useRef<Set<string>>(new Set());
 
-  // Add token metadata cache
   const [tokenMetadata, setTokenMetadata] = useState<Record<string, any>>({});
 
-  // Track metadata API calls per session
   const metadataRequestCount = useRef<number>(0);
 
   const tokenIconCache = useRef<Record<string, string>>({});
+
+  const getCachedPrices = useCallback((): Record<string, Record<string, CryptoPriceData>> | null => {
+    const cachedResult = getCachedData<Record<string, Record<string, CryptoPriceData>>>(CACHE_STORAGE_KEY_PRICES);
+    if (cachedResult) {
+      cache.current = cachedResult.data;
+      // Set lastUpdated here from cache timestamp if needed, but setCachePrices also does it.
+      // For initial load, this ensures lastUpdated reflects cache time.
+      setLastUpdated(new Date(cachedResult.timestamp)); 
+      return cachedResult.data;
+    }
+    return null;
+  }, []);
+
+  const setCachePrices = useCallback((newPricesToCache: Record<string, Record<string, CryptoPriceData>>) => {
+    setCachedData(CACHE_STORAGE_KEY_PRICES, newPricesToCache, PRICE_CACHE_DURATION);
+    cache.current = newPricesToCache;
+    setLastUpdated(new Date()); // Set to current time as prices are freshly set/updated
+  }, []);
 
   const clearUpdateTimeout = () => {
     if (updateTimeout.current) {
@@ -187,14 +146,13 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // Check if a symbol is pending price update
   const isPending = useCallback((symbol: string) => {
     return pendingPriceUpdates.current.has(symbol);
   }, []);
 
-  // Get estimated price for a symbol based on similar tokens
   const getEstimatedPrice = useCallback((symbol: string): Record<string, CryptoPriceData> => {
     const usdRate = CONVERSION_RATES[symbol]?.usd || CONVERSION_RATES.USDC.usd;
+    console.log(`💰 [CryptoContext] getEstimatedPrice for symbol: ${symbol}, Computed usdRate: ${usdRate}`); // Log
     
     // Use real exchange rates if available, otherwise fallback to the approximate values
     const ratioEUR = (exchangeRates?.EUR || 0.92);
@@ -207,52 +165,40 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, [exchangeRates]);
 
-  // Load cache from localStorage on init
+  const getCryptoId = useCallback((symbol: string): string | undefined => {
+    return cryptoIds[symbol.toUpperCase()] || cryptoIds[symbol.toLowerCase()];
+  }, [cryptoIds]);
+
   useEffect(() => {
     try {
-      // Load price cache
-      const cachedPricesJson = localStorage.getItem(CACHE_STORAGE_KEY);
-      if (cachedPricesJson) {
-        const cachedData = JSON.parse(cachedPricesJson);
-        if (cachedData && cachedData.timestamp && Date.now() - cachedData.timestamp < CACHE_DURATION) {
-          cache.current = cachedData;
-          setPrices(cachedData.prices);
-          setLastUpdated(new Date(cachedData.timestamp));
-        }
+      const cachedPriceResult = getCachedData<Record<string, Record<string, CryptoPriceData>>>(CACHE_STORAGE_KEY_PRICES);
+      if (cachedPriceResult) {
+        cache.current = cachedPriceResult.data;
+        setPrices(cachedPriceResult.data);
+        setLastUpdated(new Date(cachedPriceResult.timestamp)); // Correctly use timestamp from cache
       }
       
-      // Load metadata cache
-      const metadataJson = localStorage.getItem(METADATA_CACHE_KEY);
-      if (metadataJson) {
-        const metadataCache = JSON.parse(metadataJson);
-        if (metadataCache && metadataCache.timestamp && Date.now() - metadataCache.timestamp < METADATA_CACHE_DURATION) {
-          setTokenMetadata(metadataCache.data || {});
-        } else {
-          // Metadata cache expired, fetch fresh data later
-          fetchTokenMetadata();
-        }
+      const cachedMetadataResult = getCachedData<Record<string, any>>(CACHE_STORAGE_KEY_METADATA);
+      if (cachedMetadataResult) {
+        setTokenMetadata(cachedMetadataResult.data);
       } else {
-        // No metadata cache, fetch fresh data
-        fetchTokenMetadata();
+        fetchTokenMetadata(); // This should then use setCachedData internally
       }
     } catch (error) {
-      console.error('Error loading cache:', error);
+      console.error('Error loading initial cache from service:', error);
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // fetchTokenMetadata should be memoized if added to deps
 
-  // Preload popular tokens
   useEffect(() => {
-    if (PRELOAD_POPULAR_TOKENS) {
-      // Wait a bit after initial load to not block UI
+    if (PRELOAD_POPULAR_TOKENS_ENABLED) {
       const timer = setTimeout(() => {
-        // First, ensure all default tokens are loaded
-        const defaultTokenIds = Object.values(defaultCryptoIds);
+        const defaultTokenIds = Object.values(DEFAULT_CRYPTO_IDS);
         const missingDefaultTokens = defaultTokenIds.filter(id => 
           !tokenMetadata[id]
         );
         
-        // Then add popular tokens
-        const popularTokenIds = POPULAR_TOKENS.filter(id => 
+        const popularTokenIds = POPULAR_TOKEN_IDS_TO_PRELOAD.filter(id =>
           !Object.values(cryptoIds).includes(id) && !defaultTokenIds.includes(id)
         );
         
@@ -261,44 +207,26 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (tokensToFetch.length > 0) {
           fetchTokenMetadata(tokensToFetch);
         }
-      }, 1000); // Reduced from 2000ms to 1000ms for faster loading
+      }, 1000);
       
       return () => clearTimeout(timer);
     }
   }, []);
 
-  // Save cache to localStorage when updated
-  useEffect(() => {
-    if (cache.current) {
-      try {
-        localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(cache.current));
-      } catch (error) {
-        console.error('Error saving price cache:', error);
-      }
-    }
-  }, [prices]);
-
-  // Enhanced token icon caching with better error handling and validation
-  const cacheTokenIcon = (symbol: string, imageUrl: string) => {
+  const cacheTokenIcon = useCallback((symbol: string, imageUrl: string) => {
     if (!symbol || !imageUrl) return;
-    
     try {
       const normalizedSymbol = symbol.toLowerCase();
-      const iconCacheKey = `${ICON_CACHE_PREFIX}${normalizedSymbol}`;
-      
-      // Store in localStorage
+      const iconCacheKey = `${ICON_CACHE_STORAGE_PREFIX}${normalizedSymbol}`;
       localStorage.setItem(iconCacheKey, imageUrl);
       
-      // Also store in memory cache
       tokenIconCache.current[normalizedSymbol] = imageUrl;
       
-      // If we have an ID for this symbol, also cache by ID
-      const id = cryptoIds[symbol.toUpperCase()];
+      const id = getCryptoId(symbol);
       if (id) {
-        const idIconCacheKey = `${ICON_CACHE_PREFIX}id-${id.toLowerCase()}`;
+        const idIconCacheKey = `${ICON_CACHE_STORAGE_PREFIX}id-${id.toLowerCase()}`;
         localStorage.setItem(idIconCacheKey, imageUrl);
         
-        // Update metadata if needed
         if (!tokenMetadata[id]?.image) {
           setTokenMetadata(prev => ({
             ...prev,
@@ -313,32 +241,23 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (error) {
       console.error('Error caching token icon:', error);
     }
-  };
+  }, [getCryptoId, tokenMetadata]);
 
-  // Function to ensure all token icons are properly cached
-  const ensureAllIconsCached = () => {
-    // Get all tokens that should have icons
+  const ensureAllIconsCached = useCallback(() => {
     const tokensToCheck = Object.keys(cryptoIds);
-    let missingIconsCount = 0;
-    
-    // Check which tokens are missing icons and update from metadata if available
     tokensToCheck.forEach(symbol => {
       const normalizedSymbol = symbol.toLowerCase();
-      const iconCacheKey = `${ICON_CACHE_PREFIX}${normalizedSymbol}`;
-      const id = cryptoIds[symbol];
+      const iconCacheKey = `${ICON_CACHE_STORAGE_PREFIX}${normalizedSymbol}`;
+      const id = getCryptoId(symbol);
       
-      // Check if we have the icon in metadata
-      if (tokenMetadata[id]?.image) {
-        // Make sure it's also in localStorage
+      if (id && tokenMetadata[id]?.image) {
         if (!localStorage.getItem(iconCacheKey)) {
           localStorage.setItem(iconCacheKey, tokenMetadata[id].image);
           tokenIconCache.current[normalizedSymbol] = tokenMetadata[id].image;
         }
-      } else {
-        // Check if we have it in localStorage
+      } else if (id) {
         const cachedIcon = localStorage.getItem(iconCacheKey);
         if (cachedIcon) {
-          // Update metadata with the cached icon
           setTokenMetadata(prev => ({
             ...prev,
             [id]: {
@@ -346,100 +265,91 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               image: cachedIcon
             }
           }));
-        } else {
-          missingIconsCount++;
+        }
+      }
+    });
+  }, [cryptoIds, getCryptoId, tokenMetadata]);
+
+  const checkAndUpdateMissingIcons = useCallback(async () => {
+    const tokensToCheck = Object.keys(cryptoIds);
+    const missingIconSymbols: string[] = [];
+    tokensToCheck.forEach(symbol => {
+      const normalizedSymbol = symbol.toLowerCase();
+      const iconCacheKey = `${ICON_CACHE_STORAGE_PREFIX}${normalizedSymbol}`;
+      const id = getCryptoId(symbol);
+      
+      // Check if we have the icon in metadata or cache
+      const hasMetadataIcon = id ? tokenMetadata[id]?.image : undefined;
+      const hasCachedIcon = localStorage.getItem(iconCacheKey) || tokenIconCache.current[normalizedSymbol];
+      
+      if (!hasMetadataIcon && !hasCachedIcon) {
+        missingIconSymbols.push(symbol);
+      } else if (!hasMetadataIcon && hasCachedIcon) {
+        // If we have a cached icon but no metadata, update the metadata
+        if (id) {
+          setTokenMetadata(prev => ({
+            ...prev,
+            [id]: {
+              ...(prev[id] || {}),
+              image: hasCachedIcon,
+              symbol: symbol.toUpperCase(),
+              name: prev[id]?.name || symbol.toUpperCase()
+            }
+          }));
         }
       }
     });
     
-    return missingIconsCount;
-  };
-
-  // Enhanced function to check and update missing token icons with better caching and proactive fetching
-  const checkAndUpdateMissingIcons = async () => {
-    // Get all tokens that should have icons
-    const tokensToCheck = Object.keys(cryptoIds);
-    const missingIconTokens: string[] = [];
-    const missingIconSymbols: string[] = [];
-    
-    // Check which tokens are missing icons
-    tokensToCheck.forEach(symbol => {
-      const normalizedSymbol = symbol.toLowerCase();
-      const iconCacheKey = `${ICON_CACHE_PREFIX}${normalizedSymbol}`;
-      const id = cryptoIds[symbol];
-      
-      // Check if we have the icon in metadata or cache
-      const hasMetadataIcon = tokenMetadata[id]?.image;
-      const hasCachedIcon = localStorage.getItem(iconCacheKey) || tokenIconCache.current[normalizedSymbol];
-      
-      if (!hasMetadataIcon && !hasCachedIcon) {
-        missingIconTokens.push(id);
-        missingIconSymbols.push(symbol);
-      } else if (!hasMetadataIcon && hasCachedIcon) {
-        // If we have a cached icon but no metadata, update the metadata
-        setTokenMetadata(prev => ({
-          ...prev,
-          [id]: {
-            ...(prev[id] || {}),
-            image: hasCachedIcon,
-            symbol: symbol.toUpperCase(),
-            name: prev[id]?.name || symbol.toUpperCase()
-          }
-        }));
-      }
-    });
-    
     // Log missing icons for debugging
-    if (missingIconTokens.length > 0) {
-      console.log(`Found ${missingIconTokens.length} tokens with missing icons: ${missingIconSymbols.join(', ')}`);
+    if (missingIconSymbols.length > 0) {
+      console.log(`Found ${missingIconSymbols.length} tokens with missing icons: ${missingIconSymbols.join(', ')}`);
     }
     
     // If we have missing icons, fetch them
-    if (missingIconTokens.length > 0) {
-      console.log(`Fetching missing icons for ${missingIconTokens.length} tokens`);
+    if (missingIconSymbols.length > 0) {
+      console.log(`Fetching missing icons for ${missingIconSymbols.length} tokens`);
       
       // Try to fetch using the search API first for better results
       try {
         for (const symbol of missingIconSymbols) {
           // Skip if we're rate limited
-          if (!apiStatus.current.activeProviders.includes('coingecko')) {
+          if (isCoinGeckoApiRateLimited()) { // Updated to use service's rate limit check
             break;
           }
           
           // Use search API to get better matches
-          const searchResponse = await axios.get(`${API_BASE}/search`, {
-            params: { query: symbol },
-            timeout: 5000
-          });
+          const searchResponse = await searchCoinGecko(symbol); // Use service function
           
-          if (searchResponse.data && searchResponse.data.coins && searchResponse.data.coins.length > 0) {
+          if (searchResponse && searchResponse.coins && searchResponse.coins.length > 0) {
             // Find the best match
-            const exactMatch = searchResponse.data.coins.find(
+            const exactMatch = searchResponse.coins.find(
               (coin: any) => coin.symbol.toLowerCase() === symbol.toLowerCase()
             );
             
-            const bestMatch = exactMatch || searchResponse.data.coins[0];
+            const bestMatch = exactMatch || searchResponse.coins[0];
             
             if (bestMatch && bestMatch.large) {
               // Cache the icon
               cacheTokenIcon(symbol, bestMatch.large);
               
               // Update metadata
-              const id = cryptoIds[symbol];
-              setTokenMetadata(prev => ({
-                ...prev,
-                [id]: {
-                  ...(prev[id] || {}),
-                  image: bestMatch.large,
-                  symbol: symbol.toUpperCase(),
-                  name: bestMatch.name || prev[id]?.name || symbol.toUpperCase()
-                }
-              }));
+              const id = getCryptoId(symbol);
+              if (id) {
+                setTokenMetadata(prev => ({
+                  ...prev,
+                  [id]: {
+                    ...(prev[id] || {}),
+                    image: bestMatch.large,
+                    symbol: symbol.toUpperCase(),
+                    name: bestMatch.name || prev[id]?.name || symbol.toUpperCase()
+                  }
+                }));
+              }
               
               // Remove from missing list
-              const index = missingIconTokens.indexOf(cryptoIds[symbol]);
+              const index = missingIconSymbols.indexOf(cryptoIds[symbol]);
               if (index > -1) {
-                missingIconTokens.splice(index, 1);
+                missingIconSymbols.splice(index, 1);
               }
             }
           }
@@ -453,19 +363,19 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       
       // For any remaining tokens, use the regular fetch method
-      if (missingIconTokens.length > 0) {
-        await fetchTokenMetadata(missingIconTokens);
+      if (missingIconSymbols.length > 0) {
+        await fetchTokenMetadata(missingIconSymbols);
       }
     }
     
-    return missingIconTokens.length;
-  };
+    return missingIconSymbols.length;
+  }, [cryptoIds, getCryptoId, tokenMetadata, cacheTokenIcon]);
 
   // Enhanced token metadata fetching with smart fallback handling
   const fetchTokenMetadata = useCallback(async (specificTokens?: string[]) => {
     try {
       // Check if we've exceeded the maximum number of metadata requests for this session
-      if (metadataRequestCount.current >= MAX_METADATA_REQUESTS_PER_SESSION) {
+      if (metadataRequestCount.current >= MAX_METADATA_REQUESTS_PER_SESSION_LIMIT) { // Updated variable name
         return;
       }
       
@@ -486,13 +396,13 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       // Prioritize tokens - default tokens first, then popular tokens, then others
       const prioritizedTokens = remainingTokens.sort((a, b) => {
-        const aIsDefault = Object.values(defaultCryptoIds).includes(a);
-        const bIsDefault = Object.values(defaultCryptoIds).includes(b);
+        const aIsDefault = Object.values(DEFAULT_CRYPTO_IDS).includes(a); // Updated variable name
+        const bIsDefault = Object.values(DEFAULT_CRYPTO_IDS).includes(b); // Updated variable name
         if (aIsDefault && !bIsDefault) return -1;
         if (!aIsDefault && bIsDefault) return 1;
         
-        const aIsPopular = POPULAR_TOKENS.includes(a);
-        const bIsPopular = POPULAR_TOKENS.includes(b);
+        const aIsPopular = POPULAR_TOKEN_IDS_TO_PRELOAD.includes(a); // Updated variable name
+        const bIsPopular = POPULAR_TOKEN_IDS_TO_PRELOAD.includes(b); // Updated variable name
         if (aIsPopular && !bIsPopular) return -1;
         if (!aIsPopular && bIsPopular) return 1;
         return 0;
@@ -500,8 +410,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       // Split into smaller chunks to avoid overwhelming the API
       const chunks: string[][] = [];
-      for (let i = 0; i < prioritizedTokens.length; i += API_CONFIG.COINGECKO.BATCH_SIZE) {
-        chunks.push(prioritizedTokens.slice(i, i + API_CONFIG.COINGECKO.BATCH_SIZE));
+      for (let i = 0; i < prioritizedTokens.length; i += API_CONFIG.COINGECKO.BATCH_SIZE) { // Updated variable name
+        chunks.push(prioritizedTokens.slice(i, i + API_CONFIG.COINGECKO.BATCH_SIZE)); // Updated variable name
       }
       
       // Process chunks sequentially with smart retries
@@ -514,24 +424,11 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           // Increment the metadata request counter
           metadataRequestCount.current += 1;
           
-          const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/coins/markets`, {
-            params: {
-              vs_currency: 'usd',
-              ids: firstChunk.join(','),
-              per_page: API_CONFIG.COINGECKO.BATCH_SIZE,
-              page: 1,
-              sparkline: false,
-              locale: 'en'
-            },
-            timeout: 10000,
-            headers: {
-              'Accept': 'application/json',
-              'Content-Type': 'application/json'
-            }
-          });
+          // const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/coins/markets`, { params for fetchCoinMarkets });
+          const responseData = await fetchCoinMarkets(firstChunk); // Use service function
           
-          if (response.data && Array.isArray(response.data)) {
-            response.data.forEach((token: any) => {
+          if (responseData && Array.isArray(responseData)) {
+            responseData.forEach((token: any) => {
               newMetadata[token.id] = {
                 symbol: token.symbol.toUpperCase(),
                 name: token.name,
@@ -549,36 +446,22 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           // Update state with the first batch immediately
           setTokenMetadata(newMetadata);
           
-          // Save to cache
-          localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify({
-            data: newMetadata,
-            timestamp: Date.now()
-          }));
-          
-          // Reset error count on success
-          apiStatus.current.consecutiveErrors = 0;
+          // Save to cache using the service
+          setCachedData(CACHE_STORAGE_KEY_METADATA, newMetadata, METADATA_CACHE_DURATION);
           
           // Process remaining chunks with intelligent spacing
-          if (chunks.length > 1 && metadataRequestCount.current < MAX_METADATA_REQUESTS_PER_SESSION) {
+          if (chunks.length > 1 && metadataRequestCount.current < MAX_METADATA_REQUESTS_PER_SESSION_LIMIT) { // Updated variable name
             setTimeout(() => {
               processRemainingMetadataChunks(chunks.slice(1), newMetadata);
-            }, API_CONFIG.COINGECKO.REQUEST_SPACING * 12); // Larger spacing between batch groups
+            }, API_CONFIG.COINGECKO.REQUEST_SPACING * 12); // TODO: Review if this specific timing logic moves to service or hook
           }
         } catch (error) {
-          // Increment consecutive errors
-          apiStatus.current.consecutiveErrors++;
-          
-          // Try with a smaller batch or alternate provider
-          if (specificTokens && specificTokens.length > 0) {
-            setTimeout(() => {
-              // Try with a smaller batch
-              const smallerBatch = specificTokens.slice(0, 10);
-              fetchTokenMetadata(smallerBatch);
-            }, API_CONFIG.COINGECKO.REQUEST_SPACING * apiStatus.current.consecutiveErrors);
-          }
-          
+          // Increment consecutive errors (service might handle its own, this could be for UI feedback)
+          // apiStatus.current.consecutiveErrors++; // If service handles, this might not be needed here
+          console.error('Error fetching initial metadata chunk:', error); // Log error
+
           // Process remaining chunks with an intelligent backoff
-          if (chunks.length > 1 && metadataRequestCount.current < MAX_METADATA_REQUESTS_PER_SESSION) {
+          if (chunks.length > 1 && metadataRequestCount.current < MAX_METADATA_REQUESTS_PER_SESSION_LIMIT) { // Updated variable name
             setTimeout(() => {
               processRemainingMetadataChunks(chunks.slice(1), newMetadata);
             }, API_CONFIG.COINGECKO.REQUEST_SPACING * 15); // Longer delay after error
@@ -588,7 +471,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (error) {
       console.error('Error in fetchTokenMetadata:', error);
     }
-  }, [cryptoIds, tokenMetadata, cacheTokenIcon]);
+  }, [cryptoIds, tokenMetadata, cacheTokenIcon]); // Keep cacheTokenIcon dependency
   
   // Enhanced function to process remaining metadata chunks with intelligent spacing
   const processRemainingMetadataChunks = async (
@@ -599,41 +482,22 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     
     for (let i = 0; i < chunks.length; i++) {
       // Check if we've exceeded the maximum number of metadata requests for this session
-      if (metadataRequestCount.current >= MAX_METADATA_REQUESTS_PER_SESSION) {
+      if (metadataRequestCount.current >= MAX_METADATA_REQUESTS_PER_SESSION_LIMIT) { // Updated variable name
         break;
       }
       
       const chunk = chunks[i];
       try {
-        // Add intelligent spacing between requests - increasing with consecutive successful requests
         if (i > 0) {
-          const baseDelay = API_CONFIG.COINGECKO.REQUEST_SPACING * 6;
-          const adaptiveDelay = Math.min(baseDelay * (i + 1), 10000); // Cap at 10 seconds
-          await new Promise(resolve => setTimeout(resolve, adaptiveDelay));
+          // Use a fixed delay from constants for retries between chunks after an error
+          await new Promise(resolve => setTimeout(resolve, API_RETRY_DELAY)); 
         }
         
-        // Increment the metadata request counter
         metadataRequestCount.current += 1;
+        const responseData = await fetchCoinMarkets(chunk) as TokenMarketData[];
         
-        // Use smart retry function to attempt different providers
-        const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/coins/markets`, {
-          params: {
-            vs_currency: 'usd',
-            ids: chunk.join(','),
-            per_page: API_CONFIG.COINGECKO.BATCH_SIZE,
-            page: 1,
-            sparkline: false,
-            locale: 'en'
-          },
-          timeout: 10000,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (response.data && Array.isArray(response.data)) {
-          response.data.forEach((token: any) => {
+        if (responseData && Array.isArray(responseData)) {
+          responseData.forEach((token: any) => {
             newMetadata[token.id] = {
               symbol: token.symbol.toUpperCase(),
               name: token.name,
@@ -650,182 +514,39 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           // Update state with each batch
           setTokenMetadata({ ...newMetadata });
           
-          // Save to cache after each successful batch
-          localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify({
-            data: newMetadata,
-            timestamp: Date.now()
-          }));
+          // Save to cache after each successful batch using the service
+          setCachedData(CACHE_STORAGE_KEY_METADATA, newMetadata, METADATA_CACHE_DURATION);
           
-          // Reset consecutive errors on success
-          apiStatus.current.consecutiveErrors = 0;
+          // Reset consecutive errors on success (service handles its own)
+          // apiStatus.current.consecutiveErrors = 0; // Service handles its own
         }
       } catch (error) {
-        // Track consecutive errors for exponential backoff
-        apiStatus.current.consecutiveErrors++;
-        
-        // Wait longer before trying the next chunk after an error
-        const errorBackoff = Math.min(10000 * apiStatus.current.consecutiveErrors, 30000);
+        // Track consecutive errors for exponential backoff (service handles its own, this is for UI/batch retry)
+        // apiStatus.current.consecutiveErrors++; 
+        console.error(`Error processing metadata chunk ${chunk.join(',')}:`, error); // Log error
+
+        const errorBackoff = Math.min(10000 * (API_RETRY_DELAY || 1) , 30000); // Use API_RETRY_DELAY
+        // This retry logic might need to be part of the hook later
         await new Promise(resolve => setTimeout(resolve, errorBackoff));
       }
     }
   };
 
   // Smart retry function that tries different API providers
-  const fetchWithSmartRetry = async (url: string, config: any): Promise<any> => {
-    let lastError;
-    const maxRetries = API_CONFIG.COINGECKO.RETRY_ATTEMPTS;
-
-    // *** Add upfront rate limit check ***
-    if (isApiRateLimited('coingecko')) {
-      const cooldownSeconds = Math.ceil((apiStatus.current.rateLimitCooldownUntil - Date.now()) / 1000);
-      console.warn(`[fetchWithSmartRetry] Rate limit active. Cooldown: ${cooldownSeconds}s. Aborting request.`);
-      throw new Error(`API rate limit active. Please wait ${cooldownSeconds} seconds.`);
-    }
-
-    // Ensure we start with the primary provider (index 0)
-    apiStatus.current.providerIndex = 0;
-    const triedProviders = new Set<string>();
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      // Check rate limit before each attempt inside the loop as well
-      if (isApiRateLimited('coingecko')) {
-        const cooldownSeconds = Math.ceil((apiStatus.current.rateLimitCooldownUntil - Date.now()) / 1000);
-        console.warn(`[fetchWithSmartRetry] Rate limit active during retry. Cooldown: ${cooldownSeconds}s. Aborting.`);
-        throw lastError || new Error(`API rate limit active during retry. Please wait ${cooldownSeconds} seconds.`);
-      }
-
-      try {
-        const currentProvider = apiStatus.current.activeProviders[apiStatus.current.providerIndex];
-        triedProviders.add(currentProvider);
-
-        let targetUrl = url;
-        // Simplified: Only use the primary URL for now (index 0)
-        // Fallback logic removed for simplicity to address CORS/reliability issues
-        if (apiStatus.current.providerIndex > 0) {
-           console.warn('Fallback provider logic currently disabled.');
-           // Skip to next attempt or break if only one provider
-           if (apiStatus.current.activeProviders.length === 1) break;
-           apiStatus.current.providerIndex = (apiStatus.current.providerIndex + 1) % apiStatus.current.activeProviders.length;
-           continue; // Try next provider (if any) or fail
-        }
-
-        // Space out requests
-        const now = Date.now();
-        const timeSinceLastRequest = now - apiStatus.current.lastRequestTime;
-        const minSpacingTime = API_CONFIG.COINGECKO.REQUEST_SPACING;
-        if (timeSinceLastRequest < minSpacingTime) {
-          await new Promise(resolve => setTimeout(resolve, minSpacingTime - timeSinceLastRequest));
-        }
-
-        // Make the request
-        console.debug(`[fetchWithSmartRetry] Attempt ${attempt + 1}: GET ${targetUrl}`);
-        const response = await axios.get(targetUrl, config);
-        apiStatus.current.lastRequestTime = Date.now();
-        apiStatus.current.consecutiveErrors = 0; // Reset errors on success
-        return response; // Success
-
-      } catch (error: any) {
-        lastError = error;
-        apiStatus.current.lastRequestTime = Date.now(); // Update time even on error
-        apiStatus.current.consecutiveErrors++;
-        console.error(`[fetchWithSmartRetry] Attempt ${attempt + 1} failed:`, error.message);
-
-        // *** Specific 429 handling ***
-        if (axios.isAxiosError(error) && error.response?.status === 429) {
-          const cooldownDuration = MIN_API_INTERVAL * 2; // Cooldown for 60 seconds on 429
-          apiStatus.current.rateLimitCooldownUntil = Date.now() + cooldownDuration;
-          console.warn(`[fetchWithSmartRetry] Received 429. Rate limit cooldown activated for ${cooldownDuration / 1000}s.`);
-          // Throw immediately on 429, don't cycle providers for this error
-          throw new Error(`API rate limit hit (429). Cooldown active.`);
-        }
-
-        // Simplified: Only retry the primary provider with backoff
-        // Fallback provider cycling removed
-        if (attempt < maxRetries - 1) {
-           const backoffTime = Math.min(API_CONFIG.COINGECKO.REQUEST_SPACING * Math.pow(2, attempt), 15000); // Max 15s backoff
-           console.log(`[fetchWithSmartRetry] Waiting ${backoffTime}ms before retry...`);
-           await new Promise(resolve => setTimeout(resolve, backoffTime));
-        } else {
-           console.error(`[fetchWithSmartRetry] Max retries (${maxRetries}) reached. Failing request.`);
-           break; // Max retries reached
-        }
-      }
-    }
-
-    // If loop finishes without success, throw the last recorded error
-    console.error('[fetchWithSmartRetry] All attempts failed.');
-    throw lastError || new Error('All API attempts failed after retries.');
-  };
-
-  // Enhanced getCachedPrices with localStorage fallback
-  const getCachedPrices = useCallback((): Record<string, Record<string, CryptoPriceData>> | null => {
-    if (cache.current) {
-      const now = Date.now();
-      const age = now - cache.current.timestamp;
-      
-      // Return null if cache is expired
-      if (age > CACHE_DURATION) {
-        cache.current = null;
-        return null;
-      }
-      
-      return cache.current.prices;
-    }
-    
-    // Try to load from localStorage if no memory cache
-    try {
-      const cachedPricesJson = localStorage.getItem(CACHE_STORAGE_KEY);
-      if (cachedPricesJson) {
-        const cachedData: CacheData = JSON.parse(cachedPricesJson);
-        if (cachedData && cachedData.timestamp && Date.now() - cachedData.timestamp < CACHE_DURATION) {
-          cache.current = cachedData;
-          return cachedData.prices;
-        }
-      }
-    } catch (error) {
-      console.error('Error loading cache from localStorage:', error);
-    }
-    
-    return null;
-  }, []);
-
-  // Enhanced setCachePrices with localStorage persistence
-  const setCachePrices = useCallback((newPrices: Record<string, Record<string, CryptoPriceData>>) => {
-    const cacheData: CacheData = {
-      prices: newPrices,
-      timestamp: Date.now()
-    };
-    
-    cache.current = cacheData;
-    
-    // Persist to localStorage
-    try {
-      localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(cacheData));
-    } catch (error) {
-      console.error('Error saving cache to localStorage:', error);
-    }
-  }, []);
-
-  const getCryptoId = useCallback((symbol: string) => {
-    return cryptoIds[symbol];
-  }, [cryptoIds]);
+  // const fetchWithSmartRetry = async (url: string, config: any): Promise<any> => { ... MOVED TO SERVICE ... };
 
   // Updated error handling with smart fallback system to remove unused apiName parameter
   const handleApiError = useCallback((err: any) => {
-    let retryDelay = RETRY_DELAY;
+    let retryDelay = API_RETRY_DELAY;
     
     if (axios.isAxiosError(err)) {
       // Silently handle rate limit errors without showing to user
       if (err.response?.status === 429) {
-        retryDelay = MIN_API_INTERVAL * 2;
-        
-        // Try a different provider
-        apiStatus.current.providerIndex = (apiStatus.current.providerIndex + 1) % apiStatus.current.activeProviders.length;
+        retryDelay = MIN_API_INTERVAL * 2; 
+        // apiStatus.current.providerIndex = (apiStatus.current.providerIndex + 1) % apiStatus.current.activeProviders.length; // Service handles this
       } else if (err.code === 'ECONNABORTED') {
-        retryDelay = RETRY_DELAY;
-        
-        // Try a different provider
-        apiStatus.current.providerIndex = (apiStatus.current.providerIndex + 1) % apiStatus.current.activeProviders.length;
+        retryDelay = API_RETRY_DELAY;
+        // apiStatus.current.providerIndex = (apiStatus.current.providerIndex + 1) % apiStatus.current.activeProviders.length; // Service handles this
       }
     }
 
@@ -843,6 +564,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (requestQueue.current.isProcessing || requestQueue.current.pendingSymbols.size === 0) {
       return;
     }
+    console.log(`⚙️ [CryptoContext] Starting processBatchRequests - Batch Size: ${requestQueue.current.pendingSymbols.size}`);
 
     const now = Date.now();
     const timeSinceLastCall = now - lastApiCall.current;
@@ -862,7 +584,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // Process all pending symbols in one batch, but limit batch size
       const allPendingSymbols = Array.from(requestQueue.current.pendingSymbols);
-      const symbolsToProcess = allPendingSymbols.slice(0, MAX_BATCH_SIZE);
+      const symbolsToProcess = allPendingSymbols.slice(0, PRICE_UPDATE_MAX_BATCH_SIZE); // Updated variable name
       
       // Remove processed symbols from the queue
       symbolsToProcess.forEach(symbol => requestQueue.current.pendingSymbols.delete(symbol));
@@ -871,8 +593,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       symbolsToProcess.forEach(symbol => pendingPriceUpdates.current.add(symbol));
       
       const relevantIds = symbolsToProcess
-        .map(symbol => cryptoIds[symbol])
-        .filter(Boolean);
+        .map(symbol => getCryptoId(symbol))
+        .filter((id): id is string => Boolean(id)); // Explicit type guard
 
       if (relevantIds.length === 0) {
         symbolsToProcess.forEach(symbol => pendingPriceUpdates.current.delete(symbol));
@@ -886,54 +608,47 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // ** ALWAYS try /coins/markets first to get low/high data **
       try {
-        const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/coins/markets`, {
-          params: {
-            vs_currency: 'usd',
-            ids: relevantIds.join(','),
-            per_page: MAX_BATCH_SIZE,
-            page: 1,
-            sparkline: false,
-            price_change_percentage: '24h'
-          },
-          timeout: 10000
-        });
+        // const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/coins/markets`, { params for fetchCoinMarkets });
+        const apiMarketCallLabel = `API_fetchCoinMarkets_BATCH_[${relevantIds.length > 3 ? relevantIds.slice(0,2).join(',')+',...,'+relevantIds.slice(-1) : relevantIds.join(',')}]`;
+        console.time(apiMarketCallLabel); // Log Start
+        const marketApiStartTime = performance.now(); // Capture start time
+        console.log(`📞 [API] Calling: ${apiMarketCallLabel}`); // Log API call attempt
+        const marketsDataResponse = await fetchCoinMarkets(relevantIds); // Use service function
+        const marketApiEndTime = performance.now(); // Capture end time
+        console.timeEnd(apiMarketCallLabel); // Log End (ms)
+        console.log(`⏱️ ${apiMarketCallLabel} (in seconds): ${( (marketApiEndTime - marketApiStartTime) / 1000).toFixed(3)} s`); // Log (s)
         
-        if (response.data && Array.isArray(response.data)) {
-          // Convert array response to map for easier access
-          const marketsData: Record<string, any> = {};
-          response.data.forEach((coin: any) => {
-            marketsData[coin.id] = coin;
+        if (marketsDataResponse && Array.isArray(marketsDataResponse)) {
+          const marketsDataMap: Record<string, any> = {};
+          marketsDataResponse.forEach((coin: any) => {
+            marketsDataMap[coin.id] = coin;
           });
-          priceData = marketsData;
+          priceData = marketsDataMap;
         }
 
-        lastApiCall.current = Date.now();
+        lastApiCall.current = Date.now(); // Still useful for UI-level timing if needed
         requestSuccessful = true;
       } catch (marketsError) {
         console.warn('Failed to fetch from /coins/markets, falling back to /simple/price:', marketsError);
-        apiStatus.current.consecutiveErrors++; // Increment errors on markets fail
+        // apiStatus.current.consecutiveErrors++; // Service handles its own error counting
 
         // ** Fallback to /simple/price ONLY if /coins/markets fails **
         try {
-          const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/simple/price`, {
-            params: {
-              ids: relevantIds.join(','),
-              vs_currencies: 'usd,eur,cad',
-              include_24hr_change: true,
-              precision: 'full'
-            },
-            timeout: 10000
-          });
-
-          priceData = response.data;
+          // const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/simple/price`, { params for fetchSimplePrice });
+          const apiSimpleCallLabel = `API_fetchSimplePrice_BATCH_[${relevantIds.length > 3 ? relevantIds.slice(0,2).join(',')+',...,'+relevantIds.slice(-1) : relevantIds.join(',')}]`;
+          console.time(apiSimpleCallLabel); // Log Start
+          const simpleApiStartTime = performance.now(); // Capture start time
+          console.log(`📞 [API] Calling (Fallback): ${apiSimpleCallLabel}`); // Log API call attempt
+          const simplePriceData = await fetchSimplePrice(relevantIds);
+          const simpleApiEndTime = performance.now(); // Capture end time
+          console.timeEnd(apiSimpleCallLabel); // Log End (ms)
+          console.log(`⏱️ ${apiSimpleCallLabel} (in seconds): ${((simpleApiEndTime - simpleApiStartTime) / 1000).toFixed(3)} s`); // Log (s)
+          priceData = simplePriceData;
           lastApiCall.current = Date.now();
-          // Mark as successful even if it's the fallback, as long as it didn't throw
           requestSuccessful = true;
         } catch (simplePriceError) {
           console.error('Fallback to /simple/price also failed:', simplePriceError);
-          // Both attempts failed
-          apiStatus.current.consecutiveErrors++;
-          // Error is handled in fetchWithSmartRetry, requestSuccessful remains false
+          // apiStatus.current.consecutiveErrors++; // Service handles its own error counting
         }
       }
 
@@ -942,8 +657,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const newPrices = { ...existingPrices };
 
       symbolsToProcess.forEach(symbol => {
-        const id = cryptoIds[symbol];
-        const tokenPriceData = priceData[id]; // Get data for this specific crypto ID
+        const id = getCryptoId(symbol);
+        const tokenPriceData = id ? priceData[id] : undefined;
 
         if (id && tokenPriceData) {
           if ('current_price' in tokenPriceData) {
@@ -1015,20 +730,25 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } else if (!requestSuccessful) {
           // Use estimated prices ONLY if ALL requests failed
           newPrices[symbol] = getEstimatedPrice(symbol);
+          console.warn(`⚠️ [CryptoContext] processBatchRequests: Using estimated price for ${symbol} after all API attempts failed for this batch.`);
+        } else {
+          // This case means the specific symbol might not have been in the successful API response, 
+          // or had no price data. Keep existing or let it remain as is (potentially showing wave if still pending elsewhere).
+          console.warn(`⚠️ [CryptoContext] processBatchRequests: No price data returned for ${symbol} in this batch, even if API call was partially successful.`);
         }
-        // Remove from pending updates
+        // ALWAYS remove from pending updates after processing, regardless of success for this specific symbol in this batch
         pendingPriceUpdates.current.delete(symbol);
       });
 
       setPrices(newPrices);
-      setCachePrices(newPrices); // This already includes low/high if available
+      setCachePrices(newPrices); // This now uses the service via setCachePrices
       setLastUpdated(new Date());
 
       // Reset error indicators on success
       if (requestSuccessful) {
         setError(null);
-        retryCount.current = 0;
-        apiStatus.current.consecutiveErrors = 0;
+        retryCount.current = 0; // UI-level retry count
+        // apiStatus.current.consecutiveErrors = 0; // Service handles its own
       }
 
       // Process remaining symbols if any
@@ -1045,22 +765,22 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (err) { // Catch errors that might occur outside the API calls themselves
       console.error("Error during batch processing:", err);
       // Intelligent retry with exponential backoff
-      const errorMultiplier = Math.min(apiStatus.current.consecutiveErrors + 1, 5);
-      const retryDelay = MIN_API_INTERVAL * errorMultiplier;
+      // const errorMultiplier = Math.min(apiStatus.current.consecutiveErrors + 1, 5); // Service manages its errors
+      // const retryDelay = MIN_API_INTERVAL * errorMultiplier;
 
-      apiStatus.current.consecutiveErrors++;
+      // apiStatus.current.consecutiveErrors++; // Service manages its errors
 
-      if (retryCount.current <= MAX_RETRIES) {
+      if (retryCount.current <= MAX_API_RETRIES) { // Still use MAX_API_RETRIES for UI batch retry
         retryCount.current++;
         updateTimeout.current = setTimeout(() => {
           requestQueue.current.isProcessing = false;
           processBatchRequests(); // Retry the whole batch process
-        }, retryDelay);
+        }, API_RETRY_DELAY);
       } else {
         setError('Failed to update prices after multiple retries.');
         // Max retries reached, clear queue and reset
         const failedSymbols = Array.from(requestQueue.current.pendingSymbols);
-        failedSymbols.forEach(symbol => pendingPriceUpdates.current.delete(symbol));
+        failedSymbols.forEach(symbol => pendingPriceUpdates.current.delete(symbol)); // Ensure all pending are cleared on total failure
         requestQueue.current.pendingSymbols.clear(); // Clear the queue
         requestQueue.current.isProcessing = false;
         retryCount.current = 0;
@@ -1076,8 +796,9 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           setLoading(false);
       }
       requestQueue.current.lastProcessed = Date.now();
+      console.log(`⚙️ [CryptoContext] Finished processBatchRequests`);
     }
-  }, [cryptoIds, handleApiError, exchangeRates, getCachedPrices, setCachePrices, getEstimatedPrice]); // Added missing dependencies
+  }, [getCryptoId, getEstimatedPrice, getCachedPrices, setCachePrices, handleApiError, exchangeRates]); // Added missing dependencies
 
   // Enhanced queuePriceUpdate with priority handling
   const queuePriceUpdate = useCallback((symbols: string[], highPriority: boolean = false) => {
@@ -1094,7 +815,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     
     // Start a new batch window - shorter for high priority updates
-    const batchDelay = highPriority ? 100 : BATCH_WINDOW;
+    const batchDelay = highPriority ? 100 : PRICE_UPDATE_BATCH_WINDOW; // Updated variable name
     requestQueue.current.batchTimer = setTimeout(() => {
       if (!requestQueue.current.isProcessing) {
         processBatchRequests();
@@ -1110,11 +831,11 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const now = Date.now();
 
     if (!force) {
-      const cached = getCachedPrices();
-      if (cached) {
-        setPrices(cached);
+      const cachedResult = getCachedData<Record<string, Record<string, CryptoPriceData>>>(CACHE_STORAGE_KEY_PRICES);
+      if (cachedResult) {
+        setPrices(cachedResult.data);
+        setLastUpdated(new Date(cachedResult.timestamp)); // Use timestamp from fresh cache read
         setLoading(false);
-        setLastUpdated(new Date(cache.current?.timestamp || now));
         return;
       }
     }
@@ -1126,7 +847,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Modified addCrypto to use the queue system with immediate updates and no loading indicators
   const addCrypto = useCallback(async (symbol: string, id?: string) => {
     if (!id) {
-      console.warn(`No CoinGecko ID provided for symbol ${symbol}`);
+      console.warn(`⚠️ No CoinGecko ID provided for symbol ${symbol}`);
       return;
     }
 
@@ -1143,16 +864,16 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const newIds = { ...prev, [upperSymbol]: lowerId };
       // Save to localStorage, but preserve default tokens
       const storageIds = { ...newIds };
-      Object.keys(defaultCryptoIds).forEach(key => {
+      Object.keys(DEFAULT_CRYPTO_IDS).forEach(key => { // Updated variable name
         delete storageIds[key];
       });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(storageIds));
+      localStorage.setItem(STORAGE_KEY_CUSTOM_TOKENS, JSON.stringify(storageIds)); // Updated variable name
       return newIds;
     });
 
     setAvailableCryptos(prev => {
       if (!prev.includes(upperSymbol)) {
-        const defaultTokens = Object.keys(defaultCryptoIds);
+        const defaultTokens = Object.keys(DEFAULT_CRYPTO_IDS); // Updated variable name
         const customTokens = prev.filter(token => !defaultTokens.includes(token));
         const newCustomTokens = [...customTokens, upperSymbol].sort();
         return [...defaultTokens, ...newCustomTokens];
@@ -1164,6 +885,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setPrices(prev => {
       // Create a more realistic price estimate based on token symbol patterns
       const estimatedPriceData = getEstimatedPrice(upperSymbol);
+      console.log(`➕ [CryptoContext] addCrypto: Setting estimated/placeholder price for ${upperSymbol}`, estimatedPriceData); // Log
       return {
         ...prev,
         [upperSymbol]: estimatedPriceData
@@ -1182,18 +904,11 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Immediately fetch price data without debouncing
     try {
       // Make direct API call for this token immediately to get real price
-      const response = await axios.get(`${API_BASE}/simple/price`, {
-        params: {
-          ids: lowerId,
-          vs_currencies: 'usd,eur,cad',
-          precision: 'full',
-          include_24hr_change: true
-        },
-        timeout: 5000 // Short timeout for faster response
-      });
+      // const response = await axios.get(`${API_CONFIG.COINGECKO.BASE_URL}/simple/price`, { params for fetchSimplePrice });
+      const simplePriceData = await fetchSimplePrice([lowerId]);
       
-      if (response.data && response.data[lowerId]) {
-        const data = response.data[lowerId];
+      if (simplePriceData && simplePriceData[lowerId]) {
+        const data = simplePriceData[lowerId];
         // Update prices with actual API data
         setPrices(prev => ({
           ...prev,
@@ -1204,13 +919,13 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }));
         
-        // Update cache with new data
-        const cachedPrices = getCachedPrices() || {};
-        if (!cachedPrices[upperSymbol]) cachedPrices[upperSymbol] = {};
-        cachedPrices[upperSymbol].usd = { price: data.usd, change24h: data.usd_24h_change ?? null };
-        cachedPrices[upperSymbol].eur = { price: data.eur, change24h: data.eur_24h_change ?? null };
-        cachedPrices[upperSymbol].cad = { price: data.cad, change24h: data.cad_24h_change ?? null };
-        setCachePrices(cachedPrices);
+        // Update cache with new data via service
+        const currentPriceCache = getCachedPrices() || {};
+        if (!currentPriceCache[upperSymbol]) currentPriceCache[upperSymbol] = {};
+        currentPriceCache[upperSymbol].usd = { price: data.usd, change24h: data.usd_24h_change ?? null, low24h: null, high24h: null }; // Add low/high with null for simple
+        currentPriceCache[upperSymbol].eur = { price: data.eur, change24h: data.eur_24h_change ?? null, low24h: null, high24h: null };
+        currentPriceCache[upperSymbol].cad = { price: data.cad, change24h: data.cad_24h_change ?? null, low24h: null, high24h: null };
+        setCachePrices(currentPriceCache); // Uses service
       }
     } catch (error) {
       console.warn('Error fetching immediate price for new token:', error);
@@ -1271,7 +986,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     });
 
-    Object.keys(defaultCryptoIds).forEach(key => {
+    Object.keys(DEFAULT_CRYPTO_IDS).forEach(key => { // Updated variable name
       delete storageIds[key];
     });
 
@@ -1287,9 +1002,10 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         pendingPriceUpdates.current.add(upperSymbol);
         if (!newPrices[upperSymbol]) {
           newPrices[upperSymbol] = getEstimatedPrice(upperSymbol);
+          console.log(`➕ [CryptoContext] addCryptos: Setting estimated/placeholder price for ${upperSymbol}`, newPrices[upperSymbol]); // Log
         }
         highPrioritySymbols.push(upperSymbol);
-        const iconCacheKey = `${ICON_CACHE_PREFIX}${upperSymbol.toLowerCase()}`;
+        const iconCacheKey = `${ICON_CACHE_STORAGE_PREFIX}${upperSymbol.toLowerCase()}`; // Updated variable name
         if (!localStorage.getItem(iconCacheKey)) {
           const canvas = document.createElement('canvas');
           canvas.width = 32;
@@ -1317,7 +1033,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCryptoIds(newCryptoIds);
     
     setAvailableCryptos(prev => {
-      const defaultTokens = Object.keys(defaultCryptoIds);
+      const defaultTokens = Object.keys(DEFAULT_CRYPTO_IDS); // Updated variable name
       const existingCustomTokens = prev.filter(token =>
         !defaultTokens.includes(token) && !newSymbols.includes(token)
       );
@@ -1326,7 +1042,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
     
     setPrices(newPrices);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(storageIds));
+    localStorage.setItem(STORAGE_KEY_CUSTOM_TOKENS, JSON.stringify(storageIds)); // Updated variable name
 
     // Immediately dispatch the event to update UI components
     window.dispatchEvent(tokenUpdateEvent);
@@ -1340,7 +1056,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const deleteCrypto = useCallback((symbol: string) => {
     // Don't allow deletion of default tokens
-    if (Object.keys(defaultCryptoIds).includes(symbol)) {
+    if (Object.keys(DEFAULT_CRYPTO_IDS).includes(symbol)) { // Updated variable name
       return;
     }
 
@@ -1353,10 +1069,10 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       // Save only custom tokens to localStorage
       const storageIds = { ...newCryptoIds };
-      Object.keys(defaultCryptoIds).forEach(key => {
+      Object.keys(DEFAULT_CRYPTO_IDS).forEach(key => { // Updated variable name
         delete storageIds[key];
       });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(storageIds));
+      localStorage.setItem(STORAGE_KEY_CUSTOM_TOKENS, JSON.stringify(storageIds)); // Updated variable name
       
       return newCryptoIds;
     });
@@ -1380,7 +1096,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const interval = setInterval(() => {
       // Use updatePrices(false) which now contains the cache-check logic
       updatePrices(false);
-    }, CACHE_DURATION / 2); // Check cache more frequently (e.g., every 5 mins)
+    }, PRICE_CACHE_DURATION / 2); // Check cache more frequently (e.g., every 5 mins)
 
     return () => {
       clearInterval(interval);
@@ -1394,12 +1110,12 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Preload default token icons
   const preloadDefaultTokenIcons = useCallback(async () => {
     // Only preload if we don't have the icons cached already
-    const defaultTokens = Object.keys(defaultCryptoIds);
-    const defaultTokenIds = Object.values(defaultCryptoIds);
+    const defaultTokens = Object.keys(DEFAULT_CRYPTO_IDS); // Updated variable name
+    const defaultTokenIds = Object.values(DEFAULT_CRYPTO_IDS); // Updated variable name
     
     // Check which default tokens need icon preloading
     const tokensNeedingIcons = defaultTokens.filter(symbol => {
-      const iconCacheKey = `${ICON_CACHE_PREFIX}${symbol.toLowerCase()}`;
+      const iconCacheKey = `${ICON_CACHE_STORAGE_PREFIX}${symbol.toLowerCase()}`; // Updated variable name
       return !localStorage.getItem(iconCacheKey);
     });
     
@@ -1409,22 +1125,13 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     
     // Fetch metadata for default tokens
     try {
-      const response = await axios.get(`${API_BASE}/coins/markets`, {
-        params: {
-          vs_currency: 'usd',
-          ids: defaultTokenIds.join(','),
-          per_page: defaultTokenIds.length,
-          page: 1,
-          sparkline: false,
-          locale: 'en'
-        },
-        timeout: 10000
-      });
+      // const response = await axios.get(`${API_CONFIG.COINGECKO.BASE_URL}/coins/markets`, { params for fetchCoinMarkets });
+      const responseData = await fetchCoinMarkets(defaultTokenIds);
       
-      if (response.data && Array.isArray(response.data)) {
+      if (responseData && Array.isArray(responseData)) {
         const newMetadata = { ...tokenMetadata };
         
-        response.data.forEach(token => {
+        responseData.forEach(token => {
           newMetadata[token.id] = {
             symbol: token.symbol.toUpperCase(),
             name: token.name,
@@ -1441,11 +1148,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // Update state with new metadata
         setTokenMetadata(newMetadata);
         
-        // Save to cache
-        localStorage.setItem(METADATA_CACHE_KEY, JSON.stringify({
-          data: newMetadata,
-          timestamp: Date.now()
-        }));
+        // Save to cache using the service
+        setCachedData(CACHE_STORAGE_KEY_METADATA, newMetadata, METADATA_CACHE_DURATION);
       }
     } catch (error) {
       console.error('Error preloading default token icons:', error);
@@ -1505,15 +1209,14 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Function to check if a specific API is currently rate-limited
   const isApiRateLimited = useCallback((apiName: 'coingecko' | 'cryptocompare'): boolean => {
     if (apiName === 'coingecko') {
-      if (apiStatus.current.rateLimitCooldownUntil > Date.now()) {
-        return true; // Cooldown is active
-      }
-      // Optional: Keep consecutive error check as a secondary fallback?
-      // if (apiStatus.current.consecutiveErrors > 3) {
-      //   return true;
-      // }
+      return isCoinGeckoApiRateLimited(); // Use service function
     }
-    // Add similar logic for cryptocompare if needed
+    // Add similar logic for cryptocompare if needed, or if it gets its own service
+    if (apiName === 'cryptocompare') {
+      // Placeholder: CryptoCompare rate limiting logic would go here if it had its own service
+      // For now, assume it's not rate limited or managed by its own context/service
+      return false;
+    }
     return false;
   }, []);
 
@@ -1532,7 +1235,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         getCryptoId,
         isPending,
         tokenMetadata,
-        defaultCryptoIds,
+        defaultCryptoIds: DEFAULT_CRYPTO_IDS, // Pass the imported constant
         checkAndUpdateMissingIcons,
         setTokenMetadata,
         isApiRateLimited

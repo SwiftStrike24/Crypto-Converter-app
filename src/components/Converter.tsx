@@ -4,6 +4,7 @@ import { useCrypto } from '../context/CryptoContext';
 import { useNavigate } from 'react-router-dom';
 import { FaMagnifyingGlassChart } from 'react-icons/fa6';
 import { ipcRenderer } from 'electron';
+import WaveLoadingPlaceholder from './WaveLoadingPlaceholder';
 
 // Constants
 const ICON_CACHE_PREFIX = 'crypto_icon_';
@@ -596,6 +597,7 @@ const Converter: React.FC<ConverterProps> = ({
   const [preloadedIcons, setPreloadedIcons] = useState<Set<string>>(new Set());
   const [cryptoDropdownStyle, setCryptoDropdownStyle] = useState<CSSProperties>({});
   const [fiatDropdownStyle, setFiatDropdownStyle] = useState<CSSProperties>({});
+  const [showWaveInResultBox, setShowWaveInResultBox] = useState(false);
   
   // Refs for handling outside clicks and scrolling
   const cryptoDropdownRef = useRef<HTMLDivElement>(null);
@@ -605,6 +607,7 @@ const Converter: React.FC<ConverterProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const cryptoInputRef = useRef<HTMLInputElement>(null);
   const fiatInputRef = useRef<HTMLInputElement>(null);
+  const converterWaveStartTimeRef = useRef<number | null>(null); // Ref for start time
   
   // Track icon fetch attempts to avoid repeated requests
   const iconFetchAttempts = useRef<Record<string, number>>({});
@@ -685,7 +688,7 @@ const Converter: React.FC<ConverterProps> = ({
       
       // If we found missing icons, schedule another check soon
       if (count > 0) {
-        console.log(`Found ${count} tokens with missing icons, scheduling another check`);
+        console.log(`📉 Found ${count} tokens with missing icons, scheduling another check`);
         // Schedule another check in 10 seconds
         setTimeout(checkMissingIcons, 10000);
       }
@@ -842,17 +845,39 @@ const Converter: React.FC<ConverterProps> = ({
     if (isPending(crypto)) {
       // Return a placeholder rate based on the token
       // This is just an estimate until the real rate is fetched
+      console.log(`📉 [Converter] getRate for ${crypto} / ${fiat} - ⏳ isPending: true. Returning placeholder rate 1.`);
+      if (!showWaveInResultBox) {
+        const waveTimerLabel = `Converter_ResultWave_${crypto}_${fiat}`;
+        // Ensure timer doesn't already exist to prevent errors, though ideally state management prevents this.
+        // For safety, we could clear it if it did, but let's focus on correct start/end logic.
+        console.time(waveTimerLabel); // Log Start Wave (ms)
+        converterWaveStartTimeRef.current = performance.now(); // Capture start time
+        setShowWaveInResultBox(true); // Show wave when rate is pending
+      }
       return 1; // Default placeholder (will be improved with estimated values)
     }
     
+    if (showWaveInResultBox) {
+      const waveTimerLabel = `Converter_ResultWave_${crypto}_${fiat}`;
+      // Only end timer if it was started for THIS crypto/fiat pair and is currently active.
+      // The showWaveInResultBox state should correspond to an active timer.
+      console.timeEnd(waveTimerLabel); // Log End Wave (ms)
+      if (converterWaveStartTimeRef.current) {
+        const duration = performance.now() - converterWaveStartTimeRef.current;
+        console.log(`⏱️ ${waveTimerLabel} (in seconds): ${(duration / 1000).toFixed(3)} s`); // Log (s)
+        converterWaveStartTimeRef.current = null;
+      }
+    }
     // Access the price data object
     const priceData = prices[crypto]?.[fiat.toLowerCase()];
 
     // Return the price if it exists, otherwise return 0 or handle error
     if (!priceData?.price) {
+      console.warn(`⚠️ [Converter] getRate for ${crypto} / ${fiat} - Price data N/A.`);
       return 0; // Or handle appropriately, e.g., throw an error or return null/undefined
     }
     
+    console.log(`📈 [Converter] getRate for ${crypto} / ${fiat} - isPending: false. Price data:`, priceData, `Returning rate: ${priceData.price}`);
     return priceData.price; // <-- Return only the price number
   };
 
@@ -904,12 +929,24 @@ const Converter: React.FC<ConverterProps> = ({
     const rate = getRate(selectedCrypto, selectedFiat);
     if (rate === 0) {
       setError('Price data unavailable');
+      if (showWaveInResultBox) { // End timer if it was active due to error
+        const waveTimerLabel = `Converter_ResultWave_${selectedCrypto}_${selectedFiat}`;
+        console.timeEnd(waveTimerLabel);
+        if (converterWaveStartTimeRef.current) {
+          const duration = performance.now() - converterWaveStartTimeRef.current;
+          console.log(`⏱️ ${waveTimerLabel} (in seconds): ${(duration / 1000).toFixed(3)} s`);
+          converterWaveStartTimeRef.current = null;
+        }
+      }
       return;
     }
+
+    console.log('[Converter] handleCryptoAmountChange - value:', value, 'rate:', rate); // Log
 
     const convertedAmount = (numericValue * rate).toString();
     setFiatAmount(convertedAmount);
     setError('');
+    // setShowWaveInResultBox(false) is handled by getRate if not pending
   };
 
   const handleFiatAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -940,12 +977,24 @@ const Converter: React.FC<ConverterProps> = ({
     const rate = getRate(selectedCrypto, selectedFiat);
     if (rate === 0) {
       setError('Price data unavailable');
+      if (showWaveInResultBox) { // End timer if it was active due to error
+        const waveTimerLabel = `Converter_ResultWave_${selectedCrypto}_${selectedFiat}`;
+        console.timeEnd(waveTimerLabel);
+        if (converterWaveStartTimeRef.current) {
+          const duration = performance.now() - converterWaveStartTimeRef.current;
+          console.log(`⏱️ ${waveTimerLabel} (in seconds): ${(duration / 1000).toFixed(3)} s`);
+          converterWaveStartTimeRef.current = null;
+        }
+      }
       return;
     }
+
+    console.log('[Converter] handleFiatAmountChange - value:', value, 'rate:', rate); // Log
 
     const convertedAmount = (numericValue / rate).toString();
     setCryptoAmount(convertedAmount);
     setError('');
+    // setShowWaveInResultBox(false) is handled by getRate if not pending
   };
 
   // Add paste event handlers for both inputs
@@ -969,6 +1018,7 @@ const Converter: React.FC<ConverterProps> = ({
         const convertedAmount = (numericValue * rate).toString();
         setFiatAmount(convertedAmount);
         setError('');
+        // setShowWaveInResultBox(false) is handled by getRate if not pending
       }
     } else {
       setLastEditedField('fiat');
@@ -979,16 +1029,42 @@ const Converter: React.FC<ConverterProps> = ({
         const convertedAmount = (numericValue / rate).toString();
         setCryptoAmount(convertedAmount);
         setError('');
+        // setShowWaveInResultBox(false) is handled by getRate if not pending
       }
     }
   };
 
   // Handle crypto selection change
   const handleCryptoChange = (crypto: string) => {
+    const oldCrypto = selectedCrypto;
+    const oldFiat = selectedFiat;
+
     setSelectedCrypto(crypto);
     onCryptoChange(crypto);
     setCryptoDropdownOpen(false);
     setCryptoSearchTerm('');
+    
+    // End timer for the OLD crypto if it was active
+    if (showWaveInResultBox) {
+      const oldWaveTimerLabel = `Converter_ResultWave_${oldCrypto}_${oldFiat}`;
+      console.timeEnd(oldWaveTimerLabel);
+      if (converterWaveStartTimeRef.current) {
+        const duration = performance.now() - converterWaveStartTimeRef.current;
+        console.log(`⏱️ ${oldWaveTimerLabel} (in seconds - ended on crypto change): ${(duration / 1000).toFixed(3)} s`);
+        converterWaveStartTimeRef.current = null;
+      }
+      //setShowWaveInResultBox(false); // Will be set based on new crypto
+    }
+
+    if (isPending(crypto)) {
+      const newWaveTimerLabel = `Converter_ResultWave_${crypto}_${selectedFiat}`;
+      console.time(newWaveTimerLabel); // Log Start Wave for new crypto
+      console.log(`🌊 [Converter] handleCryptoChange: Starting wave for ${crypto} / ${selectedFiat}`);
+      converterWaveStartTimeRef.current = performance.now(); // Capture start time
+      setShowWaveInResultBox(true);
+    } else {
+      setShowWaveInResultBox(false); // Ensure wave is off if new crypto is not pending
+    }
     
     // Force immediate price update for the new selection
     updatePrices(true);
@@ -1016,9 +1092,33 @@ const Converter: React.FC<ConverterProps> = ({
 
   // Handle fiat selection change
   const handleFiatChange = (fiat: string) => {
+    const oldFiat = selectedFiat;
     setSelectedFiat(fiat);
     onFiatChange(fiat);
     setFiatDropdownOpen(false);
+
+    // If a wave was active for the old fiat with the current crypto, end it.
+    if (showWaveInResultBox && isPending(selectedCrypto)) {
+      const oldWaveTimerLabel = `Converter_ResultWave_${selectedCrypto}_${oldFiat}`;
+      console.timeEnd(oldWaveTimerLabel);
+      if (converterWaveStartTimeRef.current) {
+        const duration = performance.now() - converterWaveStartTimeRef.current;
+        console.log(`⏱️ ${oldWaveTimerLabel} (in seconds - ended on fiat change): ${(duration / 1000).toFixed(3)} s`);
+        converterWaveStartTimeRef.current = null;
+      }
+      //setShowWaveInResultBox(false); // Will be set based on new state
+    }
+
+    // Re-evaluate wave display based on current crypto and new fiat
+    if (isPending(selectedCrypto)) {
+      const newWaveTimerLabel = `Converter_ResultWave_${selectedCrypto}_${fiat}`;
+      console.time(newWaveTimerLabel); // Log Start Wave for new fiat
+      console.log(`🌊 [Converter] handleFiatChange: Starting wave for ${selectedCrypto} / ${fiat}`);
+      converterWaveStartTimeRef.current = performance.now(); // Capture start time
+      setShowWaveInResultBox(true);
+    } else {
+      setShowWaveInResultBox(false); // Ensure wave is off if crypto is not pending
+    }
   };
 
   // Get fiat currency icon with caching
@@ -1616,11 +1716,15 @@ const Converter: React.FC<ConverterProps> = ({
           className={copyFeedback ? 'copied' : ''}
         >
           <Label>{lastEditedField === 'crypto' ? 'Converted to Fiat' : 'Converted to Crypto'}</Label>
-          <Amount>
-            {lastEditedField === 'crypto' 
-              ? `${selectedFiat} ${formatNumber(fiatAmount, false)}`
-              : `${selectedCrypto} ${formatNumber(cryptoAmount, true)}`}
-          </Amount>
+          {showWaveInResultBox && (!error || cryptoAmount || fiatAmount) ? (
+            <WaveLoadingPlaceholder width="120px" height="24px" />
+          ) : (
+            <Amount>
+              {lastEditedField === 'crypto' 
+                ? `${selectedFiat} ${formatNumber(fiatAmount, false)}`
+                : `${selectedCrypto} ${formatNumber(cryptoAmount, true)}`}
+            </Amount>
+          )}
         </ResultBox>
       )}
 

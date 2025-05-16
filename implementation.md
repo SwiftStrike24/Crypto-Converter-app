@@ -131,6 +131,7 @@ The application primarily uses React Context API for managing global state:
 *   **Focus/Blur Handling:** Implemented for window management.
 *   **Build Optimization:** Optimized chunk splitting (vendor, UI, charts), fast production builds, efficient caching, minimal output size.
 *   **Version Management:** Centralized version handling (`versionManager.ts`), automated version injection during build, and version comparison for updates.
+*   **Loading Placeholders:** Implemented a smooth shimmer/wave animation (`WaveLoadingPlaceholder.tsx`) to replace numerical placeholders (e.g., previous `$1` estimates or "N/A") in the `Converter` result display and `Header` price display during price fetching or when data is pending. This enhances UX by providing visual feedback without showing potentially misleading or jarring placeholder numbers.
 
 ## 7. Build and Development Process
 
@@ -273,5 +274,76 @@ Referenced from `package.json` and `progress.md`.
 ## 13. CORS Handling (Development)
 
 *   Vite development server (`vite.config.ts`) is configured with a proxy for API requests (e.g., `/api-proxy`) to bypass CORS issues during local development. This is not relevant for production builds where the Electron app makes direct requests.
+
+## 14. Refactoring Plan: `CryptoContext.tsx` (v1.5.4 -> Future)
+
+This section outlines the plan to refactor the `CryptoContext.tsx` file to improve modularity, maintainability, and scalability.
+
+### 14.1. Problem Statement
+
+The `CryptoContext.tsx` file has grown significantly (approx. 1550 lines) and manages a wide range of responsibilities including:
+*   Fetching and caching cryptocurrency prices.
+*   Managing available tokens and their IDs.
+*   Fetching and caching token metadata (name, symbol, image, rank).
+*   Managing token icons (fetching, caching, placeholders).
+*   Handling API interactions with CoinGecko, including rate limiting, batching, and retries.
+*   Interacting with `localStorage` for various caches and custom token persistence.
+
+This large size and broad scope make the file difficult to navigate, maintain, and test effectively.
+
+### 14.2. Proposed New Architecture
+
+The `CryptoContext.tsx` will be decomposed into a set of specialized custom hooks and services. The `CryptoProvider` will then orchestrate these hooks, and the context value will be composed of the states and functions exposed by them.
+
+**New Directory Structure:**
+
+*   `src/hooks/crypto/`: Will house new custom React hooks.
+    *   `useCryptoPricing.ts`
+    *   `useTokenManagement.ts`
+    *   `useTokenMetadata.ts`
+    *   `useTokenIcons.ts`
+*   `src/services/crypto/`: For services not directly tied to React's hook lifecycle.
+    *   `cryptoApiService.ts`
+    *   `cryptoCacheService.ts`
+*   `src/constants/cryptoConstants.ts`: For all crypto-related constants.
+
+### 14.3. Responsibilities of New Modules
+
+1.  **`src/constants/cryptoConstants.ts`:**
+    *   **Responsibility:** Centralize all constants currently in `CryptoContext.tsx` (e.g., API endpoints, cache keys, durations, rate limit parameters, default token lists).
+    *   **Benefit:** Improves organization and makes configuration easier to manage.
+
+2.  **`src/services/crypto/cryptoApiService.ts`:**
+    *   **Responsibility:** Encapsulate all direct CoinGecko API communication logic. This includes constructing API requests, handling responses, managing API-specific error handling (like 429s), and implementing smart retry mechanisms (`fetchWithSmartRetry`). It will also manage CoinGecko-specific rate limiting state (e.g., `rateLimitCooldownUntil`).
+    *   **Benefit:** Isolates external dependencies, making it easier to update API versions, add new providers, or mock for testing.
+
+3.  **`src/services/crypto/cryptoCacheService.ts`:**
+    *   **Responsibility:** Provide generic utility functions for interacting with `localStorage` for caching purposes. This includes getting/setting cached data with timestamp management and TTL (Time To Live) checks.
+    *   **Benefit:** Standardizes caching logic across different types of data (prices, metadata, icons).
+
+4.  **`src/hooks/crypto/useTokenManagement.ts`:**
+    *   **Responsibility:** Manage the state of `availableCryptos` and `cryptoIds`. Handle functions like `addCrypto`, `addCryptos`, `deleteCrypto`, and `getCryptoId`. Manage persistence of custom tokens to `localStorage`.
+    *   **Benefit:** Consolidates all logic related to the user's token list.
+
+5.  **`src/hooks/crypto/useTokenMetadata.ts`:**
+    *   **Responsibility:** Manage the fetching, caching, and state of `tokenMetadata` (name, symbol, image, rank). Includes logic for batch fetching metadata.
+    *   **Dependencies:** `cryptoApiService.ts`, `cryptoCacheService.ts`, `cryptoConstants.ts`.
+    *   **Benefit:** Dedicated hook for all token metadata concerns.
+
+6.  **`src/hooks/crypto/useTokenIcons.ts`:**
+    *   **Responsibility:** Manage token icons: fetching missing icons, caching them (in-memory and `localStorage`), placeholder generation, and preloading default token icons.
+    *   **Dependencies:** `useTokenMetadata.ts` (to get image URLs), `cryptoApiService.ts` (if searching for icons), `cryptoCacheService.ts`, `cryptoConstants.ts`.
+    *   **Benefit:** Centralizes visual asset management for tokens.
+
+7.  **`src/hooks/crypto/useCryptoPricing.ts`:**
+    *   **Responsibility:** Manage the fetching, caching, and state of `prices` (including 24h change, low/high), `loading` state for prices, `error` state for prices, and `lastUpdated` timestamp. Handle batching of price requests (`processBatchRequests`), queuing updates (`queuePriceUpdate`), providing estimated prices, and `isPending` logic for price updates.
+    *   **Dependencies:** `cryptoApiService.ts`, `cryptoCacheService.ts`, `cryptoConstants.ts`, `ExchangeRatesContext`.
+    *   **Benefit:** Focuses solely on price data management and its lifecycle.
+
+8.  **`CryptoContext.tsx` (Refactored):**
+    *   **Responsibility:** The `CryptoProvider` component will become a coordinator, initializing the above hooks and composing their exposed states and functions into the context value. It will be significantly slimmer.
+    *   **Benefit:** Acts as a clean composition root for the crypto-related state.
+
+This refactoring aims to enhance code organization, improve testability of individual units, and make the overall cryptocurrency data management system more robust and easier to extend, while carefully respecting API limitations.
 
 *(This document should be regularly updated as the application evolves.)* 

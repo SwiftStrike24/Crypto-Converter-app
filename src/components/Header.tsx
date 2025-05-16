@@ -10,6 +10,7 @@ import AddCryptoModal from './AddCryptoModal';
 import UpdateDialog from './UpdateDialog';
 import { checkForUpdates } from '../services/updateService';
 import RangeBar from './RangeBar';
+import WaveLoadingPlaceholder from './WaveLoadingPlaceholder';
 
 const HeaderContainer = styled.div`
   display: flex;
@@ -616,6 +617,9 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const [updateTooltipType, setUpdateTooltipType] = useState<'success' | 'error'>('success');
   const updateTooltipTimeoutRef = useRef<number | null>(null);
   const { prices, loading, error, lastUpdated, updatePrices, isPending } = useCrypto();
+  const headerWaveTimerActive = useRef<Record<string, boolean>>({}); // Changed to a map
+  const headerWaveStartTimeRef = useRef<Record<string, number | null>>({}); // Changed to a map
+  const lastHeaderLogRef = useRef<Record<string, { price: number | undefined, change: number | null | undefined, formatted: string }>>({}); // Ref for last logged header data
 
   // State for individual tooltip visibility and position
   const [tooltipState, setTooltipState] = useState<Record<string, TooltipState>>({
@@ -940,9 +944,31 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const showPrice = location.pathname === '/';
 
   const getPrice = () => {
-    if (loading && !prices[selectedCrypto]) return <LoadingDot />; // Show loading only if no price exists
+    const waveTimerLabel = `Header_PriceWave_${selectedCrypto}_${selectedFiat}`;
+    const logKey = `${selectedCrypto}_${selectedFiat}`;
+    const lastLog = lastHeaderLogRef.current[logKey];
+
+    if (loading && !prices[selectedCrypto]) {
+      console.log(`📈 [Header] getPrice for ${selectedCrypto} / ${selectedFiat} - ⏳ Initial loading, no cached price. Showing Wave.`);
+      if (!headerWaveTimerActive.current[waveTimerLabel]) {
+        console.time(waveTimerLabel); // Log Start
+        headerWaveStartTimeRef.current[waveTimerLabel] = performance.now(); // Capture start time
+        headerWaveTimerActive.current[waveTimerLabel] = true;
+      }
+      return <WaveLoadingPlaceholder width="80px" height="18px" />;
+    }
 
     if (error) {
+      // End any active timer if an error occurs
+      if (headerWaveTimerActive.current[waveTimerLabel]) {
+        console.timeEnd(waveTimerLabel);
+        if (headerWaveStartTimeRef.current[waveTimerLabel]) {
+          const duration = performance.now() - (headerWaveStartTimeRef.current[waveTimerLabel] ?? performance.now()); // Use ?? for nullish coalescing
+          console.log(`⏱️ ${waveTimerLabel} (in seconds - ended on error): ${(duration / 1000).toFixed(3)} s`);
+        }
+        headerWaveStartTimeRef.current[waveTimerLabel] = null; // Clear the specific timer
+        headerWaveTimerActive.current[waveTimerLabel] = false; // Mark specific timer as inactive
+      }
       return (
         <>
           {error}
@@ -956,41 +982,68 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
 
     // If data is pending and we have no cached data at all for this fiat, show loading
     if (isDataPending && !currentPriceData?.price) {
-        return (
-            <>
-              {selectedCrypto} <LoadingDot />
-            </>
-          );
+        console.log(`📈 [Header] getPrice for ${selectedCrypto} / ${selectedFiat} - ⏳ Data isPending, no current price. Showing Wave.`);
+        if (!headerWaveTimerActive.current[waveTimerLabel]) {
+          console.time(waveTimerLabel); // Log Start
+          headerWaveStartTimeRef.current[waveTimerLabel] = performance.now(); // Capture start time
+          headerWaveTimerActive.current[waveTimerLabel] = true;
+        }
+        return <WaveLoadingPlaceholder width="80px" height="18px" />;
     }
     
     // If we don't have any price data (even after loading/pending check)
-    if (!currentPriceData?.price) {
-        // Try localStorage cache as a last resort before showing N/A
-        try {
-            const priceCacheKey = `crypto_price_${selectedCrypto.toLowerCase()}`;
-            const cachedStorageData = localStorage.getItem(priceCacheKey);
-            if (cachedStorageData) {
-                const priceStorageData = JSON.parse(cachedStorageData);
-                const fiatPriceData = priceStorageData?.[selectedFiat.toLowerCase()];
-                if (fiatPriceData?.price) {
-                    return (
-                        <>
-                          {formatPrice(fiatPriceData.price, selectedFiat)}
-                          {/* Show placeholder for change when using storage cache */}
-                          <PriceChange $isPositive={null}>--%</PriceChange> 
-                        </>
-                      );
-                }
+    if (!currentPriceData?.price && !isDataPending) { // Ensure it's not just pending
+       if (headerWaveTimerActive.current[waveTimerLabel]) {
+        console.timeEnd(waveTimerLabel);
+        if (headerWaveStartTimeRef.current[waveTimerLabel]) {
+          const duration = performance.now() - (headerWaveStartTimeRef.current[waveTimerLabel] ?? performance.now()); // Use ??
+          console.log(`⏱️ ${waveTimerLabel} (in seconds - ended, no data): ${(duration / 1000).toFixed(3)} s`);
+        }
+        headerWaveStartTimeRef.current[waveTimerLabel] = null; // Clear specific timer
+        headerWaveTimerActive.current[waveTimerLabel] = false; // Mark specific timer as inactive
+      }
+      // Try localStorage cache as a last resort before showing N/A
+      try {
+        const priceCacheKey = `crypto_price_${selectedCrypto.toLowerCase()}`;
+        const cachedStorageData = localStorage.getItem(priceCacheKey);
+        if (cachedStorageData) {
+            const priceStorageData = JSON.parse(cachedStorageData);
+            const fiatPriceData = priceStorageData?.[selectedFiat.toLowerCase()];
+            if (fiatPriceData?.price) {
+                console.log('[Header] getPrice for', selectedCrypto, '/', selectedFiat, '- Using localStorage cache as fallback. Price:', fiatPriceData.price); // Log
+                return (
+                    <>
+                      {formatPrice(fiatPriceData.price, selectedFiat)}
+                      {/* Show placeholder for change when using storage cache */}
+                      <PriceChange $isPositive={null}>--%</PriceChange> 
+                    </>
+                  );
             }
-          } catch (e) { /* Ignore cache errors */ }
-        
-        // If still no data, return N/A
-        return 'N/A';
+        }
+      } catch (e) { /* Ignore cache errors */ }
+      
+      // If still no data, return N/A
+      console.log('[Header] getPrice for', selectedCrypto, '/', selectedFiat, '- No price data available after all checks. Returning N/A.'); // Log
+      return 'N/A';
     }
 
     // We have price data (current or cached)
+    if (headerWaveTimerActive.current[waveTimerLabel]) {
+      console.timeEnd(waveTimerLabel); // Log End, price data is now available
+      if (headerWaveStartTimeRef.current[waveTimerLabel]) {
+        const duration = performance.now() - (headerWaveStartTimeRef.current[waveTimerLabel] ?? performance.now()); // Use ??
+        console.log(`⏱️ ${waveTimerLabel} (in seconds): ${(duration / 1000).toFixed(3)} s`); // Log (s)
+      }
+      headerWaveStartTimeRef.current[waveTimerLabel] = null; // Clear specific timer
+      headerWaveTimerActive.current[waveTimerLabel] = false; // Mark specific timer as inactive
+    }
     const formattedPrice = formatPrice(currentPriceData.price, selectedFiat);
     const changePercent = currentPriceData.change24h;
+    
+    if (!lastLog || lastLog.price !== currentPriceData.price || lastLog.change !== changePercent || lastLog.formatted !== formattedPrice) {
+      console.log(`📊 [Header] getPrice for ${selectedCrypto} / ${selectedFiat} - ✅ Has price data. Price: ${currentPriceData.price}, Change: ${changePercent}, Formatted: ${formattedPrice}`);
+      lastHeaderLogRef.current[logKey] = { price: currentPriceData.price, change: changePercent, formatted: formattedPrice };
+    }
 
     return (
       <>
