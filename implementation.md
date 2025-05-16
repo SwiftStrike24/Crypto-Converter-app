@@ -62,6 +62,7 @@ The application primarily uses React Context API for managing global state:
     *   Token metadata: `localStorage` key `cryptovertx-metadata-cache`.
     *   Token icon URLs: `localStorage` with `ICON_CACHE_PREFIX`.
     *   Configurable cache durations.
+*   **Initial Token Preloading:** To provide immediate data for popular tokens on application startup, a predefined list of token IDs (`POPULAR_TOKEN_IDS_TO_PRELOAD` in `src/constants/cryptoConstants.ts`) is used to fetch initial market data. This list is dynamically updated by the `scripts/fetchTop100CoinGeckoIds.ts` script, which fetches the current top 100 tokens by market cap from CoinGecko. The `PRELOAD_POPULAR_TOKENS_ENABLED` constant controls this feature.
 *   **Batching:**
     *   `CryptoContext` batches multiple price update requests (`MAX_BATCH_SIZE`).
     *   Metadata fetching is also batched (`fetchMetadataInBatches`).
@@ -147,12 +148,22 @@ The application primarily uses React Context API for managing global state:
     *   `pnpm build`: Transpiles TypeScript and builds the React frontend assets using Vite.
     *   `pnpm electron:dev`: Runs the Electron app in development mode, usually with Vite serving the frontend.
     *   `pnpm build-app [--installer | --portable | --both]`: Interactive build script (driven by `tsx scripts/build.ts`) for creating distributable Electron application packages. Handles versioning and allows choosing build types.
+    *   `pnpm update-top-tokens`: Executes `tsx scripts/fetchTop100CoinGeckoIds.ts` to refresh the `POPULAR_TOKEN_IDS_TO_PRELOAD` list in `src/constants/cryptoConstants.ts` with the current top 100 tokens from CoinGecko. This script uses `axios` for the API call.
     *   `pnpm lint`: Runs ESLint for code quality checks.
 *   **Interactive Build System (`scripts/build.ts`):**
     *   Provides a menu to choose build types (Portable, Installer, Both).
     *   Handles version management (reads from `package.json`, updates `versionManager.ts`, prompts for new version/overwrite).
     *   Creates versioned output directories.
     *   Provides a build summary with performance metrics when building "Both".
+
+### 7.1. Utility Scripts
+
+*   **`scripts/fetchTop100CoinGeckoIds.ts`**
+    *   **Purpose:** Automatically fetches the top 100 cryptocurrencies by market capitalization from the CoinGecko API (using `axios`) and updates the `POPULAR_TOKEN_IDS_TO_PRELOAD` array in `src/constants/cryptoConstants.ts`.
+    *   **Execution:** Can be run manually using `pnpm update-top-tokens`.
+    *   **Dependencies:** Uses `axios` (already a project dependency).
+    *   **Output:** Modifies `src/constants/cryptoConstants.ts` in place with the new list of token IDs and includes an auto-generation date comment.
+    *   **Note:** The script makes a direct HTTP GET request to the CoinGecko `/coins/markets` endpoint.
 
 ## 8. Electron-Specific Implementation Details
 
@@ -205,7 +216,8 @@ Referenced from `package.json` and `progress.md`.
 *   `@aws-sdk/client-s3`: For Cloudflare R2 interaction.
 *   `@emotion/react`, `@emotion/styled`: Likely pulled in by MUI.
 *   `@mui/material`, `@mui/styles`: UI component library.
-*   `axios`: For making HTTP requests to APIs.
+*   `axios`: For making HTTP requests to APIs. Used by various parts of the application, including the `scripts/fetchTop100CoinGeckoIds.ts` script.
+*   `coingecko-api`: A client library for interacting with the CoinGecko API, used by the `scripts/fetchTop100CoinGeckoIds.ts` script to fetch top token data.
 *   `date-fns`: Utility for date formatting/manipulation.
 *   `dotenv`: For loading environment variables.
 *   `focus-trap-react`: For managing focus within modals/dialogs.
@@ -310,8 +322,8 @@ The `CryptoContext.tsx` will be decomposed into a set of specialized custom hook
 ### 14.3. Responsibilities of New Modules
 
 1.  **`src/constants/cryptoConstants.ts`:**
-    *   **Responsibility:** Centralize all constants currently in `CryptoContext.tsx` (e.g., API endpoints, cache keys, durations, rate limit parameters, default token lists).
-    *   **Benefit:** Improves organization and makes configuration easier to manage.
+    *   **Responsibility:** Centralize all constants related to cryptocurrency data handling. This includes API endpoints, cache keys and durations, rate limiting parameters, default token lists (like `DEFAULT_CRYPTO_IDS`), and the list of popular tokens for preloading (`POPULAR_TOKEN_IDS_TO_PRELOAD`). The `POPULAR_TOKEN_IDS_TO_PRELOAD` list is populated and kept up-to-date by the `scripts/fetchTop100CoinGeckoIds.ts` script, which sources data from CoinGecko's top 100 market cap ranking.
+    *   **Benefit:** Improves organization, makes configuration easier to manage, and provides a clear, dynamically updated source for the preload token set.
 
 2.  **`src/services/crypto/cryptoApiService.ts`:**
     *   **Responsibility:** Encapsulate all direct CoinGecko API communication logic. This includes constructing API requests, handling responses, managing API-specific error handling (like 429s), and implementing smart retry mechanisms (`fetchWithSmartRetry`). It will also manage CoinGecko-specific rate limiting state (e.g., `rateLimitCooldownUntil`).

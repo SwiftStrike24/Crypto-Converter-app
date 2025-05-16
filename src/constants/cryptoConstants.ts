@@ -31,10 +31,33 @@ export const ICON_CACHE_STORAGE_PREFIX = 'crypto_icon_';
 export const MAX_METADATA_REQUESTS_PER_SESSION_LIMIT = 1000;
 
 export const POPULAR_TOKEN_IDS_TO_PRELOAD = [
-  'bitcoin', 'ethereum', 'solana', 'ripple', 'cardano',
-  'polkadot', 'dogecoin', 'shiba-inu', 'avalanche-2', 'chainlink',
-  'uniswap', 'polygon', 'litecoin', 'binancecoin', 'tron',
-];
+    /* auto-generated on 2025-05-16 */
+    'bitcoin',
+    'ethereum',
+    'tether',
+    'ripple',
+    'binancecoin',
+    'solana',
+    'usd-coin',
+    'dogecoin',
+    'cardano',
+    'tron',
+    'staked-ether',
+    'wrapped-bitcoin',
+    'sui',
+    'wrapped-steth',
+    'chainlink',
+    'avalanche-2',
+    'stellar',
+    'shiba-inu',
+    'hyperliquid',
+    'hedera-hashgraph',
+    'leo-token',
+    'bitcoin-cash',
+    'the-open-network',
+    'litecoin',
+    'polkadot',
+  ];
 
 export const API_CONFIG = {
   COINGECKO: {
