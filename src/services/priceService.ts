@@ -1,5 +1,6 @@
 import { cache } from '../utils/cache';
 import { Time } from 'lightweight-charts';
+import { RateLimitError } from '../utils/customErrors';
 
 interface PriceDataPoint {
   time: Time;
@@ -120,7 +121,10 @@ async function findEarliestData(cryptoId: string, currency: string): Promise<Pri
     );
 
     if (!response.ok) {
-      throw new Error(`CoinGecko API Error: ${response.status}`);
+      if (response.status === 429) {
+        throw new RateLimitError("CoinGecko API rate limit reached. Please try again later.");
+      }
+      throw new Error(`CoinGecko API Error: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
@@ -225,7 +229,15 @@ export async function getHistoricalPriceData(
           return validData;
         }
       } catch (error) {
-        console.warn('CoinGecko API failed, falling back to CryptoCompare:', error);
+        if (error instanceof RateLimitError) {
+          console.warn('CoinGecko rate limit hit in getHistoricalPriceData. Dispatching event and returning placeholder data.');
+          window.dispatchEvent(new CustomEvent('coingeckoRateLimitReached'));
+          const placeholderData = generatePlaceholderData(timeframe);
+          cache.set(cacheKey, placeholderData, ttl); // Cache placeholder to avoid repeated failed calls
+          return placeholderData;
+        } else {
+          console.warn('CoinGecko API failed, falling back to CryptoCompare:', error);
+        }
       }
     }
 
@@ -303,8 +315,16 @@ async function fetchFromCoinGecko(
 
     return validData;
   } catch (error) {
+    // Re-throw RateLimitError directly
+    if (error instanceof RateLimitError) {
+      throw error;
+    }
+    // Log other errors and re-throw them
     console.error('Error in fetchFromCoinGecko:', error);
-    throw error;
+    // It's good practice to wrap or at least specifically handle different types of errors
+    // For now, we'll re-throw the original error if it's not a RateLimitError
+    // or a known HTTP error that we've already processed.
+    throw error; 
   }
 }
 

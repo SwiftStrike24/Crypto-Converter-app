@@ -94,9 +94,15 @@ const formatPrice = (price: number): string => {
 };
 
 export const LivePrice: React.FC<LivePriceProps> = ({ cryptoId, currency }) => {
-  const { prices } = useCrypto();
+  const { prices, isRateLimited } = useCrypto(); // Added isRateLimited
   
-  const currentPrice = prices[cryptoId]?.[currency.toLowerCase()];
+  const currentPriceData = prices[cryptoId]?.[currency.toLowerCase()];
+  // Ensure currentPrice is a number for formatPrice, or undefined if data is not available
+  const currentPrice = typeof currentPriceData === 'number' 
+    ? currentPriceData 
+    : (currentPriceData && typeof currentPriceData.price === 'number' 
+        ? currentPriceData.price 
+        : undefined);
   
   const formattedPrice = currentPrice !== undefined 
     ? formatPrice(currentPrice)
@@ -110,6 +116,7 @@ export const LivePrice: React.FC<LivePriceProps> = ({ cryptoId, currency }) => {
       <Price>
         <CurrencySymbol>{currencySymbol}</CurrencySymbol>
         {formattedPrice || '...'}
+        {isRateLimited && <span title="API rate limit reached. Price may be delayed." style={{ marginLeft: '0.5rem', color: '#ffcc00', fontSize: '1rem'}}>⚠️</span>}
       </Price>
     </PriceContainer>
   );

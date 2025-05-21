@@ -39,11 +39,11 @@ const ChartContainer = styled.div`
   overflow: hidden;
   animation: ${fadeIn} 0.6s ease-out;
   transition: transform 0.3s ease, opacity 0.3s ease;
-  background: #111111;
+  background: #111111; /* Dark background for the chart */
   border-radius: 16px;
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.5); /* Subtle shadow for depth */
   will-change: transform, opacity;
-  transform: translateZ(0);
+  transform: translateZ(0); /* Promotes to its own layer for performance */
   @media (max-width: 768px) {
     min-height: 300px;
   }
@@ -52,16 +52,29 @@ const ChartContainer = styled.div`
 const LoadingOverlay = styled.div`
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.85); /* Semi-transparent black background */
+  backdrop-filter: blur(8px); /* Frosted glass effect */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  z-index: 10;
-  opacity: 0;
-  animation: ${fadeIn} 0.3s ease-out forwards;
+  color: #fff; /* White text color */
+  z-index: 10; /* Ensure it's above other chart elements */
+  opacity: 0; /* Start invisible, fade in */
+  animation: ${fadeIn} 0.3s ease-out forwards; /* Fade-in animation */
+`;
+
+const RateLimitOverlay = styled(LoadingOverlay)`
+  background: rgba(30, 30, 30, 0.9); /* Slightly different background for rate limit */
+  color: #ffcc00; /* Warning yellow color */
+`;
+
+const RateLimitMessage = styled.div`
+  text-align: center;
+  padding: 20px;
+  font-size: 1rem;
+  border-radius: 8px;
+  background-color: rgba(0,0,0,0.3);
 `;
 
 const LoadingSpinner = styled.div`
@@ -306,7 +319,7 @@ const validateChartData = (data: ChartDataPoint[]): ChartDataPoint[] => {
 const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency, timeframe }) => {
   console.log('🚀 CryptoChart Component Mounted:', { cryptoId, currency });
 
-  const { error: contextError, loading: contextLoading } = useCrypto();
+  const { error: contextError, loading: contextLoading, isRateLimited } = useCrypto(); // Added isRateLimited
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [priceChange, setPriceChange] = useState<number>(0);
@@ -763,14 +776,23 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency, time
           </ChartTitle>
         </ChartHeader>
 
-        {(loading || contextLoading) && (
+        {isRateLimited && (
+          <RateLimitOverlay>
+            <RateLimitMessage>
+              <span role="img" aria-label="warning" style={{ marginRight: '8px' }}>⚠️</span>
+              API rate limit reached. Chart data may be delayed. Please try again later.
+            </RateLimitMessage>
+          </RateLimitOverlay>
+        )}
+
+        {(loading || contextLoading) && !isRateLimited && ( // Only show loading if not rate limited
           <LoadingOverlay>
             <LoadingSpinner />
             <LoadingText>Loading chart data...</LoadingText>
           </LoadingOverlay>
         )}
 
-        {(error || contextError) && (
+        {(error || contextError) && !isRateLimited && ( // Only show error if not rate limited (rate limit has its own message)
           <NoDataMessage>
             <p>{error || contextError}</p>
             <InfoText>

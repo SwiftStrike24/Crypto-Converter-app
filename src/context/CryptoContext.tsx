@@ -26,6 +26,8 @@ interface CryptoContextType {
   checkAndUpdateMissingIcons: () => Promise<number>;
   setTokenMetadata: React.Dispatch<React.SetStateAction<Record<string, any>>>;
   isApiRateLimited: (apiName: 'coingecko' | 'cryptocompare') => boolean;
+  isRateLimited: boolean; // New state for overall rate limit status
+  setIsRateLimited: React.Dispatch<React.SetStateAction<boolean>>; // Setter for the new state
 }
 
 interface CacheData {
@@ -179,6 +181,9 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const metadataRequestCount = useRef<number>(0);
 
   const tokenIconCache = useRef<Record<string, string>>({});
+
+  // State for global rate limit indication
+  const [isRateLimited, setIsRateLimited] = useState<boolean>(false);
 
   const clearUpdateTimeout = () => {
     if (updateTimeout.current) {
@@ -1517,6 +1522,20 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return false;
   }, []);
 
+  // Effect to listen for global rate limit events from priceService
+  useEffect(() => {
+    const handleRateLimitReached = () => {
+      console.log('CryptoContext: Detected coingeckoRateLimitReached event.');
+      setIsRateLimited(true);
+    };
+
+    window.addEventListener('coingeckoRateLimitReached', handleRateLimitReached);
+
+    return () => {
+      window.removeEventListener('coingeckoRateLimitReached', handleRateLimitReached);
+    };
+  }, [setIsRateLimited]); // Include setIsRateLimited in dependency array
+
   return (
     <CryptoContext.Provider
       value={{
@@ -1535,7 +1554,9 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         defaultCryptoIds,
         checkAndUpdateMissingIcons,
         setTokenMetadata,
-        isApiRateLimited
+        isApiRateLimited,
+        isRateLimited, // Provide the new state
+        setIsRateLimited // Provide the new setter
       }}
     >
       {children}
