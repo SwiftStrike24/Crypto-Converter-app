@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef, CSSProperties } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
+import { ICON_CACHE_STORAGE_PREFIX, RATE_LIMIT_UI_MESSAGE } from '../constants/cryptoConstants';
+import { FiBarChart, FiRefreshCw } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
-import { FaMagnifyingGlassChart } from 'react-icons/fa6';
 import { ipcRenderer } from 'electron';
 import WaveLoadingPlaceholder from './WaveLoadingPlaceholder';
+import { FaMagnifyingGlassChart } from 'react-icons/fa6';
+
 
 // Constants
-const ICON_CACHE_PREFIX = 'crypto_icon_';
 const FIAT_ICON_CACHE_PREFIX = 'fiat_icon_';
 
 // Map of fiat currencies to their flag icons
@@ -530,21 +532,7 @@ const ChartButton = styled.button`
 const AnalysisButton = styled(ChartButton)``;
 
 const ChartIcon = () => (
-  <svg 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round"
-  >
-    <path d="M3 3v18h18" />
-    <path d="M18 9l-5 5-2-2-4 4" />
-    <circle cx="18" cy="9" r="1" />
-    <circle cx="13" cy="14" r="1" />
-    <circle cx="11" cy="12" r="1" />
-    <circle cx="7" cy="16" r="1" />
-  </svg>
+  <FiBarChart />
 );
 
 const AnalysisIcon = () => (
@@ -574,6 +562,27 @@ const CoinGeckoLink = styled.button`
   
   &:active {
     transform: scale(0.97);
+  }
+`;
+
+// Add rate limit indicator styling
+const RateLimitIndicator = styled.div`
+  margin-top: 10px;
+  padding: 6px 10px;
+  background: rgba(255, 59, 48, 0.1);
+  color: #ff453a;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse 2s infinite ease-in-out;
+  
+  @keyframes pulse {
+    0% { opacity: 0.7; }
+    50% { opacity: 1; }
+    100% { opacity: 0.7; }
   }
 `;
 
@@ -626,7 +635,9 @@ const Converter: React.FC<ConverterProps> = ({
     getCryptoId, 
     updatePrices,
     checkAndUpdateMissingIcons,
-    setTokenMetadata
+    setTokenMetadata,
+    isCoinGeckoRateLimitedGlobal,
+    getCoinGeckoRetryAfterSeconds
   } = useCrypto();
   const navigate = useNavigate();
   
@@ -744,7 +755,7 @@ const Converter: React.FC<ConverterProps> = ({
     const id = getCryptoId(selectedCrypto);
     if (id && !tokenMetadata[id]?.image) {
       // Try to get from localStorage first
-      const iconCacheKey = `${ICON_CACHE_PREFIX}${selectedCrypto.toLowerCase()}`;
+      const iconCacheKey = `${ICON_CACHE_STORAGE_PREFIX}${selectedCrypto.toLowerCase()}`;
       const cachedIcon = localStorage.getItem(iconCacheKey);
       
       if (!cachedIcon) {
@@ -840,45 +851,52 @@ const Converter: React.FC<ConverterProps> = ({
     };
   }, [availableCryptos, checkAndUpdateMissingIcons, onCryptoChange, selectedCrypto]);
 
+  // Show loading states when rate limited
+  useEffect(() => {
+    // When we hit the rate limit, make sure we're showing the wave for the current selection
+    if (isCoinGeckoRateLimitedGlobal && !showWaveInResultBox) {
+      console.log(`[CONVERTER_WAVE] API rate limited. Setting showWaveInResultBox = true for ${selectedCrypto}/${selectedFiat}.`);
+      setShowWaveInResultBox(true);
+      // Start time tracking for debug purposes
+      converterWaveStartTimeRef.current = Date.now();
+    }
+  }, [isCoinGeckoRateLimitedGlobal, selectedCrypto, selectedFiat, showWaveInResultBox]);
+  
   const getRate = (crypto: string, fiat: string): number => {
-    // If the token is pending, return a placeholder rate instead of 0
-    if (isPending(crypto)) {
-      // Return a placeholder rate based on the token
-      // This is just an estimate until the real rate is fetched
-      console.log(`📉 [Converter] getRate for ${crypto} / ${fiat} - ⏳ isPending: true. Returning placeholder rate 1.`);
-      if (!showWaveInResultBox) {
-        const waveTimerLabel = `Converter_ResultWave_${crypto}_${fiat}`;
-        // Ensure timer doesn't already exist to prevent errors, though ideally state management prevents this.
-        // For safety, we could clear it if it did, but let's focus on correct start/end logic.
-        console.time(waveTimerLabel); // Log Start Wave (ms)
-        converterWaveStartTimeRef.current = performance.now(); // Capture start time
-        setShowWaveInResultBox(true); // Show wave when rate is pending
+    try {
+      if (isPending(crypto) || isCoinGeckoRateLimitedGlobal) {
+        if (!showWaveInResultBox) {
+          const ratePendingReason = isCoinGeckoRateLimitedGlobal 
+            ? "API rate limit reached" 
+            : "Rate pending (loading)";
+          console.log(`[CONVERTER_WAVE] Rate pending for: ${crypto}/${fiat}. Reason: ${ratePendingReason}. Showing wave. Current showWaveInResultBox: ${showWaveInResultBox}`); // Logging
+          converterWaveStartTimeRef.current = Date.now();
+          setShowWaveInResultBox(true); // Show wave when rate is pending
+        }
+        return 0; // Return 0 to signal that rate is not available
       }
-      return 1; // Default placeholder (will be improved with estimated values)
-    }
-    
-    if (showWaveInResultBox) {
-      const waveTimerLabel = `Converter_ResultWave_${crypto}_${fiat}`;
-      // Only end timer if it was started for THIS crypto/fiat pair and is currently active.
-      // The showWaveInResultBox state should correspond to an active timer.
-      console.timeEnd(waveTimerLabel); // Log End Wave (ms)
-      if (converterWaveStartTimeRef.current) {
-        const duration = performance.now() - converterWaveStartTimeRef.current;
-        console.log(`⏱️ ${waveTimerLabel} (in seconds): ${(duration / 1000).toFixed(3)} s`); // Log (s)
-        converterWaveStartTimeRef.current = null;
+      
+      if (showWaveInResultBox) {
+        const waveStartTime = converterWaveStartTimeRef.current;
+        const waveDuration = waveStartTime ? Date.now() - waveStartTime : 0;
+        // The showWaveInResultBox state should correspond to an active timer.
+        if (waveStartTime) {
+          console.log(`[CONVERTER_WAVE] Rate loaded for ${crypto}/${fiat} after ${waveDuration}ms. Hiding wave.`);
+          converterWaveStartTimeRef.current = null;
+        }
+        setShowWaveInResultBox(false); // Hide wave once rate is loaded
       }
-    }
-    // Access the price data object
-    const priceData = prices[crypto]?.[fiat.toLowerCase()];
 
-    // Return the price if it exists, otherwise return 0 or handle error
-    if (!priceData?.price) {
-      console.warn(`⚠️ [Converter] getRate for ${crypto} / ${fiat} - Price data N/A.`);
-      return 0; // Or handle appropriately, e.g., throw an error or return null/undefined
+      const cryptoPrice = prices[crypto]?.[fiat.toLowerCase()];
+      if (!cryptoPrice || cryptoPrice.price === null) {
+        throw new Error(`Price not found for ${crypto}/${fiat}`);
+      }
+      return cryptoPrice.price;
+    } catch (err) {
+      console.error(`Error in getRate for ${crypto}/${fiat}:`, err);
+      setError(`Could not get rate for ${crypto}/${fiat}`);
+      return 0;
     }
-    
-    console.log(`📈 [Converter] getRate for ${crypto} / ${fiat} - isPending: false. Price data:`, priceData, `Returning rate: ${priceData.price}`);
-    return priceData.price; // <-- Return only the price number
   };
 
   const formatNumber = (value: string, isCrypto: boolean): string => {
@@ -930,7 +948,7 @@ const Converter: React.FC<ConverterProps> = ({
     if (rate === 0) {
       setError('Price data unavailable');
       if (showWaveInResultBox) { // End timer if it was active due to error
-        const waveTimerLabel = `Converter_ResultWave_${selectedCrypto}_${selectedFiat}`;
+        const waveTimerLabel = `converter_wave_${selectedCrypto}_${selectedFiat}`;
         console.timeEnd(waveTimerLabel);
         if (converterWaveStartTimeRef.current) {
           const duration = performance.now() - converterWaveStartTimeRef.current;
@@ -978,7 +996,7 @@ const Converter: React.FC<ConverterProps> = ({
     if (rate === 0) {
       setError('Price data unavailable');
       if (showWaveInResultBox) { // End timer if it was active due to error
-        const waveTimerLabel = `Converter_ResultWave_${selectedCrypto}_${selectedFiat}`;
+        const waveTimerLabel = `converter_wave_${selectedCrypto}_${selectedFiat}`;
         console.timeEnd(waveTimerLabel);
         if (converterWaveStartTimeRef.current) {
           const duration = performance.now() - converterWaveStartTimeRef.current;
@@ -1046,7 +1064,8 @@ const Converter: React.FC<ConverterProps> = ({
     
     // End timer for the OLD crypto if it was active
     if (showWaveInResultBox) {
-      const oldWaveTimerLabel = `Converter_ResultWave_${oldCrypto}_${oldFiat}`;
+      const oldWaveTimerLabel = `converter_wave_${oldCrypto}_${oldFiat}`;
+      console.log(`[CONVERTER_WAVE] Crypto changed from ${oldCrypto} to ${crypto}. Ending wave for ${oldWaveTimerLabel} if active.`); // Logging
       console.timeEnd(oldWaveTimerLabel);
       if (converterWaveStartTimeRef.current) {
         const duration = performance.now() - converterWaveStartTimeRef.current;
@@ -1057,12 +1076,14 @@ const Converter: React.FC<ConverterProps> = ({
     }
 
     if (isPending(crypto)) {
-      const newWaveTimerLabel = `Converter_ResultWave_${crypto}_${selectedFiat}`;
+      const newWaveTimerLabel = `converter_wave_${crypto}_${selectedFiat}`;
       console.time(newWaveTimerLabel); // Log Start Wave for new crypto
       console.log(`🌊 [Converter] handleCryptoChange: Starting wave for ${crypto} / ${selectedFiat}`);
-      converterWaveStartTimeRef.current = performance.now(); // Capture start time
+      console.log(`[CONVERTER_WAVE] Setting showWaveInResultBox = true in handleCryptoChange for: ${crypto}/${selectedFiat} because selectedCrypto isPending.`); // Logging
+      converterWaveStartTimeRef.current = Date.now(); // Capture start time
       setShowWaveInResultBox(true);
     } else {
+      console.log(`[CONVERTER_WAVE] Setting showWaveInResultBox = false in handleCryptoChange for: ${crypto}/${selectedFiat} because selectedCrypto is NOT pending.`); // Logging
       setShowWaveInResultBox(false); // Ensure wave is off if new crypto is not pending
     }
     
@@ -1099,7 +1120,8 @@ const Converter: React.FC<ConverterProps> = ({
 
     // If a wave was active for the old fiat with the current crypto, end it.
     if (showWaveInResultBox && isPending(selectedCrypto)) {
-      const oldWaveTimerLabel = `Converter_ResultWave_${selectedCrypto}_${oldFiat}`;
+      const oldWaveTimerLabel = `converter_wave_${selectedCrypto}_${oldFiat}`;
+      console.log(`[CONVERTER_WAVE] Fiat changed from ${oldFiat} to ${fiat}. Current crypto ${selectedCrypto} isPending: ${isPending(selectedCrypto)}. Ending wave for ${oldWaveTimerLabel} if active.`); // Logging
       console.timeEnd(oldWaveTimerLabel);
       if (converterWaveStartTimeRef.current) {
         const duration = performance.now() - converterWaveStartTimeRef.current;
@@ -1111,12 +1133,14 @@ const Converter: React.FC<ConverterProps> = ({
 
     // Re-evaluate wave display based on current crypto and new fiat
     if (isPending(selectedCrypto)) {
-      const newWaveTimerLabel = `Converter_ResultWave_${selectedCrypto}_${fiat}`;
+      const newWaveTimerLabel = `converter_wave_${selectedCrypto}_${fiat}`;
       console.time(newWaveTimerLabel); // Log Start Wave for new fiat
       console.log(`🌊 [Converter] handleFiatChange: Starting wave for ${selectedCrypto} / ${fiat}`);
-      converterWaveStartTimeRef.current = performance.now(); // Capture start time
+      console.log(`[CONVERTER_WAVE] Setting showWaveInResultBox = true in handleFiatChange for: ${selectedCrypto}/${fiat} because selectedCrypto isPending.`); // Logging
+      converterWaveStartTimeRef.current = Date.now(); // Capture start time
       setShowWaveInResultBox(true);
     } else {
+      console.log(`[CONVERTER_WAVE] Setting showWaveInResultBox = false in handleFiatChange for: ${selectedCrypto}/${fiat} because selectedCrypto is NOT pending.`); // Logging
       setShowWaveInResultBox(false); // Ensure wave is off if crypto is not pending
     }
   };
@@ -1198,7 +1222,7 @@ const Converter: React.FC<ConverterProps> = ({
     }
     
     // Use a local icon cache to prevent repeated requests
-    const iconCacheKey = `${ICON_CACHE_PREFIX}${normalizedSymbol.toLowerCase()}`;
+    const iconCacheKey = `${ICON_CACHE_STORAGE_PREFIX}${normalizedSymbol.toLowerCase()}`;
     const cachedIcon = localStorage.getItem(iconCacheKey);
     if (cachedIcon) {
       // If we have a cached icon but no metadata, update the metadata
@@ -1770,6 +1794,22 @@ const Converter: React.FC<ConverterProps> = ({
         </AnalysisButton>
         <Tooltip ref={analysisTooltipRef}>Technical Analysis</Tooltip>
       </ButtonWrapper>
+
+      {/* Add the rate limit indicator */}
+      {isCoinGeckoRateLimitedGlobal && (
+        <RateLimitIndicator>
+          <FiRefreshCw 
+            style={{ marginRight: '6px', cursor: 'pointer' }} 
+            size={14}
+            onClick={() => updatePrices(false)} 
+            title="Try using cached data"
+          />
+          {getCoinGeckoRetryAfterSeconds() > 0 
+            ? `${RATE_LIMIT_UI_MESSAGE} Retry in ${getCoinGeckoRetryAfterSeconds()}s.`
+            : RATE_LIMIT_UI_MESSAGE
+          }
+        </RateLimitIndicator>
+      )}
     </ConverterContainer>
   );
 };

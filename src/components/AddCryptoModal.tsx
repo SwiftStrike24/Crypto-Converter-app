@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import styled from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
+import { searchCoinGecko, RequestPriority } from '../services/crypto/cryptoApiService'; // Import optimized search
 import debounce from 'lodash/debounce';
 import { FiCheck, FiAlertTriangle } from 'react-icons/fi';
 
@@ -308,10 +309,10 @@ const POPULAR_TOKENS: CryptoResult[] = [
   { id: 'shiba-inu', symbol: 'SHIB', name: 'Shiba Inu', image: 'https://assets.coingecko.com/coins/images/11939/thumb/shiba.png' }
 ];
 
-// API rate limit configuration
-const SEARCH_DEBOUNCE_DELAY = 300; // ms
-const MIN_SEARCH_INTERVAL = 2000; // ms
-const MAX_RETRIES = 2;
+// Optimized search constants for maximum throughput
+const SEARCH_DEBOUNCE_DELAY = 300; // Increased from 150ms for less aggressive searching
+const MIN_SEARCH_INTERVAL_MODAL = 1000; // Renamed to avoid conflict, Increased from 800ms, though primary reliance is on service
+const MAX_RETRIES_MODAL = 1; // Renamed, Reduced, service layer should handle most retries
 
 const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -321,32 +322,32 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
   const [error, setError] = useState<string | null>(null);
   const [addingTokens, setAddingTokens] = useState(false);
   
-  const { addCryptos } = useCrypto();
+  const { addCryptos, isCoinGeckoRateLimitedGlobal, getCoinGeckoRetryAfterSeconds: getRetrySecondsFromContext } = useCrypto();
   
   const lastSearchTime = useRef<number>(0);
   const retryCount = useRef<number>(0);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Enhanced search with rate limit handling
   const searchCryptos = async (query: string) => {
     if (!query.trim()) {
       setResults([]);
       setError(null);
+      setLoading(false); // Ensure loading is false if query is cleared
       return;
     }
 
-    const now = Date.now();
-    const timeSinceLastSearch = now - lastSearchTime.current;
-    
-    // Respect rate limits
-    if (timeSinceLastSearch < MIN_SEARCH_INTERVAL) {
-      const delayTime = MIN_SEARCH_INTERVAL - timeSinceLastSearch;
-      
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-      
-      searchTimeoutRef.current = setTimeout(() => searchCryptos(query), delayTime);
+    // Clear previous timeout if any
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Check global rate limit state from the service first
+    if (isCoinGeckoRateLimitedGlobal) {
+      const retrySeconds = getRetrySecondsFromContext();
+      setError(`Search is temporarily paused due to API rate limits. Please try again in ${retrySeconds > 0 ? retrySeconds + 's' : 'later'}.`); // Provide more user-friendly message
+      setLoading(false);
+      // Optionally, schedule a retry after the cooldown, or let user retry manually
+      // For now, we'll just inform the user.
       return;
     }
 
@@ -354,47 +355,34 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(
-        `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query)}`
-      );
+      // Use optimized search service with HIGH priority for user searches
+      const data = await searchCoinGecko(query, RequestPriority.HIGH);
       
-      lastSearchTime.current = Date.now();
+      lastSearchTime.current = Date.now(); // Still useful for local component logic if any
+      retryCount.current = 0; // Reset local retry count on successful call initiation
+            
+      const processedResults = data.coins
+        .slice(0, 20) 
+        .map((coin: any) => ({
+          id: coin.id,
+          symbol: coin.symbol.toUpperCase(),
+          name: coin.name,
+          image: coin.large || coin.thumb 
+        }));
       
-      if (response.status === 429) {
-        // Rate limit hit
-        const retryAfter = response.headers.get('retry-after');
-        const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : MIN_SEARCH_INTERVAL * 2;
-        
-        setError('Rate limit reached. Please wait a moment before searching again.');
-        
-        if (retryCount.current < MAX_RETRIES) {
-          retryCount.current++;
-          if (searchTimeoutRef.current) {
-            clearTimeout(searchTimeoutRef.current);
-          }
-          searchTimeoutRef.current = setTimeout(() => searchCryptos(query), waitTime);
-        }
-        return;
+      setResults(processedResults);
+    } catch (err: any) {
+      console.error('Search error in AddCryptoModal:', err);
+      // The error from searchCoinGecko (via fetchWithSmartRetry) should be more informative
+      // if it's a rate limit error, it would have been caught by isCoinGeckoApiRateLimited() pre-check ideally
+      // or fetchWithSmartRetry would throw a specific error.
+      if (err.message && (err.message.includes('rate limit') || err.message.includes('429'))) {
+        const retrySeconds = getRetrySecondsFromContext();
+        setError(`Search rate limit hit. Please wait ${retrySeconds > 0 ? retrySeconds + 's' : 'a moment'} and try again.`);
+      } else {
+        setError('Failed to search cryptocurrencies. Please check your connection or try again.');
       }
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch cryptocurrencies: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      // Reset retry count on success
-      retryCount.current = 0;
-      
-      setResults(data.coins.slice(0, 15).map((coin: any) => ({
-        id: coin.id,
-        symbol: coin.symbol.toUpperCase(),
-        name: coin.name,
-        image: coin.thumb
-      })));
-    } catch (err) {
-      console.error('Search error:', err);
-      setError('Failed to search cryptocurrencies. Please try again.');
+      setResults([]); // Clear results on error
     } finally {
       setLoading(false);
     }

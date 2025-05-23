@@ -4,7 +4,7 @@ import * as path from 'path';
 
 const CONSTANTS_FILE_PATH = path.resolve(__dirname, '../src/constants/cryptoConstants.ts');
 const COINGECKO_API_URL = 'https://api.coingecko.com/api/v3/coins/markets';
-const NUMBER_OF_TOKENS_TO_FETCH = 25; // <-- Configurable: Change this value as needed
+const NUMBER_OF_TOKENS_TO_FETCH = 15; // <-- Configurable: Change this value as needed
 
 /**
  * Fetches the top cryptocurrency IDs from CoinGecko, ordered by market capitalization,

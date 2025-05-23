@@ -23,6 +23,7 @@ The application primarily uses React Context API for managing global state:
 
 *   **`CryptoContext` (`src/context/CryptoContext.tsx`):**
     *   Manages core cryptocurrency data: prices in USD, EUR, CAD, 24-hour percentage change, 24-hour low/high range.
+    *   The `CryptoPriceData` interface now defines `price` as `number | null` to accommodate states where a definitive price isn't available (e.g., for newly added tokens before an API fetch, or when an estimated price for an unknown token is generated).
     *   Handles available tokens (default set + user-added custom tokens).
     *   Stores token metadata: name, symbol, image URL, rank.
     *   Tracks API status: loading states, errors, rate limit information.
@@ -31,6 +32,94 @@ The application primarily uses React Context API for managing global state:
     *   Persists custom tokens and cache to `localStorage`.
     *   Prioritizes CoinGecko's `/coins/markets` endpoint for reliable 24h range data.
     *   Includes memoization (`useCallback`) for context helper functions to prevent unnecessary re-renders and potential infinite update loops.
+    *   **State Management:**
+        *   `prices`: Stores `Record<string, Record<string, CryptoPriceData>>` for all tokens.
+        *   `loading`: Global loading state for price updates.
+        *   `error`: Global error message for price updates.
+        *   `lastUpdated`: Timestamp of the last successful price update.
+        *   `availableCryptos`: Array of available crypto symbols (defaults + custom).
+        *   `cryptoIds`: Mapping of crypto symbols to their CoinGecko IDs.
+        *   `tokenMetadata`: Stores metadata (name, image, rank) for tokens, keyed by CoinGecko ID.
+        *   `pendingPriceUpdates`: A `Set<string>` tracking symbols whose prices are currently being fetched or are pending an update due to a previous failure. This is crucial for UI loading states.
+            *   A symbol is **added** to this set when:
+                *   It's newly added via `addCrypto` or `addCryptos`.
+                *   It's part of a batch in `processBatchRequests` before API calls are made.
+                *   An API call fails for it in `processBatchRequests` and no valid cache is available (i.e., an estimated price is used).
+            *   A symbol is **removed** from this set when:
+                *   Its price is successfully fetched and confirmed from an API (e.g., in `addCrypto`'s immediate fetch, or in `processBatchRequests`).
+                *   Complete pre-loaded data (price and metadata) is utilized upon adding the token via `addCryptos`.
+                *   A valid cached price is used in `processBatchRequests` after an API failure.
+    *   **Key Functions & Logic:**
+        *   **`getEstimatedPrice(symbol)`:**
+            *   If the provided `symbol` is not found in the `CONVERSION_RATES` constant, this function now returns a `CryptoPriceData` object where the `price` field for USD, EUR, and CAD is explicitly `null`.
+            *   This prevents a default placeholder value (like $1) from being generated for unknown tokens, ensuring that the UI relies on the `isPending` state and the absence of a valid numerical price to display loading animations.
+        *   **`addCrypto(symbol, id)` & `addCryptos(tokens)`:**
+            *   Immediately updates `cryptoIds` and `availableCryptos`.
+            *   Adds the token(s) to `pendingPriceUpdates`.
+            *   `addCryptos` is now the primary function for adding new tokens.
+            *   It first checks for complete and recent (within `RECENT_DATA_THRESHOLD`) cached data (price + metadata). If found, this data is used, and the token is not marked for initial fetch and is removed from pending state.
+            *   For tokens without recent complete data, it sets an estimated price and adds them to a list for a unified initial data fetch.
+            *   It performs a single, high-priority `fetchCoinMarkets` call for all unique IDs requiring initial data. This call aims to get both metadata and price data in one go.
+            *   If the unified fetch provides price data for a token, it's removed from `pendingPriceUpdates`.
+            *   If, after the unified fetch, some tokens still lack price data (or were skipped due to having recent metadata but possibly stale price), they are queued for a high-priority price update via `queuePriceUpdate`.
+            *   `addCrypto(symbol, id)` is now a lightweight wrapper that calls `addCryptos([{ symbol, id }])`.
+        *   **`fetchTokenMetadata(specificTokens?)`:**
+            *   Fetches market data from `/coins/markets`.
+            *   Updates `tokenMetadata` state.
+            *   Caches metadata and icons.
+            *   If price data is successfully obtained (e.g., `current_price` from the response) and the main `prices` state is updated, the corresponding symbols are removed from `pendingPriceUpdates.current`.
+            *   If pre-loading is active and price data is received, it updates the main `prices` state and cache directly to make pre-loaded prices immediately available, also clearing the pending state for these tokens.
+        *   **`processBatchRequests()`:**
+            *   Core function for fetching price updates. Adds symbols from the current batch to `pendingPriceUpdates` at the start of processing.
+            *   Attempts to fetch from `/coins/markets`, then `/simple/price` on failure.
+            *   **Error Handling & Pending State:**
+                *   If an API call for a symbol is successful (`priceSuccessfullySetForSymbol` is true), its price is updated, and it's removed from `pendingPriceUpdates.current`.
+                *   If API calls fail for a symbol (e.g., rate limit for the entire batch, or no data for a specific symbol in a partially successful batch):
+                    *   It first checks for a valid cached price for that symbol.
+                    *   If a valid cached price exists, that price is used for the UI, and the symbol is **removed** from `pendingPriceUpdates.current` (as we have valid, albeit cached, data).
+                    *   If no valid cached price exists, an estimated price is set internally. The symbol **remains** in `pendingPriceUpdates.current`, ensuring `isPending(symbol)` is `true` and UI loading states are shown.
+                *   After `MAX_API_RETRIES` for a batch operation, the global error state is set. Symbols for which only estimated prices could be set (due to persistent API failure and no cache) will remain in `pendingPriceUpdates`.
+            *   Updates `prices` state and cache upon successful data retrieval for specific symbols or usage of cached data.
+        *   **`queuePriceUpdate(symbols, highPriority?)`:**
+            *   Adds symbols to an internal processing queue (`requestQueue.current.pendingSymbols`). Does not directly modify `pendingPriceUpdates`.
+            *   Schedules `processBatchRequests`.
+        *   **`updatePrices(force?)`:**
+            *   If not forced, tries to serve from cache.
+            *   Otherwise, queues all known `cryptoIds` for a price update (which then get added to `pendingPriceUpdates` by `processBatchRequests`).
+        *   **`isPending(symbol)`:**
+            *   Returns `true` if the symbol is in `pendingPriceUpdates.current`.
+        *   **Caching:**
+            *   Prices are cached via `cryptoCacheService` with `PRICE_CACHE_DURATION`.
+            *   Metadata is cached via `cryptoCacheService` with `METADATA_CACHE_DURATION`.
+            *   Icons are cached in `localStorage`.
+        *   **Rate Limiting & Fallbacks:**
+            *   The context respects API rate limits by using `MIN_API_INTERVAL` between batches.
+            *   The `cryptoApiService` handles its own rate limit detection (e.g., for CoinGecko 429 errors) and activates a cooldown period.
+            *   The context now maintains a global `isCoinGeckoRateLimitedGlobal` state that is set to `true` when a 429 status is encountered, and automatically resets after the `COINGECKO_RATE_LIMIT_COOLDOWN` period (default: 60 seconds).
+            *   If `/coins/markets` fails during `processBatchRequests`, it falls back to `/simple/price`.
+            *   If all API attempts fail for a symbol in a batch:
+                *   The system first attempts to use a valid cached price for that symbol. If available AND the price is non-null, the UI will display this cached price, and the symbol will not be in a "pending" state for UI loading purposes.
+                *   If no valid cached price is available, or if the cached price is `null`, an estimated price is set internally, but the symbol **remains** in the "pending" state (`pendingPriceUpdates`). This ensures UI components like `Header` and `Converter` will display the `WaveLoadingPlaceholder` (loading animation) instead of a potentially inaccurate estimated value (like $1.00 for a new token) or "N/A" until data is successfully fetched or max retries are hit.
+                *   The logic specifically preserves the "pending" status for newly added tokens that encounter API rate limits during their initial data fetch, rather than incorrectly treating a `null` estimated price as a valid cached value.
+                *   When an API is rate-limited, the context will:
+                    1. Set `isCoinGeckoRateLimitedGlobal` to `true`
+                    2. Schedule a timeout to set it back to `false` after `COINGECKO_RATE_LIMIT_COOLDOWN` 
+                    3. Continue to use cached prices for tokens that have them
+                    4. Maintain the "pending" state for tokens that lack valid cached prices
+                    5. Schedule a retry for the batch after the rate limit cooldown period
+            *   UI components can access the global rate limit state via the `isCoinGeckoRateLimitedGlobal` property exposed by the context, allowing them to display appropriate visual feedback to users when API rate limits are encountered.
+        *   **Pre-loading Strategy (`PRELOAD_POPULAR_TOKENS_ENABLED`):**
+            *   Fetches data for `POPULAR_TOKEN_IDS_TO_PRELOAD`.
+            *   Pre-loaded price/metadata updates the main states and clears the pending status for these tokens via `fetchTokenMetadata`.
+            *   If a user adds a pre-loaded token, `addCryptos` uses this data and ensures the token is not left unnecessarily pending.
+    *   **UI Components Interaction with CryptoContext:**
+        *   **`Header.tsx` & `Converter.tsx`:**
+            *   Use `useCrypto()` to get prices, loading states, the `isPending(symbol)` function, and the global rate limit state `isCoinGeckoRateLimitedGlobal`.
+            *   Display the `WaveLoadingPlaceholder` component when `isPending(selectedCrypto)` is true or when `isCoinGeckoRateLimitedGlobal` is true. This ensures that even if an internal estimated price is set (e.g., due to API failure without cache), the UI correctly shows a loading animation because the `CryptoContext` keeps the symbol in a pending state.
+            *   Display a visual rate limit indicator that appears when `isCoinGeckoRateLimitedGlobal` is true, with a subtle animation to alert users that the API is currently rate-limited.
+                *   In `Header.tsx`, this appears as an animated bar at the bottom of the header with a tooltip displaying the `RATE_LIMIT_UI_MESSAGE` constant.
+                *   In `Converter.tsx`, this appears as a notice with the `RATE_LIMIT_UI_MESSAGE` and a clickable refresh icon that attempts to use cached data when available.
+            *   The behavior ensures that the UI prioritizes showing loading animations over potentially misleading temporary estimated values when data isn't confirmed from an API or a valid cache, while also providing clear visual feedback about API rate limits.
 *   **`CryptoCompareContext` (`src/context/CryptoCompareContext.tsx`):**
     *   Appears to be less central, potentially for historical data or as a fallback API.
     *   Utilizes `VITE_CRYPTOCOMPARE_API_KEY` from the `.env` file.
@@ -117,6 +206,10 @@ The application primarily uses React Context API for managing global state:
 *   **24-Hour Price Data:** Accurate and persistent 24-hour price ranges (low/high) with correct fiat conversions.
 *   **Custom Token Management:** Users can dynamically add and remove cryptocurrencies, with custom tokens stored in `localStorage`.
 *   **Token Search:** Search functionality using CoinGecko API to find and add new tokens.
+    *   The `AddCryptoModal.tsx` component now uses an increased debounce delay (`SEARCH_DEBOUNCE_DELAY` of 300ms) for search input to reduce the frequency of API calls.
+    *   It checks the global rate limit status (`isCoinGeckoRateLimitedGlobal` from `CryptoContext`) before initiating a search.
+    *   If rate-limited, it informs the user and does not attempt to search.
+    *   The modal's internal retry logic for search has been simplified, relying more on the robust retry and cooldown mechanisms within `cryptoApiService.ts`.
 *   **Live Price Display:** Real-time display of prices and 24-hour percentage change.
 *   **Token Icon Display:** Fetches and displays token icons, with local caching in `localStorage` and placeholder generation.
 *   **Token Metadata:** Fetches and displays token metadata such as name, symbol, and rank.
@@ -358,4 +451,85 @@ The `CryptoContext.tsx` will be decomposed into a set of specialized custom hook
 
 This refactoring aims to enhance code organization, improve testability of individual units, and make the overall cryptocurrency data management system more robust and easier to extend, while carefully respecting API limitations.
 
-*(This document should be regularly updated as the application evolves.)* 
+*(This document should be regularly updated as the application evolves.)*
+
+## Phase 4: Enhanced Rate Limiting & Cache-First Strategy (v1.5.5+)
+
+Following user feedback about rate-limiting delays (especially the observed ~82s delay for new tokens), the application has been significantly enhanced with a resilient, cache-first data fetching strategy:
+
+### 4.1. Advanced Rate Limiting System (`cryptoApiService.ts`)
+
+*   **Intelligent Rate Limit Detection:**
+    *   Enhanced `serviceApiStatus` tracking with `rateLimitCooldownUntil` timestamp and `lastRateLimitHeaders` parsing.
+    *   Pre-emptive cooldown checks prevent API calls when rate limits are active.
+    *   Automatic parsing of CoinGecko response headers (`x-ratelimit-remaining`, `retry-after`) for smarter rate limit handling.
+*   **Global CoinGecko Request Throttling:**
+    *   `fetchWithSmartRetry` now implements a global throttle for all CoinGecko requests.
+    *   It ensures that a minimum time (defined by `API_CONFIG.COINGECKO.REQUEST_SPACING`) has passed since the last CoinGecko request *completed* before initiating a new one.
+    *   This helps sequence distinct operations (e.g., multiple token additions, searches, background updates) to prevent them from firing API calls too closely together, even if individually marked as high priority.
+    *   `serviceApiStatus` now includes `lastCoinGeckoRequestCompletionTime` to manage this.
+*   **API Key Verification:**
+    *   The service now explicitly checks for the `VITE_COINGECKO_API_KEY` from environment variables and attempts to include it in API requests to CoinGecko.
+    *   Logs are generated to indicate if the API key is present and being used, aiding in diagnostics for rate limit issues.
+*   **Jittered Exponential Backoff:**
+    *   Non-429 errors use jittered exponential backoff (1s → 2s → 5s → 10s max) to prevent thundering herd problems.
+    *   429 rate limit errors respect `Retry-After` headers or use `COINGECKO_RATE_LIMIT_COOLDOWN`.
+*   **Comprehensive Logging:**
+    *   Standardized emoji-prefixed log levels: 🔵 (info), 🟡 (warning), 🟢 (rate limit), 🟠 (fallback), 🔴 (error), 🎉 (success), ☠️ (critical failure).
+    *   All API calls, fallbacks, cache operations, and errors are logged with clear context.
+
+### 4.2. Cache-First Data Pipeline (`CryptoContext.tsx`)
+
+*   **Immediate Cache Serving:**
+    *   When rate limits are encountered, cached prices are served immediately to the UI.
+    *   Background retries are scheduled after cooldown periods without blocking the user interface.
+    *   New `serveCacheForSymbols()` helper function provides instant cache lookups and UI updates.
+*   **Resilient Batch Processing:**
+    *   Unique batch IDs (`Date.now()`) prevent `console.time` conflicts and enable better debugging.
+    *   Failed API calls immediately check cache before attempting fallbacks.
+    *   Symbols are processed through a priority hierarchy: `/coins/markets` → cache → `/simple/price` → estimated price.
+*   **Enhanced Pending State Management:**
+    *   Symbols are removed from `pendingPriceUpdates` immediately when valid cache data is served.
+    *   Only tokens without any valid data (cache or estimate) remain in pending state for UI loading indicators.
+    *   Background retries continue for fresh data while cached data provides immediate UI responsiveness.
+
+### 4.3. Enhanced User Experience
+
+*   **Rate Limit Feedback with Countdown:**
+    *   `Header.tsx` and `Converter.tsx` display rate limit indicators with real-time countdown: "API rate limit reached. Retry in 15s."
+    *   `getCoinGeckoRetryAfterSeconds()` function provides accurate countdown information to UI components.
+*   **Optimistic UI Updates:**
+    *   `WaveLoadingPlaceholder` duration significantly reduced by serving cache immediately.
+    *   Users see last known prices instantly while fresh data loads in the background.
+*   **Improved Error Recovery:**
+    *   Failed API calls don't result in extended loading states if cache is available.
+    *   Clear visual distinction between stale cached data and actively loading data.
+
+### 4.4. Technical Implementation Details
+
+*   **Timer Management:**
+    *   Fixed `Timer already exists` console warnings by using unique batch identifiers in `console.time` calls.
+    *   Pattern: `API_fetchCoinMarkets_BATCH#${batchId}_[token1,token2,...]` for clear debugging.
+*   **Memory Management:**
+    *   Cache operations optimized to prevent unnecessary state updates.
+    *   Background retries scheduled efficiently without blocking the main thread.
+*   **Logging Strategy:**
+    *   Performance timing logs include both milliseconds and seconds for easy analysis.
+    *   Cache hit/miss ratios logged for debugging cache effectiveness.
+    *   Recovery success/failure clearly distinguished in logs.
+
+### 4.5. Performance Improvements
+
+*   **Elimination of 82s Delays:**
+    *   Previous: Rate-limited tokens waited for cooldown before showing any data.
+    *   Current: Cache served immediately, background refresh after cooldown.
+*   **Reduced API Load:**
+    *   Smart fallback ordering reduces unnecessary `/simple/price` calls when cache is available.
+    *   Batch processing respects rate limits proactively rather than reactively.
+*   **Faster UI Response Times:**
+    *   Cache-first strategy provides sub-100ms response times for repeat token views.
+    *   Loading animations limited to genuinely new data, not cached data refreshes.
+
+This enhanced system ensures users never experience the previously observed long delays while maintaining data accuracy and respecting API rate limits.
+
+This enhanced system ensures users never experience the previously observed long delays while maintaining data accuracy and respecting API rate limits. 

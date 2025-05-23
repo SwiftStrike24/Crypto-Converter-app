@@ -11,6 +11,7 @@ import UpdateDialog from './UpdateDialog';
 import { checkForUpdates } from '../services/updateService';
 import RangeBar from './RangeBar';
 import WaveLoadingPlaceholder from './WaveLoadingPlaceholder';
+import { RATE_LIMIT_UI_MESSAGE } from '../constants/cryptoConstants';
 
 const HeaderContainer = styled.div`
   display: flex;
@@ -297,20 +298,6 @@ const PriceChange = styled.span<{ $isPositive: boolean | null }>`
   }
 `;
 
-const LoadingDot = styled.div`
-  width: 8px;
-  height: 8px;
-  background-color: #8b5cf6;
-  border-radius: 50%;
-  animation: pulse 1.5s infinite;
-
-  @keyframes pulse {
-    0% { opacity: 0.3; }
-    50% { opacity: 1; }
-    100% { opacity: 0.3; }
-  }
-`;
-
 const RetryButton = styled.button`
   background: none;
   border: none;
@@ -586,6 +573,45 @@ const UpdateButtonSpinner = styled.div`
   }
 `;
 
+// Add rate limit indicator styled component
+const RateLimitIndicator = styled.div`
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(255, 59, 48, 0.7) 0%, rgba(255, 149, 0, 0.7) 100%);
+  box-shadow: 0 0 8px rgba(255, 59, 48, 0.5);
+  animation: pulse 2s infinite ease-in-out;
+  z-index: 999;
+  
+  &::after {
+    content: attr(data-message);
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(25, 25, 35, 0.9);
+    color: #ff453a;
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  
+  &:hover::after {
+    opacity: 1;
+  }
+  
+  @keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+  }
+`;
+
 interface HeaderProps {
   selectedCrypto: string;
   selectedFiat: string;
@@ -616,7 +642,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const [updateTooltipMessage, setUpdateTooltipMessage] = useState('');
   const [updateTooltipType, setUpdateTooltipType] = useState<'success' | 'error'>('success');
   const updateTooltipTimeoutRef = useRef<number | null>(null);
-  const { prices, loading, error, lastUpdated, updatePrices, isPending } = useCrypto();
+  const { prices, loading, error, lastUpdated, updatePrices, isPending, isCoinGeckoRateLimitedGlobal, getCoinGeckoRetryAfterSeconds } = useCrypto();
   const headerWaveTimerActive = useRef<Record<string, boolean>>({}); // Changed to a map
   const headerWaveStartTimeRef = useRef<Record<string, number | null>>({}); // Changed to a map
   const lastHeaderLogRef = useRef<Record<string, { price: number | undefined, change: number | null | undefined, formatted: string }>>({}); // Ref for last logged header data
@@ -955,6 +981,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
         headerWaveStartTimeRef.current[waveTimerLabel] = performance.now(); // Capture start time
         headerWaveTimerActive.current[waveTimerLabel] = true;
       }
+      console.log(`[HEADER_WAVE] Showing wave for: ${selectedCrypto}/${selectedFiat}. Reason: Initial loading, no cached price. isPending: ${isPending(selectedCrypto)}, loading: ${loading}, prices[${selectedCrypto}] present: ${!!prices[selectedCrypto]}`); // Logging
       return <WaveLoadingPlaceholder width="80px" height="18px" />;
     }
 
@@ -988,6 +1015,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
           headerWaveStartTimeRef.current[waveTimerLabel] = performance.now(); // Capture start time
           headerWaveTimerActive.current[waveTimerLabel] = true;
         }
+        console.log(`[HEADER_WAVE] Showing wave for: ${selectedCrypto}/${selectedFiat}. Reason: Data isPending, no current price. isPending: ${isPending(selectedCrypto)}, currentPriceData: ${JSON.stringify(currentPriceData)}`); // Logging
         return <WaveLoadingPlaceholder width="80px" height="18px" />;
     }
     
@@ -1011,6 +1039,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
             const fiatPriceData = priceStorageData?.[selectedFiat.toLowerCase()];
             if (fiatPriceData?.price) {
                 console.log('[Header] getPrice for', selectedCrypto, '/', selectedFiat, '- Using localStorage cache as fallback. Price:', fiatPriceData.price); // Log
+                console.log(`[HEADER_WAVE] Showing wave for: ${selectedCrypto}/${selectedFiat}. Reason: Fallback to localStorage, but rendering placeholder for change. isPending: ${isPending(selectedCrypto)}`); // Logging (technically not wave for price itself, but for change part)
                 return (
                     <>
                       {formatPrice(fiatPriceData.price, selectedFiat)}
@@ -1024,6 +1053,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
       
       // If still no data, return N/A
       console.log('[Header] getPrice for', selectedCrypto, '/', selectedFiat, '- No price data available after all checks. Returning N/A.'); // Log
+      console.log(`[HEADER_WAVE] Not showing wave, but no price data for: ${selectedCrypto}/${selectedFiat}. Reason: All checks failed. isPending: ${isPending(selectedCrypto)}`); // Logging
       return 'N/A';
     }
 
@@ -1037,6 +1067,23 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
       headerWaveStartTimeRef.current[waveTimerLabel] = null; // Clear specific timer
       headerWaveTimerActive.current[waveTimerLabel] = false; // Mark specific timer as inactive
     }
+
+    // Explicitly handle if currentPriceData.price is null to satisfy TypeScript and ensure safety
+    if (currentPriceData.price === null) {
+        console.log(`[Header] Price for ${selectedCrypto}/${selectedFiat} is null before formatting. Returning 'N/A'.`);
+        // Ensure to stop any wave timer if it was active for this path and not already stopped
+        if (headerWaveTimerActive.current[waveTimerLabel]) {
+            console.timeEnd(waveTimerLabel);
+            if (headerWaveStartTimeRef.current[waveTimerLabel]) {
+                const duration = performance.now() - (headerWaveStartTimeRef.current[waveTimerLabel] ?? performance.now());
+                console.log(`⏱️ ${waveTimerLabel} (in seconds - ended, price became null): ${(duration / 1000).toFixed(3)} s`);
+            }
+            headerWaveStartTimeRef.current[waveTimerLabel] = null;
+            headerWaveTimerActive.current[waveTimerLabel] = false;
+        }
+        return 'N/A';
+    }
+    // At this point, currentPriceData.price is guaranteed to be a 'number'.
     const formattedPrice = formatPrice(currentPriceData.price, selectedFiat);
     const changePercent = currentPriceData.change24h;
     
@@ -1088,6 +1135,15 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
 
   return (
     <HeaderContainer>
+      {isCoinGeckoRateLimitedGlobal && (
+        <RateLimitIndicator 
+          data-message={
+            getCoinGeckoRetryAfterSeconds() > 0 
+              ? `${RATE_LIMIT_UI_MESSAGE} Retry in ${getCoinGeckoRetryAfterSeconds()}s.`
+              : RATE_LIMIT_UI_MESSAGE
+          } 
+        />
+      )}
       <IconsContainer>
         <HoverButtonWrapper
           className="button-wrapper-class"
