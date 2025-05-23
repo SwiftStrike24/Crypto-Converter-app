@@ -1101,31 +1101,6 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, [cryptoIds, queuePriceUpdate, fetchTokenMetadata, getCachedPrices, setCachePrices, getEstimatedPrice, exchangeRates]);
 
-  // Enhanced function to fetch metadata in controlled batches with delays
-  const fetchMetadataInBatches = async (tokenIds: string[], priority: RequestPriority = RequestPriority.LOW) => {
-    const BATCH_FETCH_SIZE = 10; // Fetch metadata for 10 tokens at a time
-    const DELAY_BETWEEN_BATCHES = API_CONFIG.COINGECKO.REQUEST_SPACING * 3; // Use 3x spacing between batches
-
-    for (let i = 0; i < tokenIds.length; i += BATCH_FETCH_SIZE) {
-      const batch = tokenIds.slice(i, i + BATCH_FETCH_SIZE);
-      if (batch.length > 0) {
-        try {
-          await fetchTokenMetadata(batch, priority); // Pass priority
-          // Dispatch update after each successful batch
-          window.dispatchEvent(new CustomEvent('cryptoMetadataUpdated'));
-        } catch (error) {
-          console.error(`Error fetching metadata batch: ${batch.join(',')}`, error);
-          // Decide if we should retry or skip this batch - for now, we continue
-        }
-
-        // Add delay before fetching the next batch, unless it's the last one
-        if (i + BATCH_FETCH_SIZE < tokenIds.length) {
-          await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
-        }
-      }
-    }
-  };
-
   // Enhanced addCryptos with instantaneous updates and no loading indicators
   const addCryptos = useCallback(async (tokens: { symbol: string; id: string }[]) => {
     if (!tokens.length) return;

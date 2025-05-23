@@ -311,8 +311,6 @@ const POPULAR_TOKENS: CryptoResult[] = [
 
 // Optimized search constants for maximum throughput
 const SEARCH_DEBOUNCE_DELAY = 300; // Increased from 150ms for less aggressive searching
-const MIN_SEARCH_INTERVAL_MODAL = 1000; // Renamed to avoid conflict, Increased from 800ms, though primary reliance is on service
-const MAX_RETRIES_MODAL = 1; // Renamed, Reduced, service layer should handle most retries
 
 const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
   const [searchTerm, setSearchTerm] = useState('');
