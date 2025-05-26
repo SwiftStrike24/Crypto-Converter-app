@@ -532,4 +532,76 @@ Following user feedback about rate-limiting delays (especially the observed ~82s
 
 This enhanced system ensures users never experience the previously observed long delays while maintaining data accuracy and respecting API rate limits.
 
-This enhanced system ensures users never experience the previously observed long delays while maintaining data accuracy and respecting API rate limits. 
+## Phase 5: Intelligent Stablecoin Detection & Auto-Switching (v1.6.0+)
+
+### 5.1. Smart Stablecoin Detection System
+
+*   **Multi-Layer Detection Strategy:**
+    *   Primary: Uses CoinGecko's detailed coin metadata (`/coins/{id}` endpoint) to check `categories` array for stablecoin classifications.
+    *   Fallback: Pattern-based symbol matching for offline detection when API is unavailable or rate-limited.
+    *   Comprehensive category matching includes: "stablecoins", "usd stablecoin", "eur stablecoin", "algorithmic stablecoins", etc.
+*   **Robust Caching Architecture:**
+    *   Dedicated `CACHE_STORAGE_KEY_COIN_DETAILS` cache with 24-hour duration for detailed coin metadata.
+    *   In-memory cache (`coinDetailsCache`) for instant access during user sessions.
+    *   Automatic cache population and management through `getCoinDetails()` function.
+*   **Intelligent Target Currency Selection:**
+    *   EUR-pegged stablecoins (EURS, EURT) → Auto-switch to EUR
+    *   CAD-pegged stablecoins (CADC) → Auto-switch to CAD  
+    *   USD-pegged stablecoins (USDC, USDT, DAI, etc.) → Auto-switch to CAD (per requirement)
+    *   Unknown/generic stablecoins → Default to CAD
+
+### 5.2. Enhanced API Service (`cryptoApiService.ts`)
+
+*   **New `fetchCoinDetails()` Function:**
+    *   Fetches comprehensive coin metadata including categories, descriptions, and platform information.
+    *   Optimized parameters to exclude unnecessary data (tickers, market_data, community_data) for faster responses.
+    *   High-priority request classification for immediate stablecoin detection.
+    *   Proper error handling and logging with performance timing.
+
+### 5.3. User Experience Enhancements
+
+*   **Seamless Auto-Switching:**
+    *   Automatic fiat currency switching when stablecoins are selected (USDC → CAD, EURS → EUR, etc.).
+    *   Respects user manual fiat selection - auto-switching disabled after user manually changes fiat.
+    *   Reset manual flag when crypto selection changes to re-enable auto-switching for new tokens.
+*   **Intelligent UX Flow:**
+    *   No visual flicker or jarring transitions during auto-switching.
+    *   Maintains conversion amounts and input focus during currency switches.
+    *   Console logging for debugging and transparency of stablecoin detection decisions.
+*   **Fallback Resilience:**
+    *   Symbol-based detection when API metadata is unavailable.
+    *   Graceful degradation during rate limits or network issues.
+    *   No impact on core conversion functionality if stablecoin detection fails.
+
+### 5.4. Technical Implementation
+
+*   **Modular Utility Functions (`src/utils/stablecoinDetection.ts`):**
+    *   `isStablecoin()`: Comprehensive stablecoin detection using metadata and symbol patterns.
+    *   `isStablecoinFromCategories()`: Category-based detection from CoinGecko metadata.
+    *   `isStablecoinFromSymbol()`: Pattern-based fallback detection.
+    *   `getStablecoinTargetFiat()`: Intelligent target currency selection based on stablecoin type.
+*   **Enhanced Context Integration:**
+    *   New `getCoinDetails()` method in `CryptoContext` for detailed metadata fetching.
+    *   `coinDetailsCache` state for efficient metadata management.
+    *   Proper TypeScript interfaces (`CoinDetailedMetadata`) for type safety.
+*   **Smart State Management:**
+    *   `userManuallySetFiat` flag to track user intent and prevent unwanted auto-switching.
+    *   Automatic flag reset on crypto selection changes to enable auto-switching for new tokens.
+    *   Integration with existing rate limiting and caching systems.
+
+### 5.5. Performance Optimizations
+
+*   **Efficient Caching Strategy:**
+    *   24-hour cache duration for coin details reduces API calls for repeated stablecoin checks.
+    *   In-memory cache for instant access during active sessions.
+    *   Automatic cache warming for popular tokens during app initialization.
+*   **Minimal API Impact:**
+    *   High-priority requests for immediate user-facing stablecoin detection.
+    *   Fallback to symbol patterns when API is rate-limited.
+    *   No blocking of core conversion functionality during metadata fetching.
+*   **Smart Request Management:**
+    *   Integration with existing rate limiting and request prioritization systems.
+    *   Proper error handling prevents stablecoin detection failures from affecting app stability.
+    *   Comprehensive logging for debugging and performance monitoring.
+
+This intelligent stablecoin detection system provides a seamless user experience while maintaining robust performance and respecting API limitations. 

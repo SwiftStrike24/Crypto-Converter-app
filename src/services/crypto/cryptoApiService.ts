@@ -404,6 +404,46 @@ export async function searchCoinGecko(query: string, priority: RequestPriority =
   }
 }
 
+export async function fetchCoinDetails(coinId: string, priority: RequestPriority = RequestPriority.NORMAL) {
+  const url = `${API_CONFIG.COINGECKO.BASE_URL}/coins/${coinId}`;
+  
+  console.time(`API_fetchCoinDetails_${coinId}`);
+  console.log(`🔵 [API] Fetching coin details for: ${coinId} (Priority: ${priority})`);
+  
+  try {
+    const response = await fetchWithSmartRetry(url, {
+      params: {
+        localization: false,
+        tickers: false,
+        market_data: false,
+        community_data: false,
+        developer_data: false,
+        sparkline: false
+      }
+    }, priority);
+    
+    console.timeEnd(`API_fetchCoinDetails_${coinId}`);
+    console.log(`🎉 [API] Successfully fetched coin details for: ${coinId}`);
+    
+    return {
+      id: response.data.id,
+      symbol: response.data.symbol,
+      name: response.data.name,
+      categories: response.data.categories || [],
+      image: response.data.image?.large || response.data.image?.small || response.data.image?.thumb,
+      description: response.data.description?.en,
+      links: response.data.links,
+      market_cap_rank: response.data.market_cap_rank,
+      coingecko_rank: response.data.coingecko_rank,
+      asset_platform_id: response.data.asset_platform_id,
+    };
+  } catch (error: any) {
+    console.timeEnd(`API_fetchCoinDetails_${coinId}`);
+    console.error(`🔴 [API] Error fetching coin details for ${coinId}:`, error?.message || error);
+    throw error;
+  }
+}
+
 // NEW: Export performance metrics for monitoring
 export function getApiPerformanceMetrics() {
   const successRate = serviceApiStatus.totalRequests > 0 

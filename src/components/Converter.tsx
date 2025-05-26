@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { ipcRenderer } from 'electron';
 import WaveLoadingPlaceholder from './WaveLoadingPlaceholder';
 import { FaMagnifyingGlassChart } from 'react-icons/fa6';
+import { isStablecoin, getStablecoinTargetFiat } from '../utils/stablecoinDetection';
 
 
 // Constants
@@ -607,6 +608,7 @@ const Converter: React.FC<ConverterProps> = ({
   const [cryptoDropdownStyle, setCryptoDropdownStyle] = useState<CSSProperties>({});
   const [fiatDropdownStyle, setFiatDropdownStyle] = useState<CSSProperties>({});
   const [showWaveInResultBox, setShowWaveInResultBox] = useState(false);
+  const [userManuallySetFiat, setUserManuallySetFiat] = useState(false);
   
   // Refs for handling outside clicks and scrolling
   const cryptoDropdownRef = useRef<HTMLDivElement>(null);
@@ -637,7 +639,8 @@ const Converter: React.FC<ConverterProps> = ({
     checkAndUpdateMissingIcons,
     setTokenMetadata,
     isCoinGeckoRateLimitedGlobal,
-    getCoinGeckoRetryAfterSeconds
+    getCoinGeckoRetryAfterSeconds,
+    getCoinDetails
   } = useCrypto();
   const navigate = useNavigate();
   
@@ -861,6 +864,55 @@ const Converter: React.FC<ConverterProps> = ({
       converterWaveStartTimeRef.current = Date.now();
     }
   }, [isCoinGeckoRateLimitedGlobal, selectedCrypto, selectedFiat, showWaveInResultBox]);
+
+  // Stablecoin detection and auto-switch to CAD
+  useEffect(() => {
+    const checkStablecoinAndSwitch = async () => {
+      // Only auto-switch if user hasn't manually set fiat
+      if (userManuallySetFiat) {
+        return;
+      }
+
+      const cryptoId = getCryptoId(selectedCrypto);
+      if (!cryptoId) {
+        return;
+      }
+
+      try {
+        // Get detailed metadata for stablecoin detection
+        const coinDetails = await getCoinDetails(cryptoId);
+        
+        // Check if it's a stablecoin
+        const isStablecoinToken = isStablecoin(coinDetails, selectedCrypto);
+        
+        if (isStablecoinToken) {
+          // Get the appropriate target fiat for this stablecoin
+          const targetFiat = getStablecoinTargetFiat(coinDetails, selectedCrypto);
+          
+          if (selectedFiat !== targetFiat) {
+            console.log(`🪙 [STABLECOIN_AUTO_SWITCH] Detected stablecoin ${selectedCrypto}, switching fiat from ${selectedFiat} to ${targetFiat}`);
+            setSelectedFiat(targetFiat);
+            onFiatChange(targetFiat);
+            
+            // Show a brief notification (optional - could add toast here)
+            console.log(`💱 Auto-switched to ${targetFiat} for stablecoin ${selectedCrypto}`);
+          }
+        }
+      } catch (error) {
+        console.error(`🔴 [STABLECOIN_CHECK] Error checking stablecoin status for ${selectedCrypto}:`, error);
+        
+        // Fallback: use symbol-based detection
+        const isStablecoinBySymbol = isStablecoin(null, selectedCrypto);
+        if (isStablecoinBySymbol && selectedFiat !== 'CAD' && !userManuallySetFiat) {
+          console.log(`🪙 [STABLECOIN_FALLBACK] Using symbol-based detection for ${selectedCrypto}, switching to CAD`);
+          setSelectedFiat('CAD');
+          onFiatChange('CAD');
+        }
+      }
+    };
+
+    checkStablecoinAndSwitch();
+  }, [selectedCrypto, getCryptoId, getCoinDetails, selectedFiat, userManuallySetFiat, onFiatChange]);
   
   const getRate = (crypto: string, fiat: string): number => {
     try {
@@ -1062,6 +1114,9 @@ const Converter: React.FC<ConverterProps> = ({
     setCryptoDropdownOpen(false);
     setCryptoSearchTerm('');
     
+    // Reset manual fiat flag when crypto changes to allow auto-switching
+    setUserManuallySetFiat(false);
+    
     // End timer for the OLD crypto if it was active
     if (showWaveInResultBox) {
       const oldWaveTimerLabel = `converter_wave_${oldCrypto}_${oldFiat}`;
@@ -1117,6 +1172,9 @@ const Converter: React.FC<ConverterProps> = ({
     setSelectedFiat(fiat);
     onFiatChange(fiat);
     setFiatDropdownOpen(false);
+    
+    // Mark that user manually set the fiat
+    setUserManuallySetFiat(true);
 
     // If a wave was active for the old fiat with the current crypto, end it.
     if (showWaveInResultBox && isPending(selectedCrypto)) {

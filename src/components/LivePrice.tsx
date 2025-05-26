@@ -98,8 +98,8 @@ export const LivePrice: React.FC<LivePriceProps> = ({ cryptoId, currency }) => {
   
   const currentPrice = prices[cryptoId]?.[currency.toLowerCase()];
   
-  const formattedPrice = currentPrice !== undefined 
-    ? formatPrice(currentPrice)
+  const formattedPrice = currentPrice?.price !== undefined && currentPrice.price !== null
+    ? formatPrice(currentPrice.price)
     : undefined;
 
   const currencySymbol = getCurrencySymbol(currency);

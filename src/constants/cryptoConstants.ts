@@ -85,3 +85,54 @@ export const COINGECKO_API_BASE_URL = 'https://api.coingecko.com/api/v3';
 // Note: STORAGE_KEY was renamed to STORAGE_KEY_CUSTOM_TOKENS for clarity.
 // Other constants were renamed for clarity and consistency (e.g., CACHE_DURATION to PRICE_CACHE_DURATION).
 // API_BASE is now COINGECKO_API_BASE_URL, but API_CONFIG.COINGECKO.BASE_URL is the primary reference.
+
+// Stablecoin detection configuration
+export const STABLECOIN_CATEGORIES = [
+  'stablecoins',
+  'usd stablecoin',
+  'eur stablecoin',
+  'stablecoin',
+  'algorithmic stablecoins',
+  'asset-backed stablecoins',
+  'centralized stablecoins',
+  'decentralized stablecoins',
+];
+
+// Fallback stablecoin symbol patterns for offline detection
+export const STABLECOIN_SYMBOL_PATTERNS = [
+  /^usd[ct]$/i,     // USDC, USDT
+  /^dai$/i,         // DAI
+  /^busd$/i,        // BUSD
+  /^frax$/i,        // FRAX
+  /^tusd$/i,        // TUSD
+  /^pax$/i,         // PAX
+  /^usdp$/i,        // USDP
+  /^ust$/i,         // UST
+  /^mim$/i,         // MIM
+  /^fei$/i,         // FEI
+  /^lusd$/i,        // LUSD
+  /^gusd$/i,        // GUSD
+  /^usdn$/i,        // USDN
+  /^usdd$/i,        // USDD
+  /^susd$/i,        // sUSD
+  /^dusd$/i,        // DUSD
+  /^vusd$/i,        // VUSD
+  /^husd$/i,        // HUSD
+  /^cusd$/i,        // cUSD
+  /^ousd$/i,        // OUSD
+  /^usdx$/i,        // USDX
+  /^usdk$/i,        // USDK
+  /^usdr$/i,        // USDR
+  /^eurs$/i,        // EURS
+  /^eurt$/i,        // EURT
+  /^cadc$/i,        // CADC
+  /^xsgd$/i,        // XSGD
+  /^bidr$/i,        // BIDR
+  /^jpyc$/i,        // JPYC
+  /^gyen$/i,        // GYEN
+  /^zusd$/i,        // ZUSD
+];
+
+// Cache key for detailed coin metadata
+export const CACHE_STORAGE_KEY_COIN_DETAILS = 'cryptovertx-coin-details-cache';
+export const COIN_DETAILS_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours

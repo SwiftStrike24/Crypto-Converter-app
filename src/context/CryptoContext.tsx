@@ -13,7 +13,9 @@ import {
   PRELOAD_POPULAR_TOKENS_ENABLED,
   CACHE_STORAGE_KEY_PRICES,
   CACHE_STORAGE_KEY_METADATA,
+  CACHE_STORAGE_KEY_COIN_DETAILS,
   METADATA_CACHE_DURATION,
+  COIN_DETAILS_CACHE_DURATION,
   ICON_CACHE_STORAGE_PREFIX,
   MAX_METADATA_REQUESTS_PER_SESSION_LIMIT,
   POPULAR_TOKEN_IDS_TO_PRELOAD,
@@ -25,6 +27,7 @@ import {
 import {
   fetchCoinMarkets,
   fetchSimplePrice,
+  fetchCoinDetails,
   searchCoinGecko,
   isCoinGeckoApiRateLimited,
   getCoinGeckoRetryAfterSeconds,
@@ -35,6 +38,7 @@ import {
   getCachedData,
   setCachedData,
 } from '../services/crypto/cryptoCacheService'; // Corrected path
+import { CoinDetailedMetadata } from '../utils/stablecoinDetection';
 
 interface CryptoPriceData {
   price: number | null; // Allow price to be null for estimated/pending states
@@ -83,6 +87,8 @@ interface CryptoContextType {
   isCoinGeckoRateLimitedGlobal: boolean; // Add global rate limit state to the context
   getCoinGeckoRetryAfterSeconds: () => number; // Add retry countdown helper
   getApiMetrics: () => any; // Add API performance metrics
+  getCoinDetails: (coinId: string) => Promise<CoinDetailedMetadata | null>; // Add detailed coin metadata fetching
+  coinDetailsCache: Record<string, CoinDetailedMetadata>; // Add cache for detailed coin metadata
 }
 
 const CryptoContext = createContext<CryptoContextType | undefined>(undefined);
@@ -126,6 +132,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const pendingPriceUpdates = useRef<Set<string>>(new Set());
 
   const [tokenMetadata, setTokenMetadata] = useState<Record<string, any>>({});
+  const [coinDetailsCache, setCoinDetailsCache] = useState<Record<string, CoinDetailedMetadata>>({});
 
   const metadataRequestCount = useRef<number>(0);
 
@@ -182,6 +189,63 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return cryptoIds[symbol.toUpperCase()] || cryptoIds[symbol.toLowerCase()];
   }, [cryptoIds]);
 
+  const getCoinDetails = useCallback(async (coinId: string): Promise<CoinDetailedMetadata | null> => {
+    // Check cache first
+    if (coinDetailsCache[coinId]) {
+      console.log(`🎯 [COIN_DETAILS] Cache hit for ${coinId}`);
+      return coinDetailsCache[coinId];
+    }
+
+    // Check localStorage cache
+    try {
+      const cachedResult = getCachedData<Record<string, CoinDetailedMetadata>>(CACHE_STORAGE_KEY_COIN_DETAILS);
+      if (cachedResult?.data[coinId]) {
+        console.log(`💾 [COIN_DETAILS] localStorage cache hit for ${coinId}`);
+        const cachedDetails = cachedResult.data[coinId];
+        // Update in-memory cache
+        setCoinDetailsCache(prev => ({ ...prev, [coinId]: cachedDetails }));
+        return cachedDetails;
+      }
+    } catch (error) {
+      console.error('Error reading coin details cache:', error);
+    }
+
+    // Check if we're rate limited
+    if (isCoinGeckoApiRateLimited()) {
+      console.warn(`🟢 [COIN_DETAILS] Rate limited, cannot fetch details for ${coinId}`);
+      return null;
+    }
+
+    try {
+      console.log(`🔵 [COIN_DETAILS] Fetching detailed metadata for ${coinId}`);
+      const details = await fetchCoinDetails(coinId, RequestPriority.HIGH);
+      
+      if (details) {
+        // Update in-memory cache
+        setCoinDetailsCache(prev => ({ ...prev, [coinId]: details }));
+        
+        // Update localStorage cache
+        try {
+          const existingCache = getCachedData<Record<string, CoinDetailedMetadata>>(CACHE_STORAGE_KEY_COIN_DETAILS);
+          const updatedCache = {
+            ...(existingCache?.data || {}),
+            [coinId]: details
+          };
+          setCachedData(CACHE_STORAGE_KEY_COIN_DETAILS, updatedCache, COIN_DETAILS_CACHE_DURATION);
+        } catch (error) {
+          console.error('Error caching coin details:', error);
+        }
+        
+        console.log(`🎉 [COIN_DETAILS] Successfully fetched and cached details for ${coinId}`);
+        return details;
+      }
+    } catch (error) {
+      console.error(`🔴 [COIN_DETAILS] Error fetching details for ${coinId}:`, error);
+    }
+
+    return null;
+  }, [coinDetailsCache]);
+
   useEffect(() => {
     try {
       const cachedPriceResult = getCachedData<Record<string, Record<string, CryptoPriceData>>>(CACHE_STORAGE_KEY_PRICES);
@@ -196,6 +260,12 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setTokenMetadata(cachedMetadataResult.data);
       } else {
         fetchTokenMetadata(); // This should then use setCachedData internally
+      }
+
+      // Load coin details cache
+      const cachedCoinDetailsResult = getCachedData<Record<string, CoinDetailedMetadata>>(CACHE_STORAGE_KEY_COIN_DETAILS);
+      if (cachedCoinDetailsResult) {
+        setCoinDetailsCache(cachedCoinDetailsResult.data);
       }
     } catch (error) {
       console.error('Error loading initial cache from service:', error);
@@ -1463,6 +1533,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         isCoinGeckoRateLimitedGlobal,
         getCoinGeckoRetryAfterSeconds: getCoinGeckoRetryAfterSeconds, // Add retry countdown helper
         getApiMetrics: getApiPerformanceMetrics, // Add API performance metrics
+        getCoinDetails, // Add detailed coin metadata fetching
+        coinDetailsCache, // Add cache for detailed coin metadata
       }}
     >
       {children}
