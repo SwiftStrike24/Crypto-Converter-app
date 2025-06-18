@@ -381,6 +381,18 @@ function createWindow() {
         }).catch(err => {
           console.error('Error setting environment variables in development:', err);
         });
+
+        // Check for update flag
+        try {
+          const updateFlagPath = path.join(app.getPath('userData'), 'update.flag');
+          if (fs.existsSync(updateFlagPath)) {
+            mainWindow.webContents.send('update-successful');
+            fs.unlinkSync(updateFlagPath);
+            console.log('Update successful flag found and processed.');
+          }
+        } catch (error) {
+          console.error('Error handling update flag:', error);
+        }
       }
     });
   } else {
@@ -426,6 +438,18 @@ function createWindow() {
           // Still try to navigate even if setting env vars fails
           mainWindow?.webContents.send('navigate-to', '/');
         });
+
+        // Check for update flag
+        try {
+          const updateFlagPath = path.join(app.getPath('userData'), 'update.flag');
+          if (fs.existsSync(updateFlagPath)) {
+            mainWindow.webContents.send('update-successful');
+            fs.unlinkSync(updateFlagPath);
+            console.log('Update successful flag found and processed.');
+          }
+        } catch (error) {
+          console.error('Error handling update flag:', error);
+        }
       }
     });
   }

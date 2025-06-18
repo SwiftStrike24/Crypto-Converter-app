@@ -198,6 +198,7 @@ The application primarily uses React Context API for managing global state:
     *   `ChartModal.tsx`, `CryptoChart.tsx`: Components for displaying cryptocurrency price charts.
     *   `TokenStats.tsx`: Displays detailed market statistics for a selected token.
     *   `InstanceDialog.tsx`: Dialog shown when a second instance of the app is attempted.
+    *   `UpdateDialog.tsx`: Modal for handling the in-app update flow.
 
 ## 6. Key Features Implemented
 
@@ -220,7 +221,14 @@ The application primarily uses React Context API for managing global state:
 *   **Minimize to Tray:** Allows the application to be minimized to the system tray.
 *   **Global Hotkey:** Toggle window visibility using a global hotkey (configurable, defaults to `` ` `` or `~`).
 *   **Page Navigation:** Utilizes `react-router-dom` for navigating between different views/pages.
-*   **Automatic Update System:** Checks for updates from Cloudflare R2 and facilitates the update process.
+*   **Automatic Update System:**
+    *   **Source:** Checks for updates from a Cloudflare R2 bucket.
+    *   **Process:** Implements a user-friendly, graphical update flow.
+        *   **Check:** The user initiates a check from the app header. `updateService.ts` compares the local app version against the latest version available in the R2 bucket.
+        *   **Download:** If an update is found, the new installer (`.exe`) is downloaded silently to a temporary directory. The `download-update` IPC handler in `updateHandler.ts` manages this, sending progress updates to the UI and verifying file integrity upon completion.
+        *   **Install:** Once downloaded, the user is prompted to "Install & Restart". Upon confirmation, the `install-update` IPC handler in `updateHandler.ts` is triggered. It launches the graphical installer using `shell.openPath`, providing a standard installation wizard. The application then quits to allow the installer to proceed without file conflicts.
+        *   **Relaunch & Verify:** The user completes the installation via the setup wizard, which includes a "Launch application" option at the end. When the new version of the app starts, the `main.ts` process detects an `update.flag` file. It sends an `update-successful` IPC message to the renderer to trigger a success notification and then deletes the flag file.
+    *   **UI:** An `UpdateDialog.tsx` component manages the UI for the entire flow, showing the available update, download progress, and initiating the installation.
 *   **Window Position Memory:** Remembers and restores window position on startup.
 *   **Focus/Blur Handling:** Implemented for window management.
 *   **Build Optimization:** Optimized chunk splitting (vendor, UI, charts), fast production builds, efficient caching, minimal output size.
@@ -277,13 +285,13 @@ The application primarily uses React Context API for managing global state:
 *   **Window Position Memory:** Likely uses `electron-store` or a similar mechanism (or custom `localStorage` access from main) to save and restore window bounds.
 *   **Focus/Blur Handling:** Manages window appearance based on focus state.
 
-### 8.3. Auto-Updates (`src/electron/main.ts` and update-related modules)
+### 8.3. Auto-Updates (`src/electron/updateHandler.ts`, `src/services/updateService.ts`)
 
 *   Integrates with Cloudflare R2 for update distribution.
 *   Checks for new versions by comparing the current app version with the latest version available on R2.
 *   Uses semantic versioning for comparison.
-*   Handles download and installation of updates, potentially using `electron-updater` concepts or a custom implementation.
-*   Supports both direct updates and browser-based downloads if direct update fails.
+*   Handles the download of the update package and launches the graphical installer.
+*   Supports both direct in-app updates and fallback browser-based downloads.
 
 ## 9. Configuration
 
@@ -310,12 +318,11 @@ Referenced from `package.json` and `progress.md`.
 *   `@emotion/react`, `@emotion/styled`: Likely pulled in by MUI.
 *   `@mui/material`, `@mui/styles`: UI component library.
 *   `axios`: For making HTTP requests to APIs. Used by various parts of the application, including the `scripts/fetchTop100CoinGeckoIds.ts` script.
-*   `coingecko-api`: A client library for interacting with the CoinGecko API, used by the `scripts/fetchTop100CoinGeckoIds.ts` script to fetch top token data.
 *   `date-fns`: Utility for date formatting/manipulation.
 *   `dotenv`: For loading environment variables.
 *   `focus-trap-react`: For managing focus within modals/dialogs.
 *   `framer-motion`: For animations.
-*   `lightweight-charts`: (Presence noted in `package.json`, `progress.md` suggests `recharts` is primary - needs verification if both are used).
+*   `lightweight-charts`: (Presence noted in `package.json`, `progress.md` suggests `recharts` is primary - verification needed).
 *   `lodash`: Utility library.
 *   `react`, `react-dom`: Core React library.
 *   `react-error-boundary`: For graceful error handling in React components.
@@ -369,239 +376,26 @@ Referenced from `package.json` and `progress.md`.
 
 ## 12. Security Considerations
 
-*   **API Keys:** Loaded from environment variables and not hardcoded. Passed securely to the renderer process where needed (e.g., via preload scripts or specific IPC channels if direct exposure is avoided).
-*   **IPC Communication:** Ensure context isolation is enabled and `nodeIntegration` is false. Use `contextBridge` in preload scripts to expose specific functionalities to the renderer process securely. Validate and sanitize data passed via IPC.
-*   **Content Security Policy (CSP):** Implement a strict CSP to mitigate XSS attacks.
-*   **External Content:** Be cautious when loading external content or navigating to external URLs.
-*   **Dependencies:** Regularly audit dependencies for known vulnerabilities.
-*   **Build Environment:** Ensure API keys and sensitive credentials are properly set and secured in the build environment for production builds.
+*   **API Keys:** Loaded from environment variables and not hardcoded. Passed securely to the renderer process where needed.
+*   **IPC Communication:** Context isolation is enabled and `nodeIntegration` is false. `contextBridge` is used to expose functionalities securely.
+*   **Content Security Policy (CSP):** A strict CSP should be implemented.
+*   **External Content:** Open external links in the default browser using `shell.openExternal`.
+*   **Dependencies:** Regularly audit dependencies for vulnerabilities.
+*   **Build Environment:** Securely manage sensitive credentials in the build environment.
 
 ## 13. CORS Handling (Development)
 
-*   Vite development server (`vite.config.ts`) is configured with a proxy for API requests (e.g., `/api-proxy`) to bypass CORS issues during local development. This is not relevant for production builds where the Electron app makes direct requests.
+*   Vite development server (`vite.config.ts`) is configured with a proxy for API requests to bypass CORS issues during local development. This is not relevant for production builds.
 
-## 14. Refactoring Plan: `CryptoContext.tsx` (v1.5.4 -> Future)
+## 14. Refactoring History
 
-This section outlines the plan to refactor the `CryptoContext.tsx` file to improve modularity, maintainability, and scalability.
+This section documents major refactoring efforts to serve as a historical reference.
 
-### 14.1. Problem Statement
+### Phase 1: `CryptoContext.tsx` Refactor (v1.5.4)
+Decomposed the monolithic `CryptoContext` into specialized custom hooks (`useCryptoPricing`, `useTokenManagement`, etc.) and services (`cryptoApiService`, `cryptoCacheService`) to improve modularity and maintainability.
 
-The `CryptoContext.tsx` file has grown significantly (approx. 1550 lines) and manages a wide range of responsibilities including:
-*   Fetching and caching cryptocurrency prices.
-*   Managing available tokens and their IDs.
-*   Fetching and caching token metadata (name, symbol, image, rank).
-*   Managing token icons (fetching, caching, placeholders).
-*   Handling API interactions with CoinGecko, including rate limiting, batching, and retries.
-*   Interacting with `localStorage` for various caches and custom token persistence.
+### Phase 2: Enhanced Rate Limiting & Cache-First Strategy (v1.5.5)
+Implemented an advanced, cache-first data fetching strategy to eliminate UI delays caused by API rate limiting. This involved intelligent rate limit detection, global request throttling, and serving cached data immediately while fetching fresh data in the background.
 
-This large size and broad scope make the file difficult to navigate, maintain, and test effectively.
-
-### 14.2. Proposed New Architecture
-
-The `CryptoContext.tsx` will be decomposed into a set of specialized custom hooks and services. The `CryptoProvider` will then orchestrate these hooks, and the context value will be composed of the states and functions exposed by them.
-
-**New Directory Structure:**
-
-*   `src/hooks/crypto/`: Will house new custom React hooks.
-    *   `useCryptoPricing.ts`
-    *   `useTokenManagement.ts`
-    *   `useTokenMetadata.ts`
-    *   `useTokenIcons.ts`
-*   `src/services/crypto/`: For services not directly tied to React's hook lifecycle.
-    *   `cryptoApiService.ts`
-    *   `cryptoCacheService.ts`
-*   `src/constants/cryptoConstants.ts`: For all crypto-related constants.
-
-### 14.3. Responsibilities of New Modules
-
-1.  **`src/constants/cryptoConstants.ts`:**
-    *   **Responsibility:** Centralize all constants related to cryptocurrency data handling. This includes API endpoints, cache keys and durations, rate limiting parameters, default token lists (like `DEFAULT_CRYPTO_IDS`), and the list of popular tokens for preloading (`POPULAR_TOKEN_IDS_TO_PRELOAD`). The `POPULAR_TOKEN_IDS_TO_PRELOAD` list is populated and kept up-to-date by the `scripts/fetchTop100CoinGeckoIds.ts` script, which sources data from CoinGecko's top 100 market cap ranking.
-    *   **Benefit:** Improves organization, makes configuration easier to manage, and provides a clear, dynamically updated source for the preload token set.
-
-2.  **`src/services/crypto/cryptoApiService.ts`:**
-    *   **Responsibility:** Encapsulate all direct CoinGecko API communication logic. This includes constructing API requests, handling responses, managing API-specific error handling (like 429s), and implementing smart retry mechanisms (`fetchWithSmartRetry`). It will also manage CoinGecko-specific rate limiting state (e.g., `rateLimitCooldownUntil`).
-    *   **Benefit:** Isolates external dependencies, making it easier to update API versions, add new providers, or mock for testing.
-
-3.  **`src/services/crypto/cryptoCacheService.ts`:**
-    *   **Responsibility:** Provide generic utility functions for interacting with `localStorage` for caching purposes. This includes getting/setting cached data with timestamp management and TTL (Time To Live) checks.
-    *   **Benefit:** Standardizes caching logic across different types of data (prices, metadata, icons).
-
-4.  **`src/hooks/crypto/useTokenManagement.ts`:**
-    *   **Responsibility:** Manage the state of `availableCryptos` and `cryptoIds`. Handle functions like `addCrypto`, `addCryptos`, `deleteCrypto`, and `getCryptoId`. Manage persistence of custom tokens to `localStorage`.
-    *   **Benefit:** Consolidates all logic related to the user's token list.
-
-5.  **`src/hooks/crypto/useTokenMetadata.ts`:**
-    *   **Responsibility:** Manage the fetching, caching, and state of `tokenMetadata` (name, symbol, image, rank). Includes logic for batch fetching metadata.
-    *   **Dependencies:** `cryptoApiService.ts`, `cryptoCacheService.ts`, `cryptoConstants.ts`.
-    *   **Benefit:** Dedicated hook for all token metadata concerns.
-
-6.  **`src/hooks/crypto/useTokenIcons.ts`:**
-    *   **Responsibility:** Manage token icons: fetching missing icons, caching them (in-memory and `localStorage`), placeholder generation, and preloading default token icons.
-    *   **Dependencies:** `useTokenMetadata.ts` (to get image URLs), `cryptoApiService.ts` (if searching for icons), `cryptoCacheService.ts`, `cryptoConstants.ts`.
-    *   **Benefit:** Centralizes visual asset management for tokens.
-
-7.  **`src/hooks/crypto/useCryptoPricing.ts`:**
-    *   **Responsibility:** Manage the fetching, caching, and state of `prices` (including 24h change, low/high), `loading` state for prices, `error` state for prices, and `lastUpdated` timestamp. Handle batching of price requests (`processBatchRequests`), queuing updates (`queuePriceUpdate`), providing estimated prices, and `isPending` logic for price updates.
-    *   **Dependencies:** `cryptoApiService.ts`, `cryptoCacheService.ts`, `cryptoConstants.ts`, `ExchangeRatesContext`.
-    *   **Benefit:** Focuses solely on price data management and its lifecycle.
-
-8.  **`CryptoContext.tsx` (Refactored):**
-    *   **Responsibility:** The `CryptoProvider` component will become a coordinator, initializing the above hooks and composing their exposed states and functions into the context value. It will be significantly slimmer.
-    *   **Benefit:** Acts as a clean composition root for the crypto-related state.
-
-This refactoring aims to enhance code organization, improve testability of individual units, and make the overall cryptocurrency data management system more robust and easier to extend, while carefully respecting API limitations.
-
-*(This document should be regularly updated as the application evolves.)*
-
-## Phase 4: Enhanced Rate Limiting & Cache-First Strategy (v1.5.5+)
-
-Following user feedback about rate-limiting delays (especially the observed ~82s delay for new tokens), the application has been significantly enhanced with a resilient, cache-first data fetching strategy:
-
-### 4.1. Advanced Rate Limiting System (`cryptoApiService.ts`)
-
-*   **Intelligent Rate Limit Detection:**
-    *   Enhanced `serviceApiStatus` tracking with `rateLimitCooldownUntil` timestamp and `lastRateLimitHeaders` parsing.
-    *   Pre-emptive cooldown checks prevent API calls when rate limits are active.
-    *   Automatic parsing of CoinGecko response headers (`x-ratelimit-remaining`, `retry-after`) for smarter rate limit handling.
-*   **Global CoinGecko Request Throttling:**
-    *   `fetchWithSmartRetry` now implements a global throttle for all CoinGecko requests.
-    *   It ensures that a minimum time (defined by `API_CONFIG.COINGECKO.REQUEST_SPACING`) has passed since the last CoinGecko request *completed* before initiating a new one.
-    *   This helps sequence distinct operations (e.g., multiple token additions, searches, background updates) to prevent them from firing API calls too closely together, even if individually marked as high priority.
-    *   `serviceApiStatus` now includes `lastCoinGeckoRequestCompletionTime` to manage this.
-*   **API Key Verification:**
-    *   The service now explicitly checks for the `VITE_COINGECKO_API_KEY` from environment variables and attempts to include it in API requests to CoinGecko.
-    *   Logs are generated to indicate if the API key is present and being used, aiding in diagnostics for rate limit issues.
-*   **Jittered Exponential Backoff:**
-    *   Non-429 errors use jittered exponential backoff (1s → 2s → 5s → 10s max) to prevent thundering herd problems.
-    *   429 rate limit errors respect `Retry-After` headers or use `COINGECKO_RATE_LIMIT_COOLDOWN`.
-*   **Comprehensive Logging:**
-    *   Standardized emoji-prefixed log levels: 🔵 (info), 🟡 (warning), 🟢 (rate limit), 🟠 (fallback), 🔴 (error), 🎉 (success), ☠️ (critical failure).
-    *   All API calls, fallbacks, cache operations, and errors are logged with clear context.
-
-### 4.2. Cache-First Data Pipeline (`CryptoContext.tsx`)
-
-*   **Immediate Cache Serving:**
-    *   When rate limits are encountered, cached prices are served immediately to the UI.
-    *   Background retries are scheduled after cooldown periods without blocking the user interface.
-    *   New `serveCacheForSymbols()` helper function provides instant cache lookups and UI updates.
-*   **Resilient Batch Processing:**
-    *   Unique batch IDs (`Date.now()`) prevent `console.time` conflicts and enable better debugging.
-    *   Failed API calls immediately check cache before attempting fallbacks.
-    *   Symbols are processed through a priority hierarchy: `/coins/markets` → cache → `/simple/price` → estimated price.
-*   **Enhanced Pending State Management:**
-    *   Symbols are removed from `pendingPriceUpdates` immediately when valid cache data is served.
-    *   Only tokens without any valid data (cache or estimate) remain in pending state for UI loading indicators.
-    *   Background retries continue for fresh data while cached data provides immediate UI responsiveness.
-
-### 4.3. Enhanced User Experience
-
-*   **Rate Limit Feedback with Countdown:**
-    *   `Header.tsx` and `Converter.tsx` display rate limit indicators with real-time countdown: "API rate limit reached. Retry in 15s."
-    *   `getCoinGeckoRetryAfterSeconds()` function provides accurate countdown information to UI components.
-*   **Optimistic UI Updates:**
-    *   `WaveLoadingPlaceholder` duration significantly reduced by serving cache immediately.
-    *   Users see last known prices instantly while fresh data loads in the background.
-*   **Improved Error Recovery:**
-    *   Failed API calls don't result in extended loading states if cache is available.
-    *   Clear visual distinction between stale cached data and actively loading data.
-
-### 4.4. Technical Implementation Details
-
-*   **Timer Management:**
-    *   Fixed `Timer already exists` console warnings by using unique batch identifiers in `console.time` calls.
-    *   Pattern: `API_fetchCoinMarkets_BATCH#${batchId}_[token1,token2,...]` for clear debugging.
-*   **Memory Management:**
-    *   Cache operations optimized to prevent unnecessary state updates.
-    *   Background retries scheduled efficiently without blocking the main thread.
-*   **Logging Strategy:**
-    *   Performance timing logs include both milliseconds and seconds for easy analysis.
-    *   Cache hit/miss ratios logged for debugging cache effectiveness.
-    *   Recovery success/failure clearly distinguished in logs.
-
-### 4.5. Performance Improvements
-
-*   **Elimination of 82s Delays:**
-    *   Previous: Rate-limited tokens waited for cooldown before showing any data.
-    *   Current: Cache served immediately, background refresh after cooldown.
-*   **Reduced API Load:**
-    *   Smart fallback ordering reduces unnecessary `/simple/price` calls when cache is available.
-    *   Batch processing respects rate limits proactively rather than reactively.
-*   **Faster UI Response Times:**
-    *   Cache-first strategy provides sub-100ms response times for repeat token views.
-    *   Loading animations limited to genuinely new data, not cached data refreshes.
-
-This enhanced system ensures users never experience the previously observed long delays while maintaining data accuracy and respecting API rate limits.
-
-## Phase 5: Intelligent Stablecoin Detection & Auto-Switching (v1.6.0+)
-
-### 5.1. Smart Stablecoin Detection System
-
-*   **Multi-Layer Detection Strategy:**
-    *   Primary: Uses CoinGecko's detailed coin metadata (`/coins/{id}` endpoint) to check `categories` array for stablecoin classifications.
-    *   Fallback: Pattern-based symbol matching for offline detection when API is unavailable or rate-limited.
-    *   Comprehensive category matching includes: "stablecoins", "usd stablecoin", "eur stablecoin", "algorithmic stablecoins", etc.
-*   **Robust Caching Architecture:**
-    *   Dedicated `CACHE_STORAGE_KEY_COIN_DETAILS` cache with 24-hour duration for detailed coin metadata.
-    *   In-memory cache (`coinDetailsCache`) for instant access during user sessions.
-    *   Automatic cache population and management through `getCoinDetails()` function.
-*   **Intelligent Target Currency Selection:**
-    *   EUR-pegged stablecoins (EURS, EURT) → Auto-switch to EUR
-    *   CAD-pegged stablecoins (CADC) → Auto-switch to CAD  
-    *   USD-pegged stablecoins (USDC, USDT, DAI, etc.) → Auto-switch to CAD (per requirement)
-    *   Unknown/generic stablecoins → Default to CAD
-
-### 5.2. Enhanced API Service (`cryptoApiService.ts`)
-
-*   **New `fetchCoinDetails()` Function:**
-    *   Fetches comprehensive coin metadata including categories, descriptions, and platform information.
-    *   Optimized parameters to exclude unnecessary data (tickers, market_data, community_data) for faster responses.
-    *   High-priority request classification for immediate stablecoin detection.
-    *   Proper error handling and logging with performance timing.
-
-### 5.3. User Experience Enhancements
-
-*   **Seamless Auto-Switching:**
-    *   Automatic fiat currency switching when stablecoins are selected (USDC → CAD, EURS → EUR, etc.).
-    *   Respects user manual fiat selection - auto-switching disabled after user manually changes fiat.
-    *   Reset manual flag when crypto selection changes to re-enable auto-switching for new tokens.
-*   **Intelligent UX Flow:**
-    *   No visual flicker or jarring transitions during auto-switching.
-    *   Maintains conversion amounts and input focus during currency switches.
-    *   Console logging for debugging and transparency of stablecoin detection decisions.
-*   **Fallback Resilience:**
-    *   Symbol-based detection when API metadata is unavailable.
-    *   Graceful degradation during rate limits or network issues.
-    *   No impact on core conversion functionality if stablecoin detection fails.
-
-### 5.4. Technical Implementation
-
-*   **Modular Utility Functions (`src/utils/stablecoinDetection.ts`):**
-    *   `isStablecoin()`: Comprehensive stablecoin detection using metadata and symbol patterns.
-    *   `isStablecoinFromCategories()`: Category-based detection from CoinGecko metadata.
-    *   `isStablecoinFromSymbol()`: Pattern-based fallback detection.
-    *   `getStablecoinTargetFiat()`: Intelligent target currency selection based on stablecoin type.
-*   **Enhanced Context Integration:**
-    *   New `getCoinDetails()` method in `CryptoContext` for detailed metadata fetching.
-    *   `coinDetailsCache` state for efficient metadata management.
-    *   Proper TypeScript interfaces (`CoinDetailedMetadata`) for type safety.
-*   **Smart State Management:**
-    *   `userManuallySetFiat` flag to track user intent and prevent unwanted auto-switching.
-    *   Automatic flag reset on crypto selection changes to enable auto-switching for new tokens.
-    *   Integration with existing rate limiting and caching systems.
-
-### 5.5. Performance Optimizations
-
-*   **Efficient Caching Strategy:**
-    *   24-hour cache duration for coin details reduces API calls for repeated stablecoin checks.
-    *   In-memory cache for instant access during active sessions.
-    *   Automatic cache warming for popular tokens during app initialization.
-*   **Minimal API Impact:**
-    *   High-priority requests for immediate user-facing stablecoin detection.
-    *   Fallback to symbol patterns when API is rate-limited.
-    *   No blocking of core conversion functionality during metadata fetching.
-*   **Smart Request Management:**
-    *   Integration with existing rate limiting and request prioritization systems.
-    *   Proper error handling prevents stablecoin detection failures from affecting app stability.
-    *   Comprehensive logging for debugging and performance monitoring.
-
-This intelligent stablecoin detection system provides a seamless user experience while maintaining robust performance and respecting API limitations. 
+### Phase 3: Intelligent Stablecoin Detection & Auto-Switching (v1.6.0)
+Introduced a multi-layer stablecoin detection system that automatically switches the target fiat currency based on the type of stablecoin selected by the user, enhancing the user experience for stablecoin conversions. 

@@ -849,7 +849,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
     };
   }, []);
 
-  const showUpdateTooltip = (message: string, type: 'success' | 'error' = 'success') => {
+  const showUpdateTooltip = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setUpdateTooltipMessage(message);
     setUpdateTooltipType(type);
     setUpdateTooltipVisible(true);
@@ -862,7 +862,22 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
     updateTooltipTimeoutRef.current = window.setTimeout(() => {
       setUpdateTooltipVisible(false);
     }, 5000);
-  };
+  }, []);
+
+  // Listen for global update success event
+  useEffect(() => {
+    const handleShowNotification = (event: Event) => {
+      const customEvent = event as CustomEvent<{ message: string, type: 'success' | 'error' }>;
+      if (customEvent.detail) {
+        showUpdateTooltip(customEvent.detail.message, customEvent.detail.type);
+      }
+    };
+
+    window.addEventListener('show-update-notification', handleShowNotification);
+    return () => {
+      window.removeEventListener('show-update-notification', handleShowNotification);
+    };
+  }, [showUpdateTooltip]);
 
   const hideUpdateTooltip = () => {
     setUpdateTooltipVisible(false);

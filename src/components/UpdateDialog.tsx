@@ -207,6 +207,9 @@ const Dot = styled(motion.div)`
   background-color: currentColor;
 `;
 
+// Define a type for the update process state
+type UpdateState = 'idle' | 'downloading' | 'downloaded' | 'installing' | 'error';
+
 // New styled component for the wait message
 const WaitMessage = styled.span`
   margin-left: 4px;
@@ -226,13 +229,10 @@ interface UpdateDialogProps {
 }
 
 const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo }) => {
-  const [downloading, setDownloading] = useState(false);
+  const [updateState, setUpdateState] = useState<UpdateState>('idle');
   const [downloadProgress, setDownloadProgress] = useState(0);
-  const [downloadComplete, setDownloadComplete] = useState(false);
   const [downloadedFilePath, setDownloadedFilePath] = useState('');
-  const [installing, setInstalling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
   
   // Ensure we have valid version information
@@ -244,13 +244,10 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
   // Reset state when dialog opens
   useEffect(() => {
     if (isOpen) {
-      setDownloading(false);
+      setUpdateState('idle');
       setDownloadProgress(0);
-      setDownloadComplete(false);
       setDownloadedFilePath('');
-      setInstalling(false);
-      setError(null);
-      setStatusMessage(null);
+      setErrorMessage('');
       
       // Focus the dialog when it opens
       setTimeout(() => {
@@ -263,21 +260,12 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
 
   // Handle close with cleanup if needed
   const handleClose = useCallback(() => {
-    // Cancel any pending operations if needed
-    if (downloading) {
-      setStatusMessage('Download canceled');
-      setDownloading(false);
-    }
-    
     // Don't allow closing during installation unless there's an error
-    if (installing && !error) {
-      setStatusMessage('Installation in progress, please wait...');
+    if (updateState === 'installing' && !errorMessage) {
       return;
     }
-    
-    // Call the parent's onClose function
     onClose();
-  }, [downloading, installing, error, onClose]);
+  }, [updateState, errorMessage, onClose]);
 
   // Handle keyboard events
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -287,58 +275,33 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
   }, [handleClose]);
 
   const handleDownload = async () => {
+    setUpdateState('downloading');
+    setErrorMessage('');
+    setDownloadProgress(0);
+
     try {
-      setDownloading(true);
-      setError(null);
-      setStatusMessage(null);
-      
-      const filePath = await downloadUpdate(updateInfo.downloadUrl, (progress) => {
-        setDownloadProgress(progress);
-      });
-      
-      if (filePath === 'browser-download' || filePath === 'direct-download') {
-        setStatusMessage('Download started');
-        setTimeout(() => {
-          setDownloadComplete(true);
-          setDownloadedFilePath(filePath);
-          setStatusMessage('Download complete');
-        }, 2000);
-      } else {
-        setDownloadComplete(true);
-        setDownloadedFilePath(filePath);
-        setStatusMessage('Download complete');
-      }
+      const filePath = await downloadUpdate(updateInfo.downloadUrl, setDownloadProgress);
+      setDownloadedFilePath(filePath);
+      setUpdateState('downloaded');
     } catch (err) {
-      console.error('Download error:', (err as Error).message);
-      setError('Download failed. Try again or visit website.');
-    } finally {
-      setDownloading(false);
+      const error = err as Error;
+      console.error('Download error:', error.message);
+      setErrorMessage(error.message || 'Download failed. Please try again.');
+      setUpdateState('error');
     }
   };
 
   const handleInstall = async () => {
+    setUpdateState('installing');
+    setErrorMessage('');
     try {
-      setInstalling(true);
-      setError(null);
-      
-      if (downloadedFilePath === 'browser-download' || downloadedFilePath === 'direct-download') {
-        setStatusMessage('Run the installer to complete update.');
-        setTimeout(() => onClose(), 2000);
-        return;
-      }
-      
-      try {
-        await installUpdate(downloadedFilePath);
-        // App will restart automatically
-      } catch (installError) {
-        console.error('Install error:', installError);
-        setError('Installation failed. Run installer manually.');
-        setInstalling(false);
-      }
+      await installUpdate(downloadedFilePath);
+      // On success, the application will quit, so no further state change is needed.
     } catch (err) {
-      console.error('General install error:', err);
-      setError('Installation failed. Please try again.');
-      setInstalling(false);
+      const error = err as Error;
+      console.error('Install error:', error.message);
+      setErrorMessage(error.message || 'Installation failed. Please run the installer manually.');
+      setUpdateState('error');
     }
   };
 
@@ -421,48 +384,24 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
                 </VersionColumn>
               </VersionInfo>
               
-              <p>New version available. Update now?</p>
+              <p>
+                {updateState === 'downloaded'
+                  ? 'Download complete. The application will restart to install the update.'
+                  : 'A new version of CryptoVertX is available. Update now?'}
+              </p>
               
-              {error && (
+              {updateState === 'error' && errorMessage && (
                 <StatusMessage 
                   $type="error"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                 >
                   <FiX size={16} />
-                  {error}
+                  {errorMessage}
                 </StatusMessage>
               )}
               
-              {statusMessage && !error && (
-                <StatusMessage 
-                  $type={downloadComplete ? 'success' : 'info'}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  key={statusMessage}
-                >
-                  {downloadComplete ? (
-                    <FiCheck size={16} />
-                  ) : (
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ repeat: Infinity, duration: 1.5, ease: 'linear' }}
-                    >
-                      <FiRefreshCw size={16} />
-                    </motion.div>
-                  )}
-                  {statusMessage}
-                  {!downloadComplete && (
-                    <LoadingPulse variants={loadingVariants} animate="animate">
-                      <Dot variants={dotVariants} />
-                      <Dot variants={dotVariants} />
-                      <Dot variants={dotVariants} />
-                    </LoadingPulse>
-                  )}
-                </StatusMessage>
-              )}
-              
-              {downloading && (
+              {updateState === 'downloading' && (
                 <ProgressContainer>
                   <ProgressBar>
                     <ProgressFill 
@@ -473,13 +412,13 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
                     />
                   </ProgressBar>
                   <ProgressText>
-                    <span>Downloading</span>
+                    <span>Downloading update...</span>
                     <span>{downloadProgress.toFixed(0)}%</span>
                   </ProgressText>
                 </ProgressContainer>
               )}
               
-              {installing && (
+              {updateState === 'installing' && (
                 <StatusMessage 
                   $type="info"
                   initial={{ opacity: 0, y: 10 }}
@@ -492,69 +431,55 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
                     <FiRefreshCw size={16} />
                   </motion.div>
                   Installing... App will restart
-                  {error ? null : <WaitMessage>(please wait)</WaitMessage>}
+                  <WaitMessage>(please wait)</WaitMessage>
                 </StatusMessage>
               )}
             </Content>
             
             <ButtonContainer>
-              {!downloadComplete && (
-                <>
-                  <Button onClick={handleClose}>
-                    <FiX size={16} /> Later
-                  </Button>
-                  <Button 
-                    $primary 
-                    onClick={handleDownload} 
-                    disabled={downloading}
-                  >
-                    {downloading ? (
-                      <>
-                        <motion.div
-                          animate={{ rotate: 360 }}
-                          transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
-                        >
-                          <FiRefreshCw size={16} />
-                        </motion.div>
-                        Downloading
-                      </>
-                    ) : (
-                      <>
-                        <FiDownload size={16} /> 
-                        Update
-                      </>
-                    )}
-                  </Button>
-                </>
-              )}
+              <Button onClick={handleClose} disabled={updateState === 'installing'}>
+                {updateState === 'downloaded' ? 'Close' : 'Later'}
+              </Button>
               
-              {downloadComplete && !installing && (
-                <>
-                  <Button onClick={handleClose}>
-                    <FiX size={16} /> Close
-                  </Button>
-                  {downloadedFilePath !== 'browser-download' && downloadedFilePath !== 'direct-download' && (
-                    <Button 
-                      $primary 
-                      onClick={handleInstall} 
-                      disabled={installing}
-                    >
-                      <FiCheck size={16} /> Install
-                    </Button>
-                  )}
-                </>
+              {updateState === 'idle' && (
+                <Button $primary onClick={handleDownload}>
+                  <FiDownload size={16} /> Update Now
+                </Button>
               )}
-              
-              {installing && (
-                <Button disabled>
+
+              {updateState === 'downloading' && (
+                <Button $primary disabled>
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
                   >
                     <FiRefreshCw size={16} />
                   </motion.div>
-                  Installing
-                  {error ? null : <WaitMessage>(please wait)</WaitMessage>}
+                  Downloading...
+                </Button>
+              )}
+
+              {updateState === 'downloaded' && (
+                <Button $primary onClick={handleInstall}>
+                  <FiCheck size={16} /> Install & Restart
+                </Button>
+              )}
+
+              {updateState === 'installing' && (
+                <Button $primary disabled>
+                   <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                  >
+                    <FiRefreshCw size={16} />
+                  </motion.div>
+                  Installing...
+                </Button>
+              )}
+
+              {updateState === 'error' && (
+                 <Button $primary onClick={handleDownload}>
+                  <FiRefreshCw size={16} /> Retry Download
                 </Button>
               )}
             </ButtonContainer>

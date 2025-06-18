@@ -87,6 +87,27 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  useEffect(() => {
+    const handleUpdateSuccess = () => {
+      window.dispatchEvent(new CustomEvent('show-update-notification', {
+        detail: { message: '✅ Update successful!', type: 'success' }
+      }));
+    };
+
+    if (typeof window.require === 'function') {
+      try {
+        const { ipcRenderer } = window.require('electron');
+        ipcRenderer.on('update-successful', handleUpdateSuccess);
+
+        return () => {
+          ipcRenderer.removeAllListeners('update-successful');
+        };
+      } catch (error) {
+        // Not in electron, so do nothing.
+      }
+    }
+  }, []);
+
   return (
     <ExchangeRatesProvider>
       <CryptoProvider>

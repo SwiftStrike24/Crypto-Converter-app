@@ -475,136 +475,47 @@ export async function checkForUpdates() {
  * @returns Promise that resolves when download is complete
  */
 export async function downloadUpdate(url: string, onProgress: (progress: number) => void) {
-  try {
-    log.info(`Starting update download`);
-    
-    // Ensure the URL is using the landing page API
-    if (!url.includes(API_BASE_URL)) {
-      const key = url.split('key=')[1];
-      if (key) {
-        url = `${API_BASE_URL}/download?key=${key}`;
-      }
-    }
-    
-    // Check if we're in Electron
-    if (typeof window !== 'undefined' && window.electron && window.electron.ipcRenderer) {
-      log.info(`Using Electron download manager`);
-      
-      // Set up progress listener
-      const progressListener = (_event: any, progress: number) => {
-        onProgress(progress);
-      };
-      
-      // Register the progress listener
-      window.electron.ipcRenderer.on('download-progress', progressListener);
-      
-      // Tell main process we're subscribing to progress updates
-      window.electron.ipcRenderer.send('download-progress-subscribe');
-      
-      try {
-        // Start the download using Electron's download manager
-        const filePath = await window.electron.ipcRenderer.invoke('download-update', url);
-        
-        // Clean up listener
-        window.electron.ipcRenderer.removeAllListeners('download-progress');
-        
-        log.success(`Download complete: ${filePath}`);
-        return filePath;
-      } catch (electronError) {
-        log.warn(`Electron download failed, trying direct download`);
-        return await directDownload(url, onProgress);
-      }
-    } else {
-      // We're in a browser environment, use direct download
-      log.info(`Using browser download method`);
-      return await directDownload(url, onProgress);
-    }
-  } catch (error) {
-    throw error;
-  }
-}
+  log.info(`Starting update download from URL: ${url}`);
 
-/**
- * Direct download without browser popup
- * @param url The download URL
- * @param onProgress Progress callback
- * @returns Promise that resolves to download path
- */
-async function directDownload(url: string, onProgress: (progress: number) => void) {
-  try {
-    log.info(`Starting direct download`);
-    
-    // Create a hidden anchor element
-    const link = document.createElement('a');
-    link.href = url;
-    const filename = url.split('/').pop() || 'CryptoVertX-Setup.exe';
-    link.download = filename;
-    link.style.display = 'none';
-    
-    log.info(`Downloading file: ${filename}`);
-    
-    // Simulate progress for better UX
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += 5;
-      if (progress <= 90) {
-        onProgress(progress);
-      } else {
-        clearInterval(interval);
-      }
-    }, 100);
-    
-    // Add to DOM, click and remove
-    document.body.appendChild(link);
-    link.click();
-    
-    // Small delay before removing the element
-    setTimeout(() => {
-      document.body.removeChild(link);
-      clearInterval(interval);
-      onProgress(100);
-      log.success(`Download initiated for ${filename}`);
-    }, 1000);
-    
-    return 'direct-download';
-  } catch (error) {
-    log.warn(`Direct download failed, trying browser download`);
-    return browserDownload(url, onProgress);
+  // This function should ONLY be called in an Electron environment.
+  // The UI should prevent calling this if not in Electron.
+  if (typeof window.require !== 'function') {
+    log.error('Update service error: Not running in a valid Electron renderer context.');
+    throw new Error('Updates can only be downloaded within the CryptoVertX application.');
   }
-}
+  const { ipcRenderer } = window.require('electron');
+  if (!ipcRenderer) {
+    throw new Error('IPC renderer is not available.');
+  }
 
-/**
- * Fallback browser download method
- * @param url The download URL
- * @param onProgress Progress callback
- * @returns Promise that resolves to 'browser-download'
- */
-async function browserDownload(url: string, onProgress: (progress: number) => void) {
-  log.info(`Opening download in new browser tab`);
+  log.info('Using Electron download manager for silent background download.');
   
-  // Simulate progress for better UX
-  let progress = 0;
-  const interval = setInterval(() => {
-    progress += 5;
-    if (progress <= 90) {
-      onProgress(progress);
-    } else {
-      clearInterval(interval);
-    }
-  }, 100);
+  // Set up progress listener
+  const progressListener = (_event: any, progress: number) => {
+    onProgress(progress);
+  };
   
-  // Open the URL in a new tab
-  window.open(url, '_blank');
+  // Register the progress listener. We use `once` and `on` to be safe, then clean up.
+  ipcRenderer.on('download-progress', progressListener);
   
-  // Complete the progress after a short delay
-  setTimeout(() => {
-    clearInterval(interval);
-    onProgress(100);
-    log.success(`Browser download complete`);
-  }, 2000);
-  
-  // Return a placeholder path since we're not actually downloading the file
-  return 'browser-download';
+  try {
+    // Tell main process we're subscribing to progress updates.
+    // This isn't strictly necessary with the new setup but is good practice.
+    ipcRenderer.send('download-progress-subscribe');
+    
+    // Start the download using Electron's download manager in the main process
+    const filePath = await ipcRenderer.invoke('download-update', url);
+    
+    log.success(`Download complete. File saved at: ${filePath}`);
+    return filePath;
+  } catch (electronError) {
+    log.error('Electron download process failed.', electronError);
+    // Re-throw a more user-friendly error
+    throw new Error(`Download failed: ${(electronError as Error).message}`);
+  } finally {
+    // Clean up the progress listener to prevent memory leaks
+    ipcRenderer.removeAllListeners('download-progress');
+  }
 }
 
 /**
@@ -614,32 +525,32 @@ async function browserDownload(url: string, onProgress: (progress: number) => vo
  */
 export async function installUpdate(filePath: string) {
   try {
-    // Handle direct download case
-    if (filePath === 'direct-download' || filePath === 'browser-download') {
-      log.success(`Browser download handled successfully`);
-      return { success: true, browserDownload: true };
+    // The browser download path is no longer supported for a seamless flow.
+    // If we get here, it must be with a valid file path.
+    if (!filePath || filePath.includes('-download')) {
+      throw new Error('Invalid file path for installation.');
     }
     
-    log.info(`Installing update from: ${filePath}`);
+    log.info(`Requesting silent installation for: ${filePath}`);
     
     // Send install request to main process
-    if (typeof window !== 'undefined' && window.electron && window.electron.ipcRenderer) {
-      const result = await window.electron.ipcRenderer.invoke('install-update', filePath);
-      log.success(`Installation started successfully`);
+    if (typeof window.require === 'function') {
+      const { ipcRenderer } = window.require('electron');
+      const result = await ipcRenderer.invoke('install-update', filePath);
+      log.success('Installation process initiated successfully by main process.');
       return result;
     } else {
-      // If we're not in Electron, open the download page
-      log.info(`Opening download page in browser`);
-      window.open('https://cryptovertx.com/download', '_blank');
-      return { success: true, browserDownload: true };
+      // This case should ideally not be reached if the download worked.
+      throw new Error('Not in a valid Electron environment to install updates.');
     }
   } catch (error) {
-    // If there's an error, try to open the download page as a fallback
+    log.error('Installation trigger failed.', error);
+    // If there's an error, try to open the download page as a last resort.
     try {
-      log.warn(`Installation failed, opening download page as fallback`);
       window.open('https://cryptovertx.com/download', '_blank');
       return { success: true, browserDownload: true, fallback: true };
     } catch (fallbackError) {
+      // Throw original error if fallback fails
       throw error;
     }
   }

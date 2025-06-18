@@ -1,10 +1,11 @@
 import { ipcMain, app, dialog, shell, BrowserWindow, Notification } from 'electron';
 import { join } from 'path';
-import { createWriteStream, unlink } from 'fs';
+import { createWriteStream, unlink, writeFileSync } from 'fs';
 import { pipeline } from 'stream/promises';
 import axios from 'axios';
 import { createReadStream } from 'fs';
 import { stat } from 'fs/promises';
+import { spawn } from 'child_process';
 
 /**
  * Initialize update handlers for the main process
@@ -46,29 +47,20 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
       
       console.log('Download completed successfully');
       
-      // Verify the downloaded file
+      // Verify the downloaded file size to ensure integrity
       try {
         const fileStats = await stat(downloadPath);
-        if (fileStats.size === 0) {
-          throw new Error('Downloaded file is empty');
+        if (fileStats.size !== totalSize || totalSize === 0) {
+          throw new Error(`Downloaded file size (${fileStats.size}) does not match expected size (${totalSize})`);
         }
-        
-        // Try to read the first few bytes to ensure it's a valid file
-        const readStream = createReadStream(downloadPath, { start: 0, end: 100 });
-        await new Promise((resolve, reject) => {
-          readStream.on('data', () => {
-            resolve(true);
-          });
-          readStream.on('error', (err) => {
-            reject(err);
-          });
-          readStream.on('end', () => {
-            resolve(true);
-          });
-        });
+        console.log('File verification successful.');
       } catch (error) {
         console.error('File verification failed:', error);
-        throw new Error('Downloaded file verification failed');
+        // Clean up the corrupted file
+        unlink(downloadPath, (err) => {
+          if (err) console.error('Error deleting corrupted update file:', err);
+        });
+        throw new Error('Downloaded file is incomplete or corrupted.');
       }
       
       return downloadPath;
@@ -102,56 +94,39 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
   });
   
   // Handle install update request
-  ipcMain.handle('install-update', async (event, filePath: string) => {
+  ipcMain.handle('install-update', async (_event, filePath: string) => {
     try {
-      console.log(`Installing update from: ${filePath}`);
+      console.log(`Launching installer from: ${filePath}`);
       
-      // Show confirmation dialog
-      const { response } = await dialog.showMessageBox(mainWindow, {
-        type: 'info',
-        title: 'Install Update',
-        message: 'The application will close and the update will be installed.',
-        buttons: ['Install', 'Cancel'],
-        defaultId: 0,
-        cancelId: 1
-      });
-      
-      if (response === 0) {
-        // User confirmed, execute the installer
-        console.log('Starting installer...');
-        
-        // On Windows, we can directly execute the installer
-        if (process.platform === 'win32') {
-          // Execute the installer and quit the app
-          shell.openPath(filePath).then(() => {
-            // Give the installer a moment to start
-            setTimeout(() => {
-              app.quit();
-            }, 1000);
-          });
-        } else {
-          // For other platforms, just open the file
-          shell.openPath(filePath);
-          
-          // Quit the app after a short delay
-          setTimeout(() => {
-            app.quit();
-          }, 1000);
-        }
-        
-        return { success: true };
-      } else {
-        console.log('Update installation cancelled by user');
-        
-        // Clean up the downloaded file
-        unlink(filePath, (err) => {
-          if (err) console.error('Error deleting update file:', err);
-        });
-        
-        return { success: false, cancelled: true };
+      // Set the flag for post-update notification
+      try {
+        writeFileSync(join(app.getPath('userData'), 'update.flag'), 'true');
+        console.log('Update flag set for post-install notification.');
+      } catch (flagError) {
+        console.error('Failed to write update.flag file:', flagError);
       }
+
+      // Launch the installer with its UI. This is like double-clicking the .exe
+      const errorMessage = await shell.openPath(filePath);
+
+      if (errorMessage) {
+        console.error(`Failed to launch installer: ${errorMessage}`);
+        // If it fails, clean up the flag and throw an error back to the renderer.
+        unlink(join(app.getPath('userData'), 'update.flag'), (err) => {
+          if (err) console.error('Failed to clean up update.flag on error:', err);
+        });
+        throw new Error(`Failed to open installer: ${errorMessage}`);
+      }
+      
+      // If launch is successful, quit the app to allow installation to proceed.
+      // A short delay gives the installer window time to appear before the main app disappears.
+      console.log('Installer launched successfully. Quitting app.');
+      setTimeout(() => app.quit(), 500);
+      
+      return { success: true };
+
     } catch (error) {
-      console.error('Error installing update:', error);
+      console.error('Error during installation process:', error);
       throw new Error(`Installation failed: ${(error as Error).message}`);
     }
   });
