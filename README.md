@@ -96,7 +96,7 @@ pnpm build-app
 
 This will present you with a menu to choose between:
 - 📦 Portable Executable - Standalone .exe file
-- 💿 Installer Package - Windows installer (.exe)
+- 💿 Installer Package - Interactive Windows installer (.msi) with a setup wizard
 - 🔥 Both - Build both portable and installer
 
 The build system also handles version management:

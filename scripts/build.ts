@@ -141,7 +141,7 @@ async function getBuildType(): Promise<BuildType> {
     message: 'What would you like to build?',
     choices: [
       { title: '📦 Portable Executable', description: 'Build a standalone .exe file', value: 'portable' },
-      { title: '💿 Installer Package', description: 'Build a Windows installer (.exe)', value: 'installer' },
+      { title: '💿 Installer Package', description: 'Build a Windows installer (.msi)', value: 'installer' },
       { title: '🔥 Both', description: 'Build both portable and installer', value: 'both' }
     ],
     initial: 0
@@ -234,8 +234,7 @@ async function buildPortable() {
         to: 'assets'
       }
     ],
-    executableName: 'CryptoVertX',
-    compression: 'store'
+    executableName: 'CryptoVertX'
   };
 
   await electronBuilder({
@@ -253,7 +252,7 @@ async function buildInstaller() {
     asar: true,
     win: {
       target: {
-        target: 'nsis',
+        target: 'msi',
         arch: ['x64']
       },
       icon: TEMP_ICON_PATH,
@@ -266,15 +265,7 @@ async function buildInstaller() {
         to: 'assets'
       }
     ],
-    executableName: 'CryptoVertX',
-    nsis: {
-      oneClick: false,
-      allowToChangeInstallationDirectory: true,
-      createDesktopShortcut: true,
-      createStartMenuShortcut: true,
-      shortcutName: "CryptoVertX"
-    },
-    compression: 'store'
+    executableName: 'CryptoVertX'
   };
 
   await electronBuilder({

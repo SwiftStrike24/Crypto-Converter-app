@@ -1,6 +1,6 @@
 {
   "name": "cryptovertx",
-  "version": "1.6.3",
+  "version": "1.7.1",
   "description": "A sleek cryptocurrency converter desktop app",
   "main": "./dist-electron/main.js",
   "scripts": {
@@ -82,7 +82,7 @@
     "appId": "com.cryptovertx.app",
     "productName": "CryptoVertX",
     "asar": true,
-    "compression": "store",
+    "compression": "normal",
     "directories": {
       "output": "release/${version}"
     },
@@ -107,7 +107,7 @@
           ]
         },
         {
-          "target": "nsis",
+          "target": "msi",
           "arch": [
             "x64"
           ]
@@ -121,13 +121,13 @@
     "portable": {
       "artifactName": "${productName}-Portable-${version}.${ext}"
     },
-    "nsis": {
+    "msi": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
+      "runAfterFinish": true,
       "createStartMenuShortcut": true,
       "shortcutName": "CryptoVertX",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Installer-v${version}.${ext}"
     },
     "electronVersion": "27.1.2",
     "buildDependenciesFromSource": false,

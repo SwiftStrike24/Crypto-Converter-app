@@ -226,8 +226,10 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     
     // Try to get the file size
     try {
-      const outputDir = path.join(__dirname, '../release/1.0.0');
-      const filePattern = type === 'portable' ? 'CryptoVertX-Portable-1.0.0.exe' : 'CryptoVertX-Setup-1.0.0.exe';
+      const outputDir = path.join(__dirname, `../release/${this.appVersion}`);
+      const filePattern = type === 'portable' 
+        ? `CryptoVertX-Portable-${this.appVersion}.exe` 
+        : `CryptoVertX-Installer-v${this.appVersion}.msi`;
       const filePath = path.join(outputDir, filePattern);
       
       if (fs.existsSync(filePath)) {
@@ -238,7 +240,7 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
         const files = fs.readdirSync(outputDir);
         const matchingFile = files.find(file => 
           (type === 'portable' && file.includes('Portable')) || 
-          (type === 'installer' && file.includes('Setup'))
+          (type === 'installer' && file.includes('Installer'))
         );
         
         if (matchingFile) {

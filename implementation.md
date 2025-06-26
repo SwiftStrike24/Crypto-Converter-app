@@ -14,7 +14,7 @@ CryptoVertX is a desktop application built with Electron and React (using TypeSc
 *   **Process Model:** Standard Electron Main process and Renderer process structure.
     *   **Main Process:** `src/electron/main.ts` - Handles window creation, lifecycle events, system integration (tray, global hotkeys), instance management, and auto-updates.
     *   **Renderer Process:** Manages the user interface, interacts with React components, and communicates with the Main process via IPC.
-*   **Packaging:** Electron Builder (v24.9.1) for creating distributable versions (portable, installer).
+*   **Packaging:** Electron Builder (v24.9.1) for creating distributable versions (portable, MSI installer).
 *   **Package Manager:** `pnpm`
 
 ## 3. State Management
@@ -225,8 +225,8 @@ The application primarily uses React Context API for managing global state:
     *   **Source:** Checks for updates from a Cloudflare R2 bucket.
     *   **Process:** Implements a user-friendly, graphical update flow.
         *   **Check:** The user initiates a check from the app header. `updateService.ts` compares the local app version against the latest version available in the R2 bucket.
-        *   **Download:** If an update is found, the new installer (`.exe`) is downloaded silently to a temporary directory. The `download-update` IPC handler in `updateHandler.ts` manages this, sending progress updates to the UI and verifying file integrity upon completion.
-        *   **Install:** Once downloaded, the user is prompted to "Install & Restart". Upon confirmation, the `install-update` IPC handler in `updateHandler.ts` is triggered. It launches the graphical installer using `shell.openPath`, providing a standard installation wizard. The application then quits to allow the installer to proceed without file conflicts.
+        *   **Download:** If an update is found, the new installer (`.msi` or `.exe` for portable fallback) is downloaded silently to a temporary directory. The `download-update` IPC handler in `updateHandler.ts` manages this, sending progress updates to the UI and verifying file integrity upon completion.
+        *   **Install:** Once downloaded, the user is prompted to "Install & Restart". Upon confirmation, the `install-update` IPC handler in `updateHandler.ts` is triggered. It launches the graphical installer, which presents a standard setup wizard. The application then quits to allow the installer to proceed without file conflicts.
         *   **Relaunch & Verify:** The user completes the installation via the setup wizard, which includes a "Launch application" option at the end. When the new version of the app starts, the `main.ts` process detects an `update.flag` file. It sends an `update-successful` IPC message to the renderer to trigger a success notification and then deletes the flag file.
     *   **UI:** An `UpdateDialog.tsx` component manages the UI for the entire flow, showing the available update, download progress, and initiating the installation.
 *   **Window Position Memory:** Remembers and restores window position on startup.
@@ -234,6 +234,7 @@ The application primarily uses React Context API for managing global state:
 *   **Build Optimization:** Optimized chunk splitting (vendor, UI, charts), fast production builds, efficient caching, minimal output size.
 *   **Version Management:** Centralized version handling (`versionManager.ts`), automated version injection during build, and version comparison for updates.
 *   **Loading Placeholders:** Implemented a smooth shimmer/wave animation (`WaveLoadingPlaceholder.tsx`) to replace numerical placeholders (e.g., previous `$1` estimates or "N/A") in the `Converter` result display and `Header` price display during price fetching or when data is pending. This enhances UX by providing visual feedback without showing potentially misleading or jarring placeholder numbers.
+*   **Build Compression:** Uses `normal` compression level for a balance between installer size and installation speed, improving the initial setup experience.
 
 ## 7. Build and Development Process
 
@@ -242,7 +243,7 @@ The application primarily uses React Context API for managing global state:
 *   **Packaging (Desktop App):** Electron Builder.
     *   Configured in `package.json` under the `build` section.
     *   Outputs to `release/${version}` directory.
-    *   Targets Windows (portable `.exe` and NSIS installer).
+    *   Targets Windows (portable `.exe` and an interactive MSI installer with a setup wizard).
     *   Uses `asar` packaging for efficiency.
 *   **Build Scripts (`package.json`):**
     *   `pnpm dev`: Starts the Vite development server for the React frontend.
