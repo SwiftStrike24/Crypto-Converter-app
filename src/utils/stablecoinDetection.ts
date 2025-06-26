@@ -11,6 +11,12 @@ export interface CoinDetailedMetadata {
   market_cap_rank?: number;
   coingecko_rank?: number;
   asset_platform_id?: string | null;
+  market_data?: {
+    ath: { [key: string]: number };
+    atl: { [key: string]: number };
+    ath_date: { [key: string]: string };
+    atl_date: { [key: string]: string };
+  };
 }
 
 /**

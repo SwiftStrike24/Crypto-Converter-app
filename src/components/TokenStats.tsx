@@ -2,42 +2,35 @@ import React, { useEffect, useState, useCallback, useRef, memo } from 'react';
 import styled from 'styled-components';
 import { getTokenStats } from '../services';
 import { useCrypto } from '../context/CryptoContext';
+import { CoinDetailedMetadata } from '../utils/stablecoinDetection';
 
-const StatsContainer = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  padding: 1rem;
-  background: rgba(26, 26, 26, 0.5);
-  border-radius: 16px;
-  margin-top: 1rem;
-  border: 1px solid rgba(139, 92, 246, 0.1);
-
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
-    gap: 0.75rem;
-  }
-`;
-
-const StatCard = styled.div`
+const StatsPanel = styled.div`
   display: flex;
   flex-direction: column;
-  padding: 1rem;
-  background: rgba(139, 92, 246, 0.05);
-  border-radius: 12px;
-  border: 1px solid rgba(139, 92, 246, 0.1);
-  transition: all 0.3s ease;
+  gap: 1rem;
+  width: 100%;
+`;
+
+const StatRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: rgba(139, 92, 246, 0.04);
+  border-radius: 10px;
+  border: 1px solid rgba(139, 92, 246, 0.08);
+  transition: all 0.2s ease-in-out;
 
   &:hover {
-    background: rgba(139, 92, 246, 0.08);
-    transform: translateY(-2px);
+    background: rgba(139, 92, 246, 0.07);
+    border-color: rgba(139, 92, 246, 0.15);
+    transform: scale(1.02);
   }
 `;
 
 const StatLabel = styled.span`
   color: #9ca3af;
   font-size: 0.875rem;
-  margin-bottom: 0.5rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -56,9 +49,9 @@ const InfoIcon = styled.span`
 
 const StatValue = styled.span<{ $isLimited?: boolean }>`
   color: ${props => props.$isLimited ? '#9ca3af' : '#fff'};
-  font-size: 1.25rem;
+  font-size: 1rem;
   font-weight: 600;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  text-align: right;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -66,8 +59,8 @@ const StatValue = styled.span<{ $isLimited?: boolean }>`
 
 const DataSourceBadge = styled.span<{ $source: 'coingecko' | 'cryptocompare' }>`
   font-size: 0.625rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 12px;
+  padding: 0.2rem 0.4rem;
+  border-radius: 8px;
   background: ${props => props.$source === 'coingecko' ? 'rgba(139, 92, 246, 0.1)' : 'rgba(234, 179, 8, 0.1)'};
   color: ${props => props.$source === 'coingecko' ? 'rgb(139, 92, 246)' : 'rgb(234, 179, 8)'};
   border: 1px solid ${props => props.$source === 'coingecko' ? 'rgba(139, 92, 246, 0.2)' : 'rgba(234, 179, 8, 0.2)'};
@@ -120,9 +113,8 @@ const RetryButton = styled.button`
 
 const CircleContainer = styled.div`
   position: relative;
-  width: 40px;
-  height: 40px;
-  margin-left: auto;
+  width: 32px;
+  height: 32px;
 `;
 
 const CircleBackground = styled.circle`
@@ -149,45 +141,55 @@ const PercentageText = styled.div`
   color: rgb(139, 92, 246);
 `;
 
-const StatCardWithProgress = styled(StatCard)`
-  flex-direction: row;
+const SupplyValueContainer = styled.div`
+  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 0.75rem;
 `;
 
-const StatContent = styled.div`
+const StatGroup = styled.div`
   display: flex;
   flex-direction: column;
+  padding: 0.75rem;
+  background: rgba(139, 92, 246, 0.04);
+  border-radius: 10px;
+  border: 1px solid rgba(139, 92, 246, 0.08);
+  transition: all 0.2s ease-in-out;
+  gap: 0.5rem;
+
+  &:hover {
+    background: rgba(139, 92, 246, 0.07);
+    border-color: rgba(139, 92, 246, 0.15);
+    transform: scale(1.02);
+  }
 `;
 
-const RetryOverlay = styled(LoadingText)`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  padding: 2rem;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 12px;
-  border: 1px solid rgba(139, 92, 246, 0.1);
-  color: #9ca3af;
-`;
-
-const RetryProgress = styled.div`
+const ProgressBarContainer = styled.div`
   width: 100%;
-  max-width: 200px;
-  height: 4px;
-  background: rgba(139, 92, 246, 0.1);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-top: 0.5rem;
 `;
 
-const RetryBar = styled.div<{ $progress: number }>`
-  width: ${props => props.$progress}%;
+const ProgressBarBackground = styled.div`
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+`;
+
+const ProgressBarFill = styled.div<{ $width: number }>`
   height: 100%;
+  width: ${props => props.$width}%;
   background: #8b5cf6;
-  transition: width 0.3s ease;
+  border-radius: 4px;
+  transition: width 0.5s ease-in-out;
+`;
+
+const ProgressLabels = styled.div`
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 0.25rem;
 `;
 
 const RETRY_DELAY = 5000; // 5 seconds
@@ -208,54 +210,75 @@ interface TokenStatsData {
   maxSupply: number | null;
   dataSource: 'coingecko' | 'cryptocompare';
   hasFullData: boolean;
+  ath: string;
+  atl: string;
+  athDate: string;
+  atlDate: string;
 }
 
-const formatNumber = (num: number): string => {
-  // For very large numbers (billions)
-  if (num >= 1e9) {
-    return `$${(num / 1e9).toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}B`;
+const formatNumber = (num: number | null | undefined, currency: string = 'USD'): string => {
+  if (num === null || num === undefined || isNaN(num)) {
+    return 'N/A';
   }
-  
-  // For millions
-  if (num >= 1e6) {
-    return `$${(num / 1e6).toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}M`;
-  }
-  
-  // For thousands
-  if (num >= 1e3) {
-    return `$${(num / 1e3).toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    })}K`;
-  }
-  
-  // For numbers less than 1000
-  return `$${num.toLocaleString(undefined, {
+
+  // 1. Set formatting options, but without the 'currency' style
+  const numberFormatOptions: Intl.NumberFormatOptions = {
+    style: 'decimal', // We'll handle the symbol manually
+    notation: 'compact',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}`;
+    maximumFractionDigits: 2,
+  };
+
+  if (Math.abs(num) < 1000) {
+    numberFormatOptions.notation = 'standard';
+    if (Math.abs(num) < 1) {
+      numberFormatOptions.maximumFractionDigits = 6;
+    }
+  }
+
+  // 2. Always format the number using the 'en-US' locale for consistency (B, M, etc.)
+  const formattedNumber = new Intl.NumberFormat('en-US', numberFormatOptions).format(num);
+
+  // 3. Determine the correct symbol
+  const upperCurrency = currency.toUpperCase();
+  let symbol = '$'; // Default to USD
+  if (upperCurrency === 'CAD') {
+    symbol = 'CA$';
+  } else if (upperCurrency === 'EUR') {
+    symbol = '€';
+  }
+
+  // 4. Prepend the correct symbol to the consistently formatted number
+  return `${symbol}${formattedNumber}`;
 };
 
+const formatDate = (dateString: string): string => {
+    if (!dateString) return 'N/A';
+    try {
+        return new Date(dateString).toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    } catch {
+        return 'N/A';
+    }
+}
+
 const CircularProgressIndicator: React.FC<{ percentage: number }> = ({ percentage }) => {
-  const radius = 18;
+  const radius = 14;
   const circumference = 2 * Math.PI * radius;
   const progress = Math.min(Math.max(percentage, 0), 100);
   const strokeDashoffset = circumference - (progress / 100) * circumference;
 
   return (
     <CircleContainer>
-      <svg width="40" height="40" viewBox="0 0 40 40">
-        <CircleBackground cx="20" cy="20" r={radius} strokeWidth="3" />
+      <svg width="32" height="32" viewBox="0 0 32 32">
+        <CircleBackground cx="16" cy="16" r={radius} strokeWidth="3" />
         <CircleProgress
           $progress={progress}
-          cx="20"
-          cy="20"
+          cx="16"
+          cy="16"
           r={radius}
           strokeWidth="3"
           strokeDasharray={circumference}
@@ -264,6 +287,23 @@ const CircularProgressIndicator: React.FC<{ percentage: number }> = ({ percentag
       </svg>
       <PercentageText>{`${Math.round(progress)}%`}</PercentageText>
     </CircleContainer>
+  );
+};
+
+const HorizontalProgressBar: React.FC<{
+  percentage: number;
+  total: number | null;
+}> = ({ percentage, total }) => {
+  return (
+    <ProgressBarContainer>
+      <ProgressBarBackground>
+        <ProgressBarFill $width={percentage} />
+      </ProgressBarBackground>
+      <ProgressLabels>
+        <span>{percentage.toFixed(0)}% Circulating</span>
+        <span>Total: {total?.toLocaleString() ?? 'N/A'}</span>
+      </ProgressLabels>
+    </ProgressBarContainer>
   );
 };
 
@@ -308,6 +348,7 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
   }, []);
 
   const fetchStats = useCallback(async () => {
+    console.log(`[TokenStats.tsx] fetchStats called with props:`, { cryptoId, currency });
     try {
       setLoading(true);
       setError(null);
@@ -317,17 +358,24 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
       if (!coingeckoId) {
         throw new Error(`No CoinGecko ID found for ${cryptoId}`);
       }
+      
+      const statsData = await getTokenStats(coingeckoId, currency.toLowerCase());
 
-      const data = await getTokenStats(coingeckoId, currency.toLowerCase());
+      console.log('[TokenStats.tsx] Fetched statsData:', statsData);
+
       setStats({
-        marketCap: formatNumber(data.marketCap),
-        volume24h: formatNumber(data.volume24h),
-        fdv: formatNumber(data.fdv),
-        circulatingSupply: data.circulatingSupply,
-        totalSupply: data.totalSupply,
-        maxSupply: data.maxSupply,
-        dataSource: data.dataSource,
-        hasFullData: data.hasFullData
+        marketCap: formatNumber(statsData.marketCap, currency),
+        volume24h: formatNumber(statsData.volume24h, currency),
+        fdv: formatNumber(statsData.fdv, currency),
+        circulatingSupply: statsData.circulatingSupply,
+        totalSupply: statsData.totalSupply,
+        maxSupply: statsData.maxSupply,
+        dataSource: statsData.dataSource,
+        hasFullData: statsData.hasFullData,
+        ath: formatNumber(statsData.ath, currency),
+        atl: formatNumber(statsData.atl, currency),
+        athDate: formatDate(statsData.athDate),
+        atlDate: formatDate(statsData.atlDate),
       });
       setRetryCount(0);
       setRetryProgress(0);
@@ -352,6 +400,7 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
   }, [cryptoId, currency, getCryptoId, clearTimeouts, startRetryProgress, retryCount]);
 
   useEffect(() => {
+    console.log('[TokenStats.tsx] useEffect triggered, calling fetchStats.');
     fetchStats();
     return () => clearTimeouts();
   }, [fetchStats, clearTimeouts]);
@@ -367,7 +416,7 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
 
   if (error) {
     return (
-      <StatsContainer>
+      <StatsPanel>
         {retryCount < MAX_RETRIES ? (
           <RetryOverlay>
             <div>{error}</div>
@@ -385,7 +434,7 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
             </RetryButton>
           </ErrorText>
         )}
-      </StatsContainer>
+      </StatsPanel>
     );
   }
 
@@ -400,32 +449,26 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
   };
 
   return (
-    <StatsContainer>
-      <StatCardWithProgress>
-        <StatContent>
-          <StatLabel>
-            Market Cap
-            <InfoIcon title={`Total value of all currently circulating tokens (${stats?.circulatingSupply?.toLocaleString()} / ${(stats?.maxSupply || stats?.totalSupply)?.toLocaleString()})`}>ⓘ</InfoIcon>
-          </StatLabel>
-          <StatValue $isLimited={!stats?.hasFullData}>
-            {stats?.marketCap || 'N/A'}
-            {stats && <DataSourceBadge $source={stats.dataSource}>
-              {stats.dataSource === 'coingecko' ? 'CoinGecko' : 'CryptoCompare'}
-            </DataSourceBadge>}
-          </StatValue>
-        </StatContent>
-        <CircularProgressIndicator percentage={calculateSupplyPercentage()} />
-      </StatCardWithProgress>
-      <StatCard>
+    <StatsPanel>
+      <StatRow>
         <StatLabel>
-          24h Volume
+          Market Cap
+          <InfoIcon title={`Total value of all currently circulating tokens`}>ⓘ</InfoIcon>
+        </StatLabel>
+        <StatValue $isLimited={!stats?.hasFullData}>
+          {stats?.marketCap || 'N/A'}
+        </StatValue>
+      </StatRow>
+      <StatRow>
+        <StatLabel>
+          Volume (24h)
           <InfoIcon title="Total trading volume in the last 24 hours">ⓘ</InfoIcon>
         </StatLabel>
         <StatValue $isLimited={!stats?.hasFullData}>
           {stats?.volume24h || 'N/A'}
         </StatValue>
-      </StatCard>
-      <StatCard>
+      </StatRow>
+      <StatRow>
         <StatLabel>
           FDV
           <InfoIcon title="Fully Diluted Valuation - Total market cap if maximum token supply was in circulation">ⓘ</InfoIcon>
@@ -433,13 +476,51 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
         <StatValue $isLimited={!stats?.hasFullData}>
           {stats?.fdv || 'N/A'}
         </StatValue>
-      </StatCard>
+      </StatRow>
+      <StatGroup>
+        <StatRow style={{ padding: 0, border: 'none', background: 'transparent' }}>
+            <StatLabel>
+                Circulating Supply
+                <InfoIcon title={`Percentage of circulating supply relative to max/total supply`}>ⓘ</InfoIcon>
+            </StatLabel>
+            <StatValue $isLimited={!stats?.hasFullData}>
+                {stats?.circulatingSupply?.toLocaleString() || 'N/A'}
+            </StatValue>
+        </StatRow>
+        <HorizontalProgressBar 
+            percentage={calculateSupplyPercentage()}
+            total={stats?.maxSupply || stats?.totalSupply || null}
+        />
+      </StatGroup>
+      <StatRow>
+        <StatLabel>
+          All-Time High
+          <InfoIcon title={`Highest price ever reached. Date: ${stats?.athDate || 'N/A'}`}>ⓘ</InfoIcon>
+        </StatLabel>
+        <StatValue>
+          {stats?.ath || 'N/A'}
+        </StatValue>
+      </StatRow>
+      <StatRow>
+        <StatLabel>
+          All-Time Low
+          <InfoIcon title={`Lowest price ever reached. Date: ${stats?.atlDate || 'N/A'}`}>ⓘ</InfoIcon>
+        </StatLabel>
+        <StatValue>
+          {stats?.atl || 'N/A'}
+        </StatValue>
+      </StatRow>
+
+      {stats && <DataSourceBadge style={{ alignSelf: 'center', marginTop: '0.5rem' }} $source={stats.dataSource}>
+          Data via {stats.dataSource === 'coingecko' ? 'CoinGecko' : 'CryptoCompare'}
+      </DataSourceBadge>}
+
       {stats && !stats.hasFullData && (
         <LimitedDataIndicator>
-          Limited data available for this token. Some metrics may not be displayed.
+          Limited data available for this token.
         </LimitedDataIndicator>
       )}
-    </StatsContainer>
+    </StatsPanel>
   );
 };
 

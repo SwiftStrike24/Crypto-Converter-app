@@ -86,12 +86,15 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
   const widgetKey = `${market}-${cryptoId}-${timeframe}-${currency}`;
 
   useEffect(() => {
+    console.log(`[TradingViewWidget.tsx] useEffect triggered for widgetKey: ${widgetKey}`);
     const cleanupWidget = () => {
       if (container.current) {
+        console.log('[TradingViewWidget.tsx] Cleaning up widget container.');
         // More aggressively clear the container
         container.current.innerHTML = ''; 
       }
       if (scriptRef.current && scriptRef.current.parentNode) {
+        console.log('[TradingViewWidget.tsx] Removing old widget script.');
         scriptRef.current.parentNode.removeChild(scriptRef.current);
         scriptRef.current = null;
       }
@@ -120,6 +123,7 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
     widgetInnerContainer.style.height = '100%'; // Ensure it takes up space
     widgetInnerContainer.style.width = '100%';
     container.current.appendChild(widgetInnerContainer);
+    console.log(`[TradingViewWidget.tsx] Created new inner container with ID: ${widgetTargetId}`);
 
     const script = document.createElement("script");
     script.src = "https://s3.tradingview.com/external-embedding/embed-widget-symbol-overview.js";
@@ -180,6 +184,7 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
 
     script.innerHTML = JSON.stringify(widgetConfig);
     scriptRef.current = script;
+    console.log('[TradingViewWidget.tsx] Widget config created:', widgetConfig);
 
     // Add error detection
     const errorHandler = (event: ErrorEvent) => {
@@ -196,6 +201,7 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
     const timerId = setTimeout(() => {
         // Check if container still exists before appending
         if (widgetInnerContainer.isConnected) { 
+            console.log('[TradingViewWidget.tsx] Appending script to container.');
             widgetInnerContainer.appendChild(script);
         }
     }, 0);
@@ -206,6 +212,7 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
     };
 
     return () => {
+      console.log(`[TradingViewWidget.tsx] Cleanup function called for widgetKey: ${widgetKey}`);
       clearTimeout(timerId); // Clear timeout on cleanup
       window.removeEventListener('error', errorHandler);
       cleanupWidget();

@@ -186,23 +186,24 @@ The application primarily uses React Context API for managing global state:
 *   **Component Library:** Material-UI (MUI v6.3.1 - noted as pre-release in `progress.md`).
 *   **Styling Engine:** `styled-components` (v6.1.13) for CSS-in-JS.
 *   **Icons:** `react-icons`.
-*   **Charting Library:** `recharts` (v2.13.3).
+*   **Charting Library:** `recharts` (v2.13.3) and `TradingViewWidget` for advanced charting.
 *   **Navigation:** `react-router-dom` (v7.0.1 - noted as pre-release in `progress.md`).
 *   **Key UI Components:**
     *   `App.tsx`: Main application component, sets up routing and global providers.
     *   `Converter.tsx`: Core UI for cryptocurrency conversion.
     *   `AddCryptoModal.tsx`: Modal for searching and adding new cryptocurrencies.
     *   `ManageTokens.tsx`: Page for viewing and removing user-added custom tokens.
+    *   `ChartPage.tsx`: A modern dashboard page for token analysis. It features a responsive two-column layout, with the main `TradingViewWidget` on the left and a detailed statistics sidebar on the right.
     *   `Header.tsx`, `Footer.tsx`: Standard layout components.
     *   `LivePrice.tsx`: Component for displaying real-time price updates.
-    *   `ChartModal.tsx`, `CryptoChart.tsx`: Components for displaying cryptocurrency price charts.
-    *   `TokenStats.tsx`: Displays detailed market statistics for a selected token.
+    *   `TokenStats.tsx`: A detailed statistics panel displayed within the `ChartPage` sidebar. It shows key metrics like Market Cap, Volume, All-Time High/Low, and a visual progress bar for Circulating Supply. It features robust, locale-aware currency formatting.
     *   `InstanceDialog.tsx`: Dialog shown when a second instance of the app is attempted.
     *   `UpdateDialog.tsx`: Modal for handling the in-app update flow.
     *   `LoadingScreen.tsx`: An initial launch screen that displays an animated logo and progress bar to improve perceived startup performance. Controlled by `App.tsx`.
 
 ## 6. Key Features Implemented
 
+*   **Modern Charting Dashboard**: The `ChartPage` provides a comprehensive and visually appealing dashboard for analyzing cryptocurrencies. It integrates a powerful `TradingViewWidget` with a dedicated `TokenStats` sidebar, all within a responsive two-column grid layout.
 *   **Animated Launch Screen**: An initial loading screen built with `framer-motion` that provides a polished startup experience before the main application UI is displayed.
 *   **Real-time Crypto-to-Fiat Conversion:** Core functionality of the application.
 *   **Live Fiat Exchange Rates:** USD to CAD/EUR rates via Open Exchange Rates API for accurate conversions.
@@ -216,8 +217,8 @@ The application primarily uses React Context API for managing global state:
 *   **Live Price Display:** Real-time display of prices and 24-hour percentage change.
 *   **Token Icon Display:** Fetches and displays token icons, with local caching in `localStorage` and placeholder generation.
 *   **Token Metadata:** Fetches and displays token metadata such as name, symbol, and rank.
-*   **Detailed Token Statistics:** Display of market cap, trading volume, circulating/total supply.
-*   **Price Chart Visualization:** Historical price charts using `recharts`.
+*   **Detailed Token Statistics:** Display of market cap, trading volume, circulating/total supply, and All-Time High/Low data. Features a horizontal progress bar for visualizing circulating supply.
+*   **Price Chart Visualization:** Historical price charts using `recharts` and `TradingViewWidget`.
 *   **Robust API Handling:** Includes rate limiting, caching, batching, and retry mechanisms.
 *   **Single Instance Management:** Ensures only one instance of the app runs, with a custom dialog and smart relaunch capabilities.
 *   **Minimize to Tray:** Allows the application to be minimized to the system tray.
@@ -237,6 +238,10 @@ The application primarily uses React Context API for managing global state:
 *   **Version Management:** Centralized version handling (`versionManager.ts`), automated version injection during build, and version comparison for updates.
 *   **Loading Placeholders:** Implemented a smooth shimmer/wave animation (`WaveLoadingPlaceholder.tsx`) to replace numerical placeholders (e.g., previous `$1` estimates or "N/A") in the `Converter` result display and `Header` price display during price fetching or when data is pending. This enhances UX by providing visual feedback without showing potentially misleading or jarring placeholder numbers.
 *   **Build Compression:** Uses `normal` compression level for a balance between installer size and installation speed, improving the initial setup experience.
+*   **Multi-Layer Stablecoin Detection:** Introduced a multi-layer stablecoin detection system that automatically switches the target fiat currency based on the type of stablecoin selected by the user, enhancing the user experience for stablecoin conversions.
+
+### Phase 4: Chart Page UI/UX Overhaul (v1.7.3)
+Completely redesigned the `ChartPage` to improve information hierarchy and visual appeal. This involved moving from a simple stacked layout to a modern two-column dashboard, redesigning the header for unified controls, and transforming `TokenStats` into a detailed sidebar panel with improved data visualization, including a horizontal progress bar for circulating supply. This phase also included significant bug fixes related to data fetching and currency formatting to ensure a stable and intuitive user experience.
 
 ## 7. Build and Development Process
 
@@ -402,3 +407,6 @@ Implemented an advanced, cache-first data fetching strategy to eliminate UI dela
 
 ### Phase 3: Intelligent Stablecoin Detection & Auto-Switching (v1.6.0)
 Introduced a multi-layer stablecoin detection system that automatically switches the target fiat currency based on the type of stablecoin selected by the user, enhancing the user experience for stablecoin conversions. 
+
+### Phase 4: Chart Page UI/UX Overhaul (v1.7.3)
+Completely redesigned the `ChartPage` to improve information hierarchy and visual appeal. This involved moving from a simple stacked layout to a modern two-column dashboard, redesigning the header for unified controls, and transforming `TokenStats` into a detailed sidebar panel with improved data visualization, including a horizontal progress bar for circulating supply. This phase also included significant bug fixes related to data fetching and currency formatting to ensure a stable and intuitive user experience. 

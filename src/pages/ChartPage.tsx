@@ -6,62 +6,56 @@ import { TokenStats } from '../components/TokenStats';
 import TradingViewWidget from '../components/TradingViewWidget';
 
 const PageContainer = styled.div`
-  height: 100%;
-  width: 100%;
-  margin: 0 auto;
+  height: 100vh;
+  width: 100vw;
   display: flex;
   flex-direction: column;
-  padding: 1rem;
   background: #111111;
-  transition: all 0.3s ease;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
   overflow: hidden;
+  padding: 1rem;
 `;
 
-const Header = styled.div`
+const Header = styled.header`
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
   padding: 0.75rem;
-  background: rgba(139, 92, 246, 0.05);
+  background: rgba(20, 20, 20, 0.85);
   border-radius: 12px;
-  backdrop-filter: blur(10px);
   border: 1px solid rgba(139, 92, 246, 0.1);
+  backdrop-filter: blur(10px);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  height: 60px;
-  
-  @media (max-width: 768px) {
-    flex-direction: column;
-    height: auto;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-    padding: 0.5rem;
-  }
-`;
-
-const HeaderContent = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 2rem;
+  flex-shrink: 0;
   
   @media (max-width: 768px) {
     flex-direction: column;
     gap: 1rem;
+  }
+`;
+
+const HeaderLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+`;
+
+const HeaderRight = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+
+  @media (max-width: 768px) {
     width: 100%;
-    align-items: center;
+    justify-content: space-between;
   }
 `;
 
 const CurrencyBadge = styled.span`
   background: rgba(139, 92, 246, 0.1);
   color: #8b5cf6;
-  padding: 0.35rem 1rem;
-  border-radius: 12px;
+  padding: 0.5rem 1rem;
+  border-radius: 10px;
   font-size: 0.85rem;
   font-weight: 500;
   border: 1px solid rgba(139, 92, 246, 0.2);
@@ -69,31 +63,23 @@ const CurrencyBadge = styled.span`
   align-items: center;
   gap: 0.5rem;
   letter-spacing: 0.5px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transition: all 0.3s ease;
   
   &:hover {
     background: rgba(139, 92, 246, 0.15);
     border-color: rgba(139, 92, 246, 0.3);
-    transform: translateY(-1px);
-    box-shadow: 0 6px 12px rgba(139, 92, 246, 0.15);
-  }
-  
-  svg {
-    width: 14px;
-    height: 14px;
-    opacity: 0.9;
-  }
-
-  @media (max-width: 768px) {
-    font-size: 0.8rem;
-    padding: 0.25rem 0.8rem;
   }
 `;
 
+const StyledCurrencyIcon = styled.svg`
+  width: 14px;
+  height: 14px;
+  opacity: 0.9;
+`;
+
 const CurrencyIcon = () => (
-  <svg 
+  <StyledCurrencyIcon 
     viewBox="0 0 24 24" 
     fill="none" 
     stroke="currentColor" 
@@ -104,7 +90,7 @@ const CurrencyIcon = () => (
     <circle cx="12" cy="12" r="8"/>
     <line x1="12" y1="16" x2="12" y2="16"/>
     <line x1="12" y1="8" x2="12" y2="12"/>
-  </svg>
+  </StyledCurrencyIcon>
 );
 
 const BackButton = styled.button`
@@ -116,7 +102,7 @@ const BackButton = styled.button`
   gap: 0.5rem;
   cursor: pointer;
   padding: 0.75rem 1rem;
-  border-radius: 12px;
+  border-radius: 10px;
   transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
   font-size: 0.9rem;
   font-weight: 500;
@@ -124,69 +110,59 @@ const BackButton = styled.button`
   &:hover {
     background: rgba(139, 92, 246, 0.15);
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);
-  }
-
-  &:active {
-    transform: translateY(0);
+    box-shadow: 0 4px 8px rgba(139, 92, 246, 0.15);
   }
 
   svg {
-    width: 20px;
-    height: 20px;
-  }
-  
-  @media (max-width: 768px) {
-    width: 100%;
-    justify-content: center;
+    width: 18px;
+    height: 18px;
   }
 `;
 
-const ChartWrapper = styled.div`
+const ContentGrid = styled.main`
   flex: 1;
-  width: 100%;
-  max-width: 100%;
-  margin: 0 auto;
-  background: rgba(20, 20, 20, 0.85);
-  border-radius: 16px;
-  padding: 1rem;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(139, 92, 246, 0.15);
-  // backdrop-filter: blur(20px); // Temporarily comment out backdrop-filter
-  height: calc(100% - 80px);
-  transition: background 0.3s ease, border-color 0.3s ease;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 1rem;
+  overflow: hidden;
+
+  @media (max-width: 1024px) {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+`;
+
+const MainContent = styled.div`
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  background: rgba(20, 20, 20, 0.85);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(139, 92, 246, 0.15);
   overflow: hidden;
 `;
 
-const ChartControls = styled.div`
+const Sidebar = styled.aside`
   display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  background: rgba(26, 26, 26, 0.6);
-  border-radius: 12px;
-  border: 1px solid rgba(139, 92, 246, 0.1);
-  backdrop-filter: blur(8px);
-  height: 50px;
-
-  @media (max-width: 768px) {
-    height: auto;
-    padding: 0.5rem;
-  }
-`;
-
-const ControlsRight = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 1rem;
+  flex-direction: column;
+  background: rgba(20, 20, 20, 0.85);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  overflow-y: auto;
   
-  @media (max-width: 768px) {
-    width: 100%;
-    justify-content: space-between;
-    gap: 0.5rem;
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.3);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
   }
 `;
 
@@ -195,7 +171,6 @@ const MarketLabel = styled.span`
   font-size: 0.9rem;
   font-weight: 500;
   letter-spacing: 0.5px;
-  text-transform: uppercase;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -215,9 +190,8 @@ const MarketButtons = styled.div`
   gap: 0.5rem;
   background: rgba(0, 0, 0, 0.4);
   padding: 0.375rem;
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid rgba(139, 92, 246, 0.2);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 
   @media (max-width: 768px) {
     width: auto;
@@ -226,11 +200,11 @@ const MarketButtons = styled.div`
   }
 `;
 
-interface TimeButtonProps {
+interface MarketButtonProps {
   $active: boolean;
 }
 
-const MarketButton = styled.button<TimeButtonProps>`
+const MarketButton = styled.button<MarketButtonProps>`
   background: ${props => props.$active ? 'rgba(139, 92, 246, 0.3)' : 'transparent'};
   border: 1px solid ${props => props.$active ? '#8B5CF6' : 'rgba(255, 255, 255, 0.1)'};
   color: ${props => props.$active ? '#fff' : 'rgba(255, 255, 255, 0.7)'};
@@ -239,20 +213,16 @@ const MarketButton = styled.button<TimeButtonProps>`
   font-size: 0.85rem;
   font-weight: ${props => props.$active ? '600' : '500'};
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+  transition: all 0.2s ease;
   min-width: 70px;
   text-align: center;
   letter-spacing: 0.5px;
   
   &:hover {
     background: ${props => props.$active ? 'rgba(139, 92, 246, 0.35)' : 'rgba(255, 255, 255, 0.05)'};
-    color: ${props => props.$active ? '#fff' : 'rgba(255, 255, 255, 0.9)'};
+    color: #fff;
     transform: translateY(-1px);
     border-color: ${props => props.$active ? '#8B5CF6' : 'rgba(255, 255, 255, 0.2)'};
-  }
-
-  &:active {
-    transform: translateY(0);
   }
 `;
 
@@ -291,12 +261,14 @@ const LoadingPlaceholder = styled.div`
 `;
 
 const _ChartPage: React.FC = () => {
+  console.log('--- ChartPage Render ---');
   const location = useLocation();
   const navigate = useNavigate();
   const [selectedMarket, setSelectedMarket] = useState<Market>('PYTH');
   const [isWidgetLoading, setIsWidgetLoading] = useState(true);
 
   useEffect(() => {
+    console.log('[ChartPage.tsx] useEffect for widget loading triggered.');
     const timer = setTimeout(() => {
       setIsWidgetLoading(false);
     }, 500);
@@ -317,9 +289,9 @@ const _ChartPage: React.FC = () => {
              <BackIcon /> Back
            </BackButton>
         </Header>
-        <ChartWrapper>
+        <MainContent>
           <div>Error: Missing required chart data. Please go back and select a token.</div>
-        </ChartWrapper>
+        </MainContent>
       </PageContainer>
     );
   }
@@ -329,51 +301,50 @@ const _ChartPage: React.FC = () => {
   return (
     <PageContainer>
       <Header>
-        <BackButton onClick={() => {
-          console.log('↩️ Navigating back to converter');
-          navigate('/');
-        }}>
-          <BackIcon />
-          Back to Converter
-        </BackButton>
-        <HeaderContent>
+        <HeaderLeft>
+          <BackButton onClick={() => navigate('/')}>
+            <BackIcon />
+            Back to Converter
+          </BackButton>
           <CurrencyBadge>
             <CurrencyIcon />
             {currency} View
           </CurrencyBadge>
-        </HeaderContent>
+        </HeaderLeft>
+        <HeaderRight>
+          <MarketLabel>Exchange View</MarketLabel>
+          <MarketButtons>
+            {(['PYTH', 'CRYPTO', 'BINANCE', 'MEXC'] as Market[]).map((market) => (
+              <MarketButton
+                key={market}
+                $active={selectedMarket === market}
+                onClick={() => setSelectedMarket(market)}
+              >
+                {market}
+              </MarketButton>
+            ))}
+          </MarketButtons>
+        </HeaderRight>
       </Header>
-      <ChartWrapper>
-        <ChartControls>
-          <ControlsRight>
-            <MarketLabel>Exchange View</MarketLabel>
-            <MarketButtons>
-              {(['PYTH', 'CRYPTO', 'BINANCE', 'MEXC'] as Market[]).map((market) => (
-                <MarketButton
-                  key={market}
-                  $active={selectedMarket === market}
-                  onClick={() => setSelectedMarket(market)}
-                >
-                  {market}
-                </MarketButton>
-              ))}
-            </MarketButtons>
-          </ControlsRight>
-        </ChartControls>
-        <ChartWidgetContainer>
-          {isWidgetLoading ? (
-            <LoadingPlaceholder>Loading Chart...</LoadingPlaceholder>
-          ) : (
-            <TradingViewWidget
-              cryptoId={cryptoId}
-              timeframe="1D"
-              market={selectedMarket}
-              currency={currency}
-            />
-          )}
-        </ChartWidgetContainer>
-        <TokenStats cryptoId={cryptoId} currency={currency} />
-      </ChartWrapper>
+      <ContentGrid>
+        <MainContent>
+          <ChartWidgetContainer>
+            {isWidgetLoading ? (
+              <LoadingPlaceholder>Loading Chart...</LoadingPlaceholder>
+            ) : (
+              <TradingViewWidget
+                cryptoId={cryptoId}
+                timeframe="1D"
+                market={selectedMarket}
+                currency={currency}
+              />
+            )}
+          </ChartWidgetContainer>
+        </MainContent>
+        <Sidebar>
+          <TokenStats cryptoId={cryptoId} currency={currency} />
+        </Sidebar>
+      </ContentGrid>
     </PageContainer>
   );
 };

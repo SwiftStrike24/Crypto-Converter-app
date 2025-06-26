@@ -1,19 +1,25 @@
 import { handleApiError } from '../utils/errorHandling';
 import { rateLimiter, COINGECKO_RATE_LIMITS, shouldUseCache, setCacheWithTimestamp, getCacheWithTimestamp } from '../utils/rateLimiter';
 import axios, { AxiosError } from 'axios';
+import { fetchCoinMarkets } from './crypto/cryptoApiService';
+import { RequestPriority } from './crypto/cryptoApiService';
 
 const COINGECKO_API_URL = 'https://api.coingecko.com/api/v3';
 const CRYPTOCOMPARE_API_URL = 'https://data-api.cryptocompare.com/onchain/v2/historical/supply/days';
 const CACHE_TTL = 30 * 1000; // 30 seconds cache for regular data
 const EXTENDED_CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache for fallback data
 
-interface TokenStatsResponse {
+export interface TokenStatsData {
   marketCap: number;
   volume24h: number;
   fdv: number;
   circulatingSupply: number;
   totalSupply: number;
   maxSupply: number | null;
+  ath: number;
+  atl: number;
+  athDate: string;
+  atlDate: string;
   dataSource: 'coingecko' | 'cryptocompare';
   hasFullData: boolean;
 }
@@ -119,7 +125,7 @@ async function fetchWithFallback(url: string, options: any = {}): Promise<any> {
   throw new Error('All fetch attempts failed');
 }
 
-async function fetchTokenStatsFromCryptoCompare(cryptoId: string): Promise<TokenStatsResponse> {
+async function fetchTokenStatsFromCryptoCompare(cryptoId: string): Promise<TokenStatsData> {
   console.log('📊 Fetching token stats from CryptoCompare:', cryptoId);
   
   const params = {
@@ -168,6 +174,10 @@ async function fetchTokenStatsFromCryptoCompare(cryptoId: string): Promise<Token
       circulatingSupply: supplyData.SUPPLY_CIRCULATING || 0,
       totalSupply: supplyData.SUPPLY_TOTAL || 0,
       maxSupply: supplyData.SUPPLY_MAX > 0 ? supplyData.SUPPLY_MAX : null,
+      ath: 0,
+      atl: 0,
+      athDate: '',
+      atlDate: '',
       dataSource: 'cryptocompare',
       hasFullData: hasValidSupplyData
     };
@@ -177,7 +187,7 @@ async function fetchTokenStatsFromCryptoCompare(cryptoId: string): Promise<Token
   }
 }
 
-async function fetchTokenStatsFromCoinGecko(cryptoId: string, currency: string): Promise<TokenStatsResponse> {
+async function fetchTokenStatsFromCoinGecko(cryptoId: string, currency: string): Promise<TokenStatsData> {
   const rateLimitKey = 'coingecko_token_stats';
   const hasToken = await rateLimiter.waitForToken(
     rateLimitKey,
@@ -225,81 +235,51 @@ async function fetchTokenStatsFromCoinGecko(cryptoId: string, currency: string):
     circulatingSupply: marketData.circulating_supply || 0,
     totalSupply: marketData.total_supply || 0,
     maxSupply: marketData.max_supply,
+    ath: 0,
+    atl: 0,
+    athDate: '',
+    atlDate: '',
     dataSource: 'coingecko',
     hasFullData: true
   };
 }
 
-export async function getTokenStats(cryptoId: string, currency: string): Promise<TokenStatsResponse> {
-  const cacheKey = `stats-${cryptoId}-${currency}`;
-
+export const getTokenStats = async (
+  id: string,
+  currency: string
+): Promise<TokenStatsData> => {
   try {
-    // Check cache first with longer validity during stress
-    const cachedData = getCacheWithTimestamp(cacheKey);
-    if (cachedData) {
-      const cacheAge = Date.now() - cachedData.timestamp;
-      // Use cache for up to 15 minutes during stress
-      if (cacheAge < EXTENDED_CACHE_TTL * 3) {
-        console.log(`📊 Using cached data for ${cryptoId} (age: ${Math.round(cacheAge / 1000)}s)`);
-        return cachedData.data;
-      }
+    const data = await fetchCoinMarkets([id], currency, RequestPriority.HIGH);
+
+    if (!data || data.length === 0) {
+      throw new Error(`No data returned from CoinGecko for ID ${id}`);
     }
 
-    let error: Error | null = null;
-    let stats: TokenStatsResponse | null = null;
+    const tokenData = data[0];
 
-    // Try CoinGecko first
-    try {
-      console.log('📊 Attempting to fetch from CoinGecko:', cryptoId);
-      stats = await fetchTokenStatsFromCoinGecko(cryptoId, currency);
-      
-      if (stats.marketCap === 0 && stats.volume24h === 0 && stats.fdv === 0) {
-        console.log('Invalid market data from CoinGecko, will try fallback');
-      } else {
-        setCacheWithTimestamp(cacheKey, stats, CACHE_TTL);
-        return stats;
-      }
-    } catch (e) {
-      error = e as Error;
-      console.log('CoinGecko failed, attempting CryptoCompare fallback:', e);
-    }
+    // Check for essential data points to determine if we have full data
+    const hasFullData = 
+        tokenData.market_cap != null &&
+        tokenData.total_volume != null &&
+        tokenData.fully_diluted_valuation != null;
 
-    // Try CryptoCompare as fallback
-    try {
-      const fallbackStats = await fetchTokenStatsFromCryptoCompare(cryptoId);
-      setCacheWithTimestamp(cacheKey, fallbackStats, EXTENDED_CACHE_TTL);
-      return fallbackStats;
-    } catch (e) {
-      console.error('Both APIs failed:', e);
-      
-      // If we have stats from CoinGecko with zeros, use it instead of nothing
-      if (stats) {
-        console.log('Using partial CoinGecko data as last resort');
-        setCacheWithTimestamp(cacheKey, stats, CACHE_TTL);
-        return stats;
-      }
-      
-      // If both APIs fail and we have cached data, use it regardless of age
-      if (cachedData) {
-        console.log(`📊 Using expired cache for ${cryptoId} as fallback`);
-        return cachedData.data;
-      }
-      
-      throw error || e;
-    }
-  } catch (error) {
-    console.error(`Error fetching token stats for ${cryptoId}:`, error);
-    
-    // Last resort - return empty data with proper typing rather than throwing
     return {
-      marketCap: 0,
-      volume24h: 0,
-      fdv: 0,
-      circulatingSupply: 0,
-      totalSupply: 0,
-      maxSupply: null,
+      marketCap: tokenData.market_cap ?? 0,
+      volume24h: tokenData.total_volume ?? 0,
+      fdv: tokenData.fully_diluted_valuation ?? 0,
+      circulatingSupply: tokenData.circulating_supply ?? 0,
+      totalSupply: tokenData.total_supply ?? 0,
+      maxSupply: tokenData.max_supply ?? null,
+      ath: tokenData.ath ?? 0,
+      atl: tokenData.atl ?? 0,
+      athDate: tokenData.ath_date ?? '',
+      atlDate: tokenData.atl_date ?? '',
       dataSource: 'coingecko',
-      hasFullData: false
+      hasFullData,
     };
+  } catch (error) {
+    console.error(`Failed to get token stats for ${id}:`, error);
+    // In case of an error, re-throw it to be handled by the calling component's try-catch block
+    throw error;
   }
-} 
+}; 
