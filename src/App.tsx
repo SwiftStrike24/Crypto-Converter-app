@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
+import { AnimatePresence, motion } from 'framer-motion';
 import Header from './components/Header';
 import Converter from './components/Converter';
 import Footer from './components/Footer';
@@ -12,6 +13,7 @@ import { CryptoProvider } from './context/CryptoContext';
 import { CryptoCompareProvider } from './context/CryptoCompareContext';
 import { ExchangeRatesProvider } from './context/ExchangeRatesContext';
 import InstanceDialog from './pages/InstanceDialog';
+import LoadingScreen from './components/LoadingScreen';
 
 const AppContainer = styled.div<{ $isFullScreen?: boolean }>`
   width: ${props => props.$isFullScreen ? '100%' : '400px'};
@@ -87,6 +89,8 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+
   useEffect(() => {
     const handleUpdateSuccess = () => {
       window.dispatchEvent(new CustomEvent('show-update-notification', {
@@ -113,7 +117,21 @@ const App: React.FC = () => {
       <CryptoProvider>
         <CryptoCompareProvider>
           <Router>
-            <AppContent />
+            <AnimatePresence mode="wait">
+              {isLoading ? (
+                <LoadingScreen key="loading" onFinish={() => setIsLoading(false)} />
+              ) : (
+                <motion.div
+                  key="content"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                  style={{ width: '100%', height: '100%' }}
+                >
+                  <AppContent />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </Router>
         </CryptoCompareProvider>
       </CryptoProvider>

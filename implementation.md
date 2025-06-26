@@ -199,9 +199,11 @@ The application primarily uses React Context API for managing global state:
     *   `TokenStats.tsx`: Displays detailed market statistics for a selected token.
     *   `InstanceDialog.tsx`: Dialog shown when a second instance of the app is attempted.
     *   `UpdateDialog.tsx`: Modal for handling the in-app update flow.
+    *   `LoadingScreen.tsx`: An initial launch screen that displays an animated logo and progress bar to improve perceived startup performance. Controlled by `App.tsx`.
 
 ## 6. Key Features Implemented
 
+*   **Animated Launch Screen**: An initial loading screen built with `framer-motion` that provides a polished startup experience before the main application UI is displayed.
 *   **Real-time Crypto-to-Fiat Conversion:** Core functionality of the application.
 *   **Live Fiat Exchange Rates:** USD to CAD/EUR rates via Open Exchange Rates API for accurate conversions.
 *   **24-Hour Price Data:** Accurate and persistent 24-hour price ranges (low/high) with correct fiat conversions.

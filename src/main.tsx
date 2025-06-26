@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import './global.css';
 import { createGlobalStyle } from 'styled-components';
 import { initRouter } from './renderer/router';
 import { initInstanceHandler } from './renderer/instanceHandler';
