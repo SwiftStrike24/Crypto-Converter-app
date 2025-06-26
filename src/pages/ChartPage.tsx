@@ -264,7 +264,7 @@ const _ChartPage: React.FC = () => {
   console.log('--- ChartPage Render ---');
   const location = useLocation();
   const navigate = useNavigate();
-  const [selectedMarket, setSelectedMarket] = useState<Market>('PYTH');
+  const [selectedMarket, setSelectedMarket] = useState<Market>('CRYPTO');
   const [isWidgetLoading, setIsWidgetLoading] = useState(true);
 
   useEffect(() => {
@@ -314,13 +314,13 @@ const _ChartPage: React.FC = () => {
         <HeaderRight>
           <MarketLabel>Exchange View</MarketLabel>
           <MarketButtons>
-            {(['PYTH', 'CRYPTO', 'BINANCE', 'MEXC'] as Market[]).map((market) => (
+            {(['CRYPTO', 'PYTH', 'BINANCE', 'MEXC'] as Market[]).map((market) => (
               <MarketButton
                 key={market}
                 $active={selectedMarket === market}
                 onClick={() => setSelectedMarket(market)}
               >
-                {market}
+                {market === 'CRYPTO' ? 'TradingView' : market}
               </MarketButton>
             ))}
           </MarketButtons>

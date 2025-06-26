@@ -95,9 +95,11 @@ pnpm build-app
 ```
 
 This will present you with a menu to choose between:
-- 📦 Portable Executable - Standalone .exe file
-- 💿 Installer Package - Interactive Windows installer (.msi) with a setup wizard
-- 🔥 Both - Build both portable and installer
+- 🚀 Default (EXE Setup + Portable) - Builds the standard EXE installer and the portable version.
+- 💿 MSI Installer - Build only the Windows installer (.msi)
+- 📦 Portable Executable - Build only the standalone .exe file
+- ✨ EXE Setup Wizard - Build only the .exe setup wizard
+- 🏆 All Packages (EXE, MSI, Portable) - Build all available packages
 
 The build system also handles version management:
 - Automatically reads version from package.json
@@ -116,19 +118,25 @@ When selecting the "Both" option, you'll get a cool build summary with performan
 You can also use these direct commands to skip the interactive menu:
 
 ```bash
+# Build the default packages (EXE Setup + Portable)
+pnpm build-app --default
+
 # Build portable executable only
 pnpm build-app --portable
 
-# Build installer only
-pnpm build-app --installer
+# Build MSI installer only
+pnpm build-app --msi
 
-# Build both portable and installer with performance summary
-pnpm build-app --both
+# Build EXE setup wizard only
+pnpm build-app --exe
+
+# Build all packages with performance summary
+pnpm build-app --all
 ```
 
 All build outputs are placed in the `release/${version}` directory.
 
-## 🔧 Advanced Features
+## �� Advanced Features
 
 ### Instance Management
 - Single instance lock ensures only one app instance runs

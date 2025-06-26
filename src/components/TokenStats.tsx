@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback, useRef, memo } from 'react';
 import styled from 'styled-components';
 import { getTokenStats } from '../services';
 import { useCrypto } from '../context/CryptoContext';
-import { CoinDetailedMetadata } from '../utils/stablecoinDetection';
 
 const StatsPanel = styled.div`
   display: flex;
@@ -55,6 +54,18 @@ const StatValue = styled.span<{ $isLimited?: boolean }>`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+`;
+
+const StatValueWithDate = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+`;
+
+const DateLabel = styled.span`
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 2px;
 `;
 
 const DataSourceBadge = styled.span<{ $source: 'coingecko' | 'cryptocompare' }>`
@@ -111,42 +122,6 @@ const RetryButton = styled.button`
   }
 `;
 
-const CircleContainer = styled.div`
-  position: relative;
-  width: 32px;
-  height: 32px;
-`;
-
-const CircleBackground = styled.circle`
-  fill: none;
-  stroke: rgba(139, 92, 246, 0.1);
-`;
-
-const CircleProgress = styled.circle<{ $progress: number }>`
-  fill: none;
-  stroke: rgb(139, 92, 246);
-  stroke-linecap: round;
-  transform: rotate(-90deg);
-  transform-origin: 50% 50%;
-  transition: stroke-dashoffset 0.8s ease-in-out;
-`;
-
-const PercentageText = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 0.625rem;
-  font-weight: 600;
-  color: rgb(139, 92, 246);
-`;
-
-const SupplyValueContainer = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-`;
-
 const StatGroup = styled.div`
   display: flex;
   flex-direction: column;
@@ -190,6 +165,35 @@ const ProgressLabels = styled.div`
   font-size: 0.75rem;
   color: #9ca3af;
   margin-top: 0.25rem;
+`;
+
+const RetryOverlay = styled(LoadingText)`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  border: 1px solid rgba(139, 92, 246, 0.1);
+  color: #9ca3af;
+`;
+
+const RetryProgress = styled.div`
+  width: 100%;
+  max-width: 200px;
+  height: 4px;
+  background: rgba(139, 92, 246, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+`;
+
+const RetryBar = styled.div<{ $progress: number }>`
+  width: ${props => props.$progress}%;
+  height: 100%;
+  background: #8b5cf6;
+  transition: width 0.3s ease;
 `;
 
 const RETRY_DELAY = 5000; // 5 seconds
@@ -264,31 +268,6 @@ const formatDate = (dateString: string): string => {
         return 'N/A';
     }
 }
-
-const CircularProgressIndicator: React.FC<{ percentage: number }> = ({ percentage }) => {
-  const radius = 14;
-  const circumference = 2 * Math.PI * radius;
-  const progress = Math.min(Math.max(percentage, 0), 100);
-  const strokeDashoffset = circumference - (progress / 100) * circumference;
-
-  return (
-    <CircleContainer>
-      <svg width="32" height="32" viewBox="0 0 32 32">
-        <CircleBackground cx="16" cy="16" r={radius} strokeWidth="3" />
-        <CircleProgress
-          $progress={progress}
-          cx="16"
-          cy="16"
-          r={radius}
-          strokeWidth="3"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-        />
-      </svg>
-      <PercentageText>{`${Math.round(progress)}%`}</PercentageText>
-    </CircleContainer>
-  );
-};
 
 const HorizontalProgressBar: React.FC<{
   percentage: number;
@@ -495,20 +474,22 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
       <StatRow>
         <StatLabel>
           All-Time High
-          <InfoIcon title={`Highest price ever reached. Date: ${stats?.athDate || 'N/A'}`}>ⓘ</InfoIcon>
+          <InfoIcon title={`Highest price ever reached.`}>ⓘ</InfoIcon>
         </StatLabel>
-        <StatValue>
-          {stats?.ath || 'N/A'}
-        </StatValue>
+        <StatValueWithDate>
+            <StatValue>{stats?.ath || 'N/A'}</StatValue>
+            <DateLabel>{stats?.athDate || 'N/A'}</DateLabel>
+        </StatValueWithDate>
       </StatRow>
       <StatRow>
         <StatLabel>
           All-Time Low
-          <InfoIcon title={`Lowest price ever reached. Date: ${stats?.atlDate || 'N/A'}`}>ⓘ</InfoIcon>
+          <InfoIcon title={`Lowest price ever reached.`}>ⓘ</InfoIcon>
         </StatLabel>
-        <StatValue>
-          {stats?.atl || 'N/A'}
-        </StatValue>
+        <StatValueWithDate>
+            <StatValue>{stats?.atl || 'N/A'}</StatValue>
+            <DateLabel>{stats?.atlDate || 'N/A'}</DateLabel>
+        </StatValueWithDate>
       </StatRow>
 
       {stats && <DataSourceBadge style={{ alignSelf: 'center', marginTop: '0.5rem' }} $source={stats.dataSource}>

@@ -1,6 +1,6 @@
 {
   "name": "cryptovertx",
-  "version": "1.7.3",
+  "version": "1.7.5",
   "description": "A sleek cryptocurrency converter desktop app",
   "main": "./dist-electron/main.js",
   "scripts": {
@@ -12,9 +12,11 @@
     "electron": "electron .",
     "electron:dev": "electron src/electron/main.ts",
     "electron:build": "electron-builder",
-    "electron:build-installer": "cross-env NODE_ENV=production tsx scripts/build.ts --installer",
+    "electron:build-msi": "cross-env NODE_ENV=production tsx scripts/build.ts --msi",
+    "electron:build-exe": "cross-env NODE_ENV=production tsx scripts/build.ts --exe",
     "electron:build-portable": "cross-env NODE_ENV=production tsx scripts/build.ts --portable",
-    "electron:build-all": "cross-env NODE_ENV=production tsx scripts/build.ts --both",
+    "electron:build-installers": "cross-env NODE_ENV=production tsx scripts/build.ts --msi --exe",
+    "electron:build-all": "cross-env NODE_ENV=production tsx scripts/build.ts --all",
     "build-app": "tsx scripts/build.ts",
     "update-top-tokens": "tsx scripts/fetchTop100CoinGeckoIds.ts",
     "typecheck": "tsc --noEmit"
@@ -100,21 +102,11 @@
     "executableName": "CryptoVertX",
     "win": {
       "target": [
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "msi",
-          "arch": [
-            "x64"
-          ]
-        }
+        "portable",
+        "msi",
+        "nsis"
       ],
       "icon": "src/assets/icon.ico",
-      "artifactName": "${productName}-${version}.${ext}",
       "signAndEditExecutable": false,
       "signDlls": false
     },
@@ -127,7 +119,17 @@
       "runAfterFinish": true,
       "createStartMenuShortcut": true,
       "shortcutName": "CryptoVertX",
-      "artifactName": "${productName}-Installer-v${version}.${ext}"
+      "artifactName": "${productName}-MSI-Installer-v${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "runAfterFinish": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CryptoVertX",
+      "artifactName": "${productName}-Setup-v${version}.${ext}"
     },
     "electronVersion": "27.1.2",
     "buildDependenciesFromSource": false,

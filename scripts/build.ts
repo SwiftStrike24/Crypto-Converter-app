@@ -16,13 +16,15 @@ const existsAsync = promisify(fs.exists);
 const readdirAsync = promisify(fs.readdir);
 
 // Build types
-type BuildType = 'portable' | 'installer' | 'both';
+type BuildType = 'default' | 'portable' | 'msi' | 'exe' | 'all';
 
 // Check if any arguments are passed to skip interactive mode
 const hasArgs = process.argv.length > 2;
-const isInstallerBuild = process.argv.includes('--installer');
+const isDefaultBuild = process.argv.includes('--default');
 const isPortableBuild = process.argv.includes('--portable');
-const isBothBuild = process.argv.includes('--both') || (isInstallerBuild && isPortableBuild);
+const isMsiBuild = process.argv.includes('--msi');
+const isExeBuild = process.argv.includes('--exe');
+const isAllBuild = process.argv.includes('--all');
 
 // Temporary directory for build assets
 const TEMP_DIR = path.join(__dirname, '../temp-build-assets');
@@ -127,8 +129,10 @@ async function cleanupTempAssets() {
 
 async function getBuildType(): Promise<BuildType> {
   // If arguments are provided, use them
-  if (isBothBuild) return 'both';
-  if (isInstallerBuild) return 'installer';
+  if (isAllBuild) return 'all';
+  if (isDefaultBuild) return 'default';
+  if (isMsiBuild) return 'msi';
+  if (isExeBuild) return 'exe';
   if (isPortableBuild) return 'portable';
 
   // Otherwise, prompt the user
@@ -140,9 +144,11 @@ async function getBuildType(): Promise<BuildType> {
     name: 'buildType',
     message: 'What would you like to build?',
     choices: [
-      { title: '📦 Portable Executable', description: 'Build a standalone .exe file', value: 'portable' },
-      { title: '💿 Installer Package', description: 'Build a Windows installer (.msi)', value: 'installer' },
-      { title: '🔥 Both', description: 'Build both portable and installer', value: 'both' }
+      { title: '🚀 Default (EXE Setup + Portable)', description: 'Builds the standard EXE installer and the portable version.', value: 'default' },
+      { title: '💿 MSI Installer', description: 'Build only the Windows installer (.msi)', value: 'msi' },
+      { title: '📦 Portable Executable', description: 'Build only the standalone .exe file', value: 'portable' },
+      { title: '✨ EXE Setup Wizard', description: 'Build only the .exe setup wizard', value: 'exe' },
+      { title: '🏆 All Packages (EXE, MSI, Portable)', description: 'Build all available packages', value: 'all' }
     ],
     initial: 0
   });
@@ -245,8 +251,8 @@ async function buildPortable() {
   buildLogger.buildTypeComplete('portable');
 }
 
-async function buildInstaller() {
-  buildLogger.startBuildType('installer');
+async function buildMsi() {
+  buildLogger.startBuildType('msi');
   
   const config: Configuration = {
     asar: true,
@@ -273,7 +279,38 @@ async function buildInstaller() {
     config
   });
 
-  buildLogger.buildTypeComplete('installer');
+  buildLogger.buildTypeComplete('msi');
+}
+
+async function buildExe() {
+  buildLogger.startBuildType('exe');
+  
+  const config: Configuration = {
+    asar: true,
+    win: {
+      target: {
+        target: 'nsis',
+        arch: ['x64']
+      },
+      icon: TEMP_ICON_PATH,
+      signAndEditExecutable: true,
+      signDlls: false
+    },
+    extraResources: [
+      {
+        from: TEMP_DIR,
+        to: 'assets'
+      }
+    ],
+    executableName: 'CryptoVertX'
+  };
+
+  await electronBuilder({
+    targets: Platform.WINDOWS.createTarget(),
+    config
+  });
+
+  buildLogger.buildTypeComplete('exe');
 }
 
 async function fixExecutableIcon() {
@@ -472,20 +509,25 @@ async function runBuild() {
     };
 
     // Build based on selection
-    if (buildType === 'portable' || buildType === 'both') {
+    if (buildType === 'default') {
+      await buildExe();
       await buildPortable();
-      
-      // Fix executable icon for portable build
-      buildLogger.log('Fixing portable executable icon...');
-      await fixExecutableIcon();
+    } else if (buildType === 'all') {
+      await buildMsi();
+      await buildExe();
+      await buildPortable();
+    } else if (buildType === 'portable') {
+      await buildPortable();
+    } else if (buildType === 'msi') {
+      await buildMsi();
+    } else if (buildType === 'exe') {
+      await buildExe();
     }
     
-    if (buildType === 'installer' || buildType === 'both') {
-      await buildInstaller();
-      
-      // Fix executable icon for installer build
-      buildLogger.log('Fixing installer executable icon...');
-      await fixExecutableIcon();
+    // Fix executable icon after builds
+    if (buildType !== 'msi') { // MSI doesn't create a loose exe in the same way
+        buildLogger.log('Fixing main executable icon...');
+        await fixExecutableIcon();
     }
 
     // Restore console.log

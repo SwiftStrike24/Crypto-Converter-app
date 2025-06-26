@@ -250,20 +250,23 @@ Completely redesigned the `ChartPage` to improve information hierarchy and visua
 *   **Packaging (Desktop App):** Electron Builder.
     *   Configured in `package.json` under the `build` section.
     *   Outputs to `release/${version}` directory.
-    *   Targets Windows (portable `.exe` and an interactive MSI installer with a setup wizard).
+    *   Targets Windows with three package types:
+        1.  **Portable:** A standalone `.exe` file that requires no installation.
+        2.  **MSI Installer:** A standard Windows Installer package (`.msi`) with a setup wizard.
+        3.  **NSIS Installer:** An alternative setup wizard (`.exe`), offering a different installation experience.
     *   Uses `asar` packaging for efficiency.
 *   **Build Scripts (`package.json`):**
     *   `pnpm dev`: Starts the Vite development server for the React frontend.
     *   `pnpm build`: Transpiles TypeScript and builds the React frontend assets using Vite.
     *   `pnpm electron:dev`: Runs the Electron app in development mode, usually with Vite serving the frontend.
-    *   `pnpm build-app [--installer | --portable | --both]`: Interactive build script (driven by `tsx scripts/build.ts`) for creating distributable Electron application packages. Handles versioning and allows choosing build types.
+    *   `pnpm build-app [--default | --portable | --msi | --exe | --all]`: Interactive build script (driven by `tsx scripts/build.ts`) for creating distributable Electron application packages. Handles versioning and allows choosing build types.
     *   `pnpm update-top-tokens`: Executes `tsx scripts/fetchTop100CoinGeckoIds.ts` to refresh the `POPULAR_TOKEN_IDS_TO_PRELOAD` list in `src/constants/cryptoConstants.ts` with the current top 100 tokens from CoinGecko. This script uses `axios` for the API call.
     *   `pnpm lint`: Runs ESLint for code quality checks.
 *   **Interactive Build System (`scripts/build.ts`):**
-    *   Provides a menu to choose build types (Portable, Installer, Both).
+    *   Provides a menu to choose build types. The default option builds the EXE Setup Wizard and the Portable version. Other options include MSI only, Portable only, EXE only, and All packages.
     *   Handles version management (reads from `package.json`, updates `versionManager.ts`, prompts for new version/overwrite).
     *   Creates versioned output directories.
-    *   Provides a build summary with performance metrics when building "Both".
+    *   Provides a build summary with performance metrics when building multiple artifacts.
 
 ### 7.1. Utility Scripts
 

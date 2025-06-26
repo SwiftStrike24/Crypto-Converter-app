@@ -6,6 +6,8 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 
+type BuildType = 'default' | 'portable' | 'msi' | 'exe' | 'all';
+
 class BuildLogger {
   private startTime: number = 0;
   private spinner: Ora = ora();
@@ -39,6 +41,8 @@ class BuildLogger {
     build: '🛠️',
     portable: '📦',
     installer: '💿',
+    msi: '💿',
+    exe: '🚀',
     both: '🔥',
     summary: '📊',
     trophy: '🏆',
@@ -139,7 +143,7 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     return message;
   }
 
-  async start(buildType?: 'portable' | 'installer' | 'both', version?: string) {
+  async start(buildType?: BuildType, version?: string) {
     console.clear();
     console.log('\n');
     
@@ -148,15 +152,21 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     }
     
     let buildTypeText = '';
-    if (buildType === 'portable') {
+    if (buildType === 'default') {
+      buildTypeText = 'Default (EXE + Portable)';
+      this.totalBuildSteps = 7;
+    } else if (buildType === 'portable') {
       buildTypeText = 'Portable';
-      this.totalBuildSteps = 6; // Cleanup, Vite build, Electron config, Portable build, Icon fix, App Config
-    } else if (buildType === 'installer') {
-      buildTypeText = 'Installer';
-      this.totalBuildSteps = 6; // Cleanup, Vite build, Electron config, Installer build, Icon fix, App Config
-    } else if (buildType === 'both') {
-      buildTypeText = 'Complete (Portable + Installer)';
-      this.totalBuildSteps = 7; // All steps including both builds
+      this.totalBuildSteps = 6;
+    } else if (buildType === 'msi') {
+      buildTypeText = 'MSI Installer';
+      this.totalBuildSteps = 6;
+    } else if (buildType === 'exe') {
+      buildTypeText = 'EXE Setup Wizard';
+      this.totalBuildSteps = 6;
+    } else if (buildType === 'all') {
+      buildTypeText = 'Complete (All Packages)';
+      this.totalBuildSteps = 8;
     }
     
     this.buildProgress = 0;
@@ -205,9 +215,14 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     this.spinner.text = chalk.blue(`${this.emojis.package} Packaging application for Windows...`);
   }
 
-  startBuildType(type: 'portable' | 'installer') {
-    const emoji = type === 'portable' ? this.emojis.portable : this.emojis.installer;
-    const typeName = type === 'portable' ? 'Portable Executable' : 'Installer Package';
+  startBuildType(type: 'portable' | 'msi' | 'exe') {
+    const emoji = this.emojis[type] || this.emojis.build;
+    const typeNameMap = {
+      portable: 'Portable Executable',
+      msi: 'MSI Installer',
+      exe: 'EXE Setup Wizard'
+    };
+    const typeName = typeNameMap[type];
     
     this.buildStartTimes[type] = Date.now();
     
@@ -215,9 +230,14 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     this.spinner.start(chalk.blue(`${emoji} Building ${typeName}...`));
   }
 
-  buildTypeComplete(type: 'portable' | 'installer') {
-    const emoji = type === 'portable' ? this.emojis.portable : this.emojis.installer;
-    const typeName = type === 'portable' ? 'Portable Executable' : 'Installer Package';
+  buildTypeComplete(type: 'portable' | 'msi' | 'exe') {
+    const emoji = this.emojis[type] || this.emojis.build;
+    const typeNameMap = {
+      portable: 'Portable Executable',
+      msi: 'MSI Installer',
+      exe: 'EXE Setup Wizard'
+    };
+    const typeName = typeNameMap[type];
     
     // Calculate and store duration
     if (this.buildStartTimes[type]) {
@@ -227,9 +247,11 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     // Try to get the file size
     try {
       const outputDir = path.join(__dirname, `../release/${this.appVersion}`);
-      const filePattern = type === 'portable' 
-        ? `CryptoVertX-Portable-${this.appVersion}.exe` 
-        : `CryptoVertX-Installer-v${this.appVersion}.msi`;
+      const filePattern = {
+        portable: `CryptoVertX-Portable-${this.appVersion}.exe`,
+        msi: `CryptoVertX-MSI-Installer-v${this.appVersion}.msi`,
+        exe: `CryptoVertX-Setup-v${this.appVersion}.exe`
+      }[type];
       const filePath = path.join(outputDir, filePattern);
       
       if (fs.existsSync(filePath)) {
@@ -238,10 +260,14 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
       } else {
         // Look for any matching file
         const files = fs.readdirSync(outputDir);
-        const matchingFile = files.find(file => 
-          (type === 'portable' && file.includes('Portable')) || 
-          (type === 'installer' && file.includes('Installer'))
-        );
+        const matchingFile = files.find(file => {
+          switch (type) {
+            case 'portable': return file.includes('Portable');
+            case 'msi': return file.endsWith('.msi');
+            case 'exe': return file.includes('Setup') && file.endsWith('.exe');
+            default: return false;
+          }
+        });
         
         if (matchingFile) {
           const stats = fs.statSync(path.join(outputDir, matchingFile));
@@ -288,8 +314,14 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     
     // Display each build type duration with improved styling
     Object.entries(this.buildDurations).forEach(([type, duration]) => {
-      const emoji = type === 'portable' ? this.emojis.portable : this.emojis.installer;
-      const typeName = type === 'portable' ? 'Portable Executable' : 'Installer Package';
+      const buildType = type as 'portable' | 'msi' | 'exe';
+      const emoji = this.emojis[buildType] || this.emojis.build;
+      const typeNameMap = {
+        portable: 'Portable Executable',
+        msi: 'MSI Installer',
+        exe: 'EXE Setup Wizard'
+      };
+      const typeName = typeNameMap[buildType];
       
       // Get file size from our stored values
       const fileSize = this.buildFileSizes[type] || 'Unknown';
@@ -307,80 +339,81 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     
     console.log(chalk.dim('└─────────────────────────────────────────────────────────────────┘'));
     
-    // If both types were built, determine which was faster
-    if (this.buildDurations['portable'] && this.buildDurations['installer']) {
+    // If both installer types were built, compare them
+    const builtInstallers = Object.keys(this.buildDurations).filter(k => k === 'msi' || k === 'exe');
+
+    if (builtInstallers.length === 2) {
       console.log('');
-      const fasterType = this.buildDurations['portable'] < this.buildDurations['installer'] ? 'portable' : 'installer';
-      const slowerType = fasterType === 'portable' ? 'installer' : 'portable';
-      const fasterEmoji = fasterType === 'portable' ? this.emojis.portable : this.emojis.installer;
-      const fasterName = fasterType === 'portable' ? 'Portable Executable' : 'Installer Package';
-      const slowerName = slowerType === 'portable' ? 'Portable Executable' : 'Installer Package';
-      const timeDiff = Math.abs(this.buildDurations['portable'] - this.buildDurations['installer']);
-      const percentFaster = ((Math.max(this.buildDurations['portable'], this.buildDurations['installer']) - 
-                             Math.min(this.buildDurations['portable'], this.buildDurations['installer'])) / 
-                             Math.max(this.buildDurations['portable'], this.buildDurations['installer']) * 100).toFixed(1);
+      const fasterType = this.buildDurations['msi'] < this.buildDurations['exe'] ? 'msi' : 'exe';
+      const slowerType = fasterType === 'msi' ? 'exe' : 'msi';
+      const timeDiff = Math.abs(this.buildDurations['msi'] - this.buildDurations['exe']);
+      const percentFaster = ((Math.max(this.buildDurations['msi'], this.buildDurations['exe']) - 
+                             Math.min(this.buildDurations['msi'], this.buildDurations['exe'])) / 
+                             Math.max(this.buildDurations['msi'], this.buildDurations['exe']) * 100).toFixed(1);
       
-      console.log(chalk.green(`${this.emojis.trophy} ${fasterName} was faster by ${formatTime(timeDiff)} (${percentFaster}%)! ${this.emojis.rocket}`));
+      const typeNameMap = { msi: 'MSI Installer', exe: 'EXE Setup Wizard' };
+
+      console.log(chalk.green(`${this.emojis.trophy} ${typeNameMap[fasterType]} was faster by ${formatTime(timeDiff)} (${percentFaster}%)! ${this.emojis.rocket}`));
       
       // Visual comparison with improved styling
       console.log('');
-      console.log(chalk.cyan.bold('⚡ Build Time Comparison:'));
+      console.log(chalk.cyan.bold('⚡ Build Time Comparison (Installers):'));
       
       // Calculate bar lengths for visual comparison
       const maxBarLength = 40;
-      const maxDuration = Math.max(this.buildDurations['portable'], this.buildDurations['installer']);
-      const fasterBarLength = Math.floor((this.buildDurations[fasterType] / maxDuration) * maxBarLength);
-      const slowerBarLength = Math.floor((this.buildDurations[slowerType] / maxDuration) * maxBarLength);
+      const maxDuration = Math.max(this.buildDurations['msi'], this.buildDurations['exe']);
+      const msiBarLength = Math.floor((this.buildDurations['msi'] / maxDuration) * maxBarLength);
+      const exeBarLength = Math.floor((this.buildDurations['exe'] / maxDuration) * maxBarLength);
       
-      // Display bars with gradient colors
-      const fasterBar = '█'.repeat(fasterBarLength);
-      const slowerBar = '█'.repeat(slowerBarLength);
+      const msiBar = '█'.repeat(msiBarLength);
+      const exeBar = '█'.repeat(exeBarLength);
       
       // Add visual indicators for faster/slower
-      console.log(`${fasterType === 'portable' ? this.emojis.portable : this.emojis.installer} ${fasterName.padEnd(20)} ${chalk.green(fasterBar)} ${formatTime(this.buildDurations[fasterType])} ${chalk.green('(faster)')}`);
-      console.log(`${slowerType === 'portable' ? this.emojis.portable : this.emojis.installer} ${slowerName.padEnd(20)} ${chalk.yellow(slowerBar)} ${formatTime(this.buildDurations[slowerType])}`);
+      console.log(`${this.emojis.msi} ${'MSI Installer'.padEnd(20)} ${chalk.green(msiBar)} ${formatTime(this.buildDurations['msi'])} ${fasterType === 'msi' ? chalk.green('(faster)') : ''}`);
+      console.log(`${this.emojis.exe} ${'EXE Setup Wizard'.padEnd(20)} ${chalk.yellow(exeBar)} ${formatTime(this.buildDurations['exe'])} ${fasterType === 'exe' ? chalk.green('(faster)') : ''}`);
       
       // Add size comparison
-      if (this.buildFileSizes['portable'] && this.buildFileSizes['installer']) {
+      if (this.buildFileSizes['msi'] && this.buildFileSizes['exe']) {
         console.log('');
-        console.log(chalk.cyan.bold('💾 Size Comparison:'));
-        console.log(`${this.emojis.portable} Portable: ${chalk.blue(this.buildFileSizes['portable'])}`);
-        console.log(`${this.emojis.installer} Installer: ${chalk.blue(this.buildFileSizes['installer'])}`);
+        console.log(chalk.cyan.bold('💾 Size Comparison (Installers):'));
+        console.log(`${this.emojis.msi} MSI: ${chalk.blue(this.buildFileSizes['msi'])}`);
+        console.log(`${this.emojis.exe} EXE: ${chalk.blue(this.buildFileSizes['exe'])}`);
       }
     }
     
     console.log('');
   }
 
-  buildComplete(buildType?: 'portable' | 'installer' | 'both') {
+  buildComplete(buildType?: BuildType) {
     this.spinner.stop();
     
-    const isInstallerBuild = buildType === 'installer';
-    const isPortableBuild = buildType === 'portable';
-    const isBothBuild = buildType === 'both';
+    const totalElapsedTime = this.getElapsedTime();
     
     // Ensure the progress is set to the final step to show completion in the pipeline
     this.buildProgress = this.totalBuildSteps;
     this.updateProgress();
     
-    const elapsedTime = this.getElapsedTime();
-    
     console.log(chalk.dim('━'.repeat(65)));
     console.log(chalk.green.bold(`${this.emojis.complete} Build Complete! ${this.emojis.complete}`));
-    console.log(chalk.yellow(`${this.emojis.time} Total build time: ${elapsedTime}`));
+    console.log(chalk.yellow(`${this.emojis.time} Total build time: ${totalElapsedTime}`));
     console.log(chalk.cyan(`${this.emojis.version} App Version: v${this.appVersion}`));
     console.log('');
     
-    if (isBothBuild) {
+    if (buildType === 'all' || buildType === 'default') {
       this.displayBuildSummary();
     }
     
-    if (isBothBuild) {
-      console.log(chalk.cyan(`${this.emojis.sparkles} Your portable executable and installer are ready in the release/${this.appVersion} folder! ${this.emojis.sparkles}`));
-    } else if (isInstallerBuild) {
-      console.log(chalk.cyan(`${this.emojis.sparkles} Your installer is ready in the release/${this.appVersion} folder! ${this.emojis.sparkles}`));
+    const releaseFolder = `release/${this.appVersion}`;
+    if (buildType === 'all') {
+      console.log(chalk.cyan(`${this.emojis.sparkles} All packages are ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
+    } else if (buildType === 'default') {
+      console.log(chalk.cyan(`${this.emojis.sparkles} Your default packages (EXE Setup + Portable) are ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
+    } else if (buildType === 'msi') {
+      console.log(chalk.cyan(`${this.emojis.sparkles} Your MSI installer is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
+    } else if (buildType === 'exe') {
+      console.log(chalk.cyan(`${this.emojis.sparkles} Your EXE setup wizard is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     } else {
-      console.log(chalk.cyan(`${this.emojis.sparkles} Your portable executable is ready in the release/${this.appVersion} folder! ${this.emojis.sparkles}`));
+      console.log(chalk.cyan(`${this.emojis.sparkles} Your portable executable is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     }
     
     console.log('');
