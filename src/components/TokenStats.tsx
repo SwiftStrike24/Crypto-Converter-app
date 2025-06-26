@@ -8,6 +8,10 @@ const StatsPanel = styled.div`
   flex-direction: column;
   gap: 1rem;
   width: 100%;
+
+  @media (max-height: 850px) {
+    gap: 0.5rem;
+  }
 `;
 
 const StatRow = styled.div`
@@ -24,6 +28,10 @@ const StatRow = styled.div`
     background: rgba(139, 92, 246, 0.07);
     border-color: rgba(139, 92, 246, 0.15);
     transform: scale(1.02);
+  }
+
+  @media (max-height: 850px) {
+    padding: 0.5rem 0.75rem;
   }
 `;
 
@@ -137,6 +145,23 @@ const StatGroup = styled.div`
     border-color: rgba(139, 92, 246, 0.15);
     transform: scale(1.02);
   }
+
+  @media (max-height: 850px) {
+    padding: 0.5rem 0.75rem;
+    gap: 0.25rem;
+  }
+`;
+
+const StatGroupTitle = styled.div`
+  font-size: 1.1rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+  color: #fff;
+
+  @media (max-height: 850px) {
+    font-size: 1rem;
+    margin-bottom: 0.25rem;
+  }
 `;
 
 const ProgressBarContainer = styled.div`
@@ -165,6 +190,10 @@ const ProgressLabels = styled.div`
   font-size: 0.75rem;
   color: #9ca3af;
   margin-top: 0.25rem;
+
+  @media (max-height: 850px) {
+    font-size: 0.7rem;
+  }
 `;
 
 const RetryOverlay = styled(LoadingText)`
@@ -218,6 +247,10 @@ interface TokenStatsData {
   atl: string;
   athDate: string;
   atlDate: string;
+  low24h: string;
+  high24h: string;
+  low7d: string;
+  high7d: string;
 }
 
 const formatNumber = (num: number | null | undefined, currency: string = 'USD'): string => {
@@ -355,6 +388,10 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
         atl: formatNumber(statsData.atl, currency),
         athDate: formatDate(statsData.athDate),
         atlDate: formatDate(statsData.atlDate),
+        low24h: formatNumber(statsData.low24h, currency),
+        high24h: formatNumber(statsData.high24h, currency),
+        low7d: formatNumber(statsData.low7d, currency),
+        high7d: formatNumber(statsData.high7d, currency),
       });
       setRetryCount(0);
       setRetryProgress(0);
@@ -429,6 +466,19 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
 
   return (
     <StatsPanel>
+      <StatGroup>
+        <StatGroupTitle>
+            {cryptoId.toUpperCase()} Historical Price
+        </StatGroupTitle>
+        <StatRow>
+            <StatLabel>24h Range</StatLabel>
+            <StatValue>{stats?.low24h} – {stats?.high24h}</StatValue>
+        </StatRow>
+        <StatRow>
+            <StatLabel>7d Range</StatLabel>
+            <StatValue>{stats?.low7d} – {stats?.high7d}</StatValue>
+        </StatRow>
+      </StatGroup>
       <StatRow>
         <StatLabel>
           Market Cap

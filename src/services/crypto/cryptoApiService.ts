@@ -444,6 +444,26 @@ export async function fetchCoinDetails(coinId: string, priority: RequestPriority
   }
 }
 
+export async function fetchCoinMarketChart(coinId: string, vs_currency: string, days: number, priority: RequestPriority = RequestPriority.NORMAL) {
+  const url = `${API_CONFIG.COINGECKO.BASE_URL}/coins/${coinId}/market_chart`;
+  const params = {
+    vs_currency,
+    days,
+    interval: 'daily',
+  };
+
+  console.debug(`🔵 [FETCH_CHART] ${priority} priority requesting ${days}-day chart for ${coinId}`);
+
+  try {
+    const response = await fetchWithSmartRetry(url, { params, timeout: 10000 }, priority);
+    console.log(`🎉 [FETCH_CHART_SUCCESS] ${priority} priority: Retrieved ${days}-day chart for ${coinId}`);
+    return response.data;
+  } catch (error: any) {
+    console.error(`🔴 [FETCH_CHART_FAIL] ${priority} priority: Failed to fetch chart for ${coinId}: ${error.message}`);
+    throw error;
+  }
+}
+
 // NEW: Export performance metrics for monitoring
 export function getApiPerformanceMetrics() {
   const successRate = serviceApiStatus.totalRequests > 0 

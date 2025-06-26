@@ -152,18 +152,7 @@ const Sidebar = styled.aside`
   padding: 1rem;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(139, 92, 246, 0.15);
-  overflow-y: auto;
-  
-  &::-webkit-scrollbar {
-    width: 6px;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: rgba(139, 92, 246, 0.3);
-    border-radius: 3px;
-  }
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
+  overflow: hidden;
 `;
 
 const MarketLabel = styled.span`
