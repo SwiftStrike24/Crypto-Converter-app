@@ -1,9 +1,18 @@
 import React, { useState, useEffect, memo } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
 // import { motion } from 'framer-motion'; // Temporarily comment out motion import
 import { TokenStats } from '../components/TokenStats';
 import TradingViewWidget from '../components/TradingViewWidget';
+
+const glow = keyframes`
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(139, 92, 246, 0.7), 0 0 8px rgba(139, 92, 246, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(167, 139, 250, 1), 0 0 20px rgba(167, 139, 250, 0.7);
+  }
+`;
 
 const PageContainer = styled.div`
   height: 100vh;
@@ -167,10 +176,11 @@ const MarketLabel = styled.span`
   &::before {
     content: '';
     display: block;
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     background: #8b5cf6;
     border-radius: 50%;
+    animation: ${glow} 2.5s infinite ease-in-out;
   }
 `;
 

@@ -1,39 +1,63 @@
 import React, { useState, memo } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { FaMagnifyingGlassChart, FaArrowLeft } from 'react-icons/fa6';
 import TechnicalAnalysisWidget from '../components/TechnicalAnalysisWidget';
-import { FaMagnifyingGlassChart } from 'react-icons/fa6';
 
-const PageContainer = styled(motion.div)`
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(8px);
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
+const glow = keyframes`
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(139, 92, 246, 0.7), 0 0 8px rgba(139, 92, 246, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(167, 139, 250, 1), 0 0 20px rgba(167, 139, 250, 0.7);
+  }
 `;
 
-const AnalysisContainer = styled(motion.div)`
-  width: 100%;
-  height: 100%;
+const PageContainer = styled.div`
+  height: 100vh;
+  width: 100vw;
   display: flex;
   flex-direction: column;
+  background: #111111;
   overflow: hidden;
+  padding: 1rem;
 `;
 
-const Header = styled(motion.div)`
+const Header = styled.header`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.5rem;
-  background: rgba(31, 31, 44, 0.95);
-  border-bottom: 1px solid rgba(139, 92, 246, 0.1);
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: rgba(20, 20, 20, 0.85);
+  border-radius: 12px;
+  border: 1px solid rgba(139, 92, 246, 0.1);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    gap: 1rem;
+  }
+`;
+
+const HeaderLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+`;
+
+const HeaderRight = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  overflow: hidden;
+
+  @media (max-width: 768px) {
+    width: 100%;
+    justify-content: space-between;
+  }
 `;
 
 const Title = styled.h2`
@@ -53,53 +77,63 @@ const Title = styled.h2`
   }
 `;
 
-const CloseButton = styled.button`
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  padding: 0.5rem;
+const BackButton = styled.button`
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  color: #8b5cf6;
   display: flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  transition: background 0.2s ease, color 0.2s ease;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  transition: background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
+    background: rgba(139, 92, 246, 0.15);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(139, 92, 246, 0.15);
   }
 
   svg {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
   }
 `;
 
-const WidgetWrapper = styled(motion.div)`
+const ContentGrid = styled.main`
   flex: 1;
-  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  overflow: hidden;
+`;
+
+const MainContent = styled.div`
   display: flex;
   flex-direction: column;
-  background: #1e222d;
+  gap: 1rem;
+  background: rgba(20, 20, 20, 0.85);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  overflow: hidden;
 `;
 
-const ChartControls = styled.div`
+const ControlsWrapper = styled.div`
   display: flex;
-  justify-content: flex-start;
+  justify-content: flex-end;
   align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
   padding: 0.5rem 0.75rem;
-  background: rgba(26, 26, 26, 0.6);
+  background: rgba(20, 20, 20, 0.85);
   border-radius: 12px;
   border: 1px solid rgba(139, 92, 246, 0.1);
-  backdrop-filter: blur(8px);
-  height: 50px;
-  margin: 0.75rem;
-
-  @media (max-width: 768px) {
-    height: auto;
-    padding: 0.5rem;
-  }
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 `;
 
 const MarketLabel = styled.span`
@@ -107,7 +141,6 @@ const MarketLabel = styled.span`
   font-size: 0.9rem;
   font-weight: 500;
   letter-spacing: 0.5px;
-  text-transform: uppercase;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -115,22 +148,27 @@ const MarketLabel = styled.span`
   &::before {
     content: '';
     display: block;
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     background: #8b5cf6;
     border-radius: 50%;
+    animation: ${glow} 2.5s infinite ease-in-out;
   }
 `;
 
 const MarketButtons = styled.div`
   display: flex;
   gap: 0.5rem;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.4);
   padding: 0.375rem;
-  border-radius: 12px;
-  border: 1px solid rgba(139, 92, 246, 0.15);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  margin-left: 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+
+  @media (max-width: 768px) {
+    width: auto;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
 `;
 
 interface MarketButtonProps {
@@ -138,47 +176,35 @@ interface MarketButtonProps {
 }
 
 const MarketButton = styled.button<MarketButtonProps>`
-  background: ${props => props.$active ? 'rgba(139, 92, 246, 0.25)' : 'transparent'};
-  border: 1px solid ${props => props.$active ? '#8B5CF6' : 'transparent'};
-  color: ${props => props.$active ? '#fff' : 'rgba(255, 255, 255, 0.6)'};
+  background: ${props => props.$active ? 'rgba(139, 92, 246, 0.3)' : 'transparent'};
+  border: 1px solid ${props => props.$active ? '#8B5CF6' : 'rgba(255, 255, 255, 0.1)'};
+  color: ${props => props.$active ? '#fff' : 'rgba(255, 255, 255, 0.7)'};
   padding: 0.4rem 0.8rem;
   border-radius: 8px;
   font-size: 0.85rem;
   font-weight: ${props => props.$active ? '600' : '500'};
   cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
-  min-width: 80px;
+  transition: all 0.2s ease;
+  min-width: 70px;
+  text-align: center;
   letter-spacing: 0.5px;
   
   &:hover {
-    background: ${props => props.$active ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.1)'};
-    color: ${props => props.$active ? '#fff' : 'rgba(255, 255, 255, 0.8)'};
+    background: ${props => props.$active ? 'rgba(139, 92, 246, 0.35)' : 'rgba(255, 255, 255, 0.05)'};
+    color: #fff;
     transform: translateY(-1px);
-  }
-
-  &:active {
-    transform: translateY(0);
+    border-color: ${props => props.$active ? '#8B5CF6' : 'rgba(255, 255, 255, 0.2)'};
   }
 `;
 
-type Market = 'MEXC' | 'CRYPTO';
+type Market = 'MEXC' | 'CRYPTO' | 'BINANCE';
 
 const AnalysisIcon = () => (
   <FaMagnifyingGlassChart />
 );
 
-const CloseIcon = () => (
-  <svg 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2" 
-    strokeLinecap="round" 
-    strokeLinejoin="round"
-  >
-    <line x1="18" y1="6" x2="6" y2="18"/>
-    <line x1="6" y1="6" x2="18" y2="18"/>
-  </svg>
+const BackIcon = () => (
+    <FaArrowLeft />
 );
 
 interface LocationState {
@@ -186,29 +212,11 @@ interface LocationState {
   currency: string;
 }
 
-// Define animation variants
-const pageVariants = {
-  hidden: { opacity: 0, scale: 0.98 },
-  visible: { opacity: 1, scale: 1, transition: { duration: 0.2, ease: "easeOut" } },
-  exit: { opacity: 0, scale: 0.98, transition: { duration: 0.15, ease: "easeIn" } },
-};
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.1, delayChildren: 0.1 } },
-  exit: { opacity: 0 },
-};
-
-const itemVariants = {
-  hidden: { y: -10, opacity: 0 },
-  visible: { y: 0, opacity: 1 },
-};
-
 const _TechnicalAnalysisPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [selectedInterval] = useState<'1h'>('1h');
-  const [selectedMarket, setSelectedMarket] = useState<Market>('MEXC');
+  const [selectedMarket, setSelectedMarket] = useState<Market>('BINANCE');
 
   const { cryptoId, currency } = location.state as LocationState || {
     cryptoId: 'BTC',
@@ -220,59 +228,65 @@ const _TechnicalAnalysisPage: React.FC = () => {
     console.error('🚨 TechnicalAnalysisPage: Missing cryptoId or currency in location state.');
     // Navigate back or show error immediately
     React.useEffect(() => { navigate(-1); }, [navigate]);
-    return null; // Render nothing while navigating back
+    return (
+        <PageContainer>
+            <Header>
+               <BackButton onClick={() => navigate('/')}>
+                 <BackIcon /> Back
+               </BackButton>
+            </Header>
+            <MainContent>
+              <div>Error: Missing required chart data. Please go back and select a token.</div>
+            </MainContent>
+      </PageContainer>
+    );
   }
 
-  const handleClose = () => {
+  const handleBack = () => {
     navigate(-1);
   };
 
   return (
-    <PageContainer
-      variants={pageVariants}
-      initial="hidden"
-      animate="visible"
-      exit="exit"
-      onClick={handleClose}
-    >
-      <AnalysisContainer 
-        variants={containerVariants}
-        onClick={e => e.stopPropagation()}
-      >
-        <Header variants={itemVariants}>
-          <Title>
-            <AnalysisIcon />
-            Technical Analysis - {cryptoId}/{currency}
-          </Title>
-          <CloseButton onClick={handleClose}>
-            <CloseIcon />
-          </CloseButton>
+    <PageContainer>
+        <Header>
+            <HeaderLeft>
+                <BackButton onClick={handleBack}>
+                    <BackIcon />
+                    Back
+                </BackButton>
+                <Title>
+                    <AnalysisIcon />
+                    Technical Analysis - {cryptoId}/{currency}
+                </Title>
+            </HeaderLeft>
+            <HeaderRight />
         </Header>
-        <WidgetWrapper variants={itemVariants}>
-          <ChartControls>
+        <ControlsWrapper>
             <MarketLabel>Exchange View</MarketLabel>
             <MarketButtons>
-              {(['MEXC', 'CRYPTO'] as Market[]).map((market) => (
-                <MarketButton
-                  key={market}
-                  $active={selectedMarket === market}
-                  onClick={() => setSelectedMarket(market)}
-                >
-                  {market}
-                </MarketButton>
-              ))}
+                {(['BINANCE', 'CRYPTO', 'MEXC'] as Market[]).map((market) => (
+                    <MarketButton
+                        key={market}
+                        $active={selectedMarket === market}
+                        onClick={() => setSelectedMarket(market)}
+                    >
+                        {market === 'CRYPTO' ? 'TradingView' : market}
+                    </MarketButton>
+                ))}
             </MarketButtons>
-          </ChartControls>
-          <TechnicalAnalysisWidget 
-            cryptoId={cryptoId}
-            interval={selectedInterval}
-            currency={currency}
-            market={selectedMarket}
-          />
-        </WidgetWrapper>
-      </AnalysisContainer>
+        </ControlsWrapper>
+        <ContentGrid>
+            <MainContent>
+                <TechnicalAnalysisWidget 
+                    cryptoId={cryptoId}
+                    interval={selectedInterval}
+                    currency={currency}
+                    market={selectedMarket}
+                />
+            </MainContent>
+        </ContentGrid>
     </PageContainer>
   );
 };
 
-export default memo(_TechnicalAnalysisPage); 
+export default memo(_TechnicalAnalysisPage);
