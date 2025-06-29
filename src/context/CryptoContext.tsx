@@ -33,6 +33,7 @@ import {
   getCoinGeckoRetryAfterSeconds,
   RequestPriority,
   getApiPerformanceMetrics,
+  getPublicApiStatus,
 } from '../services/crypto/cryptoApiService'; // Corrected path
 import {
   getCachedData,
@@ -85,6 +86,7 @@ interface CryptoContextType {
   setTokenMetadata: React.Dispatch<React.SetStateAction<Record<string, any>>>;
   isApiRateLimited: (apiName: 'coingecko' | 'cryptocompare') => boolean; // Signature remains, implementation changes
   isCoinGeckoRateLimitedGlobal: boolean; // Add global rate limit state to the context
+  isUsingApiFallback: boolean; // NEW: Expose the fallback status
   getCoinGeckoRetryAfterSeconds: () => number; // Add retry countdown helper
   getApiMetrics: () => any; // Add API performance metrics
   getCoinDetails: (coinId: string) => Promise<CoinDetailedMetadata | null>; // Add detailed coin metadata fetching
@@ -115,6 +117,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
   // Add the global rate limit state
   const [isCoinGeckoRateLimitedGlobal, setIsCoinGeckoRateLimitedGlobal] = useState<boolean>(false);
+  const [isUsingApiFallback, setIsUsingApiFallback] = useState<boolean>(false); // NEW: State for fallback status
 
   const { rates: exchangeRates } = useExchangeRates();
 
@@ -1497,6 +1500,20 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, []);
 
+  // NEW: Effect to periodically sync API status with the context
+  useEffect(() => {
+    const syncApiStatus = () => {
+      const status = getPublicApiStatus();
+      setIsCoinGeckoRateLimitedGlobal(status.isRateLimited);
+      setIsUsingApiFallback(status.isUsingAnonymousFallback);
+    };
+
+    const interval = setInterval(syncApiStatus, 2000); // Sync every 2 seconds
+    syncApiStatus(); // Initial sync
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Function to check if a specific API is currently rate-limited
   const isApiRateLimited = useCallback((apiName: 'coingecko' | 'cryptocompare'): boolean => {
     if (apiName === 'coingecko') {
@@ -1531,6 +1548,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setTokenMetadata,
         isApiRateLimited,
         isCoinGeckoRateLimitedGlobal,
+        isUsingApiFallback, // NEW: Pass fallback status to consumers
         getCoinGeckoRetryAfterSeconds: getCoinGeckoRetryAfterSeconds, // Add retry countdown helper
         getApiMetrics: getApiPerformanceMetrics, // Add API performance metrics
         getCoinDetails, // Add detailed coin metadata fetching

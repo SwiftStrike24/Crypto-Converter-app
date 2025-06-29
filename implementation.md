@@ -142,10 +142,14 @@ The application primarily uses React Context API for managing global state:
     *   `/coins/{id}`: For detailed information about a specific coin.
     *   `/search`: For searching tokens when adding new ones.
     *   `/ping`: To validate the API key and connectivity.
-*   **Rate Limiting:**
-    *   Custom logic implemented in `useTokenSearch.ts` and `src/utils/rateLimiter.ts`.
-    *   Aware of Free vs. Pro tier limits (defined in `COINGECKO_RATE_LIMITS`).
-    *   Tracks API calls per minute and implements cooldown periods to prevent exceeding limits.
+*   **Rate Limiting & Failover Strategy:**
+    *   The application implements a multi-layered approach to API resilience.
+    *   **Primary Key with Failover:** All requests first attempt to use the provided CoinGecko API key (`VITE_COINGECKO_API_KEY`). If a request fails with an `HTTP 429 (Too Many Requests)` status, the system automatically triggers a failover mechanism.
+        *   **Failover Process:** Upon a 429 error on the primary key, `cryptoApiService` sets a temporary cooldown *specifically for the API key* (`primaryApiKeyCooldownUntil`). It then immediately retries the same request anonymously (without the API key).
+        *   **Anonymous Mode:** While the primary key is in cooldown, all subsequent requests are made anonymously. This state is tracked by the `isUsingAnonymousFallback` flag within the service.
+        *   **Hard Rate Limit:** If an anonymous request also receives a 429 error, the system enters a global cooldown (`rateLimitCooldownUntil`), preventing all requests for a short period to respect CoinGecko's limits.
+    *   **Recovery:** Once the primary key's cooldown period expires, the service will automatically attempt the next request using the API key again. If successful, it reverts to normal operation; if it fails again with a 429, the failover cooldown is reset.
+    *   **UI Awareness:** The `CryptoContext` periodically syncs with the API service's status, making the `isUsingApiFallback` state available to UI components. This allows for displaying non-intrusive notifications to the user about the application running in a limited data mode.
 *   **Caching:**
     *   Price data (including 24h range): `localStorage` key `cryptovertx-price-cache`.
     *   Token metadata: `localStorage` key `cryptovertx-metadata-cache`.

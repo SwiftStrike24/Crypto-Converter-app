@@ -19,6 +19,8 @@ interface ApiStatus {
   lastRequestTime: number;
   consecutiveErrors: number;
   rateLimitCooldownUntil: number; // Enhanced: tracks when next request is allowed
+  primaryApiKeyCooldownUntil: number; // NEW: Separate cooldown for the primary API key
+  isUsingAnonymousFallback: boolean; // NEW: Flag for when we've failed over to no-key requests
   lastRateLimitHeaders: {
     remaining?: number;
     reset?: number;
@@ -53,6 +55,8 @@ let serviceApiStatus: ApiStatus = {
   lastRequestTime: 0,
   consecutiveErrors: 0,
   rateLimitCooldownUntil: 0,
+  primaryApiKeyCooldownUntil: 0, // NEW
+  isUsingAnonymousFallback: false, // NEW
   lastRateLimitHeaders: {},
   lastCoinGeckoRequestCompletionTime: 0, // Initialize
   successfulRequests: 0,
@@ -77,6 +81,15 @@ function cleanupExpiredRequests(): void {
       pendingRequests.delete(hash);
     }
   }
+}
+
+// NEW: Expose a copy of the service status for external modules (e.g., CryptoContext)
+export function getPublicApiStatus() {
+  return {
+    isUsingAnonymousFallback: serviceApiStatus.isUsingAnonymousFallback,
+    isRateLimited: isCoinGeckoApiRateLimited(),
+    isPrimaryApiKeyRateLimited: serviceApiStatus.primaryApiKeyCooldownUntil > Date.now(),
+  };
 }
 
 // NEW: Adaptive batch size calculation based on success rate
@@ -158,6 +171,8 @@ export async function fetchWithSmartRetry(url: string, config: AxiosRequestConfi
   let lastError;
   const maxRetries = API_CONFIG.COINGECKO.RETRY_ATTEMPTS;
   const startTime = performance.now();
+  let useApiKey = !!import.meta.env.VITE_COINGECKO_API_KEY; // Start with the assumption of using the key if it exists
+  let isRecoveryAttempt = false;
   
   // Clean up expired requests periodically
   cleanupExpiredRequests();
@@ -165,15 +180,33 @@ export async function fetchWithSmartRetry(url: string, config: AxiosRequestConfi
   // Generate request hash for deduplication
   const ids = config.params?.ids || '';
   const requestHash = generateRequestHash(ids.split(','), url);
+
+  // Recovery Logic: If we are in fallback mode but the key cooldown has expired, try using the key again.
+  if (serviceApiStatus.isUsingAnonymousFallback && Date.now() > serviceApiStatus.primaryApiKeyCooldownUntil) {
+    console.log('🔵 [RECOVERY_ATTEMPT] Primary key cooldown expired. Attempting request with API key.');
+    useApiKey = true;
+    isRecoveryAttempt = true;
+  } else if (serviceApiStatus.primaryApiKeyCooldownUntil > Date.now()) {
+    // If primary key is still in cooldown, force anonymous request
+    console.debug('🟡 [FALLBACK_ACTIVE] Primary key is in cooldown. Forcing anonymous request.');
+    useApiKey = false;
+  }
   
   // Log API key presence (for diagnostics)
   const apiKey = import.meta.env.VITE_COINGECKO_API_KEY as string | undefined;
   if (url.includes(API_CONFIG.COINGECKO.BASE_URL)) { // Only for CoinGecko calls
-    console.log(`🔵 [API_KEY_CHECK] CoinGecko API Key present: ${!!apiKey}. Length: ${apiKey ? apiKey.length : 0}`);
-    if (apiKey && config.params) {
-      config.params.x_cg_demo_api_key = apiKey;
-    } else if (apiKey && !config.params) {
-      config.params = { x_cg_demo_api_key: apiKey };
+    if (useApiKey && apiKey) {
+        console.log(`🔵 [API_KEY_CHECK] Attempting with CoinGecko API Key. Length: ${apiKey.length}`);
+        if (config.params) {
+            config.params.x_cg_demo_api_key = apiKey;
+        } else {
+            config.params = { x_cg_demo_api_key: apiKey };
+        }
+    } else {
+        console.log(`🔵 [API_KEY_CHECK] Attempting anonymous request. Reason: Key not present, in cooldown, or in fallback mode.`);
+        if (config.params?.x_cg_demo_api_key) {
+            delete config.params.x_cg_demo_api_key;
+        }
     }
 
     // NEW: Global throttle for CoinGecko requests
@@ -232,6 +265,13 @@ export async function fetchWithSmartRetry(url: string, config: AxiosRequestConfi
         serviceApiStatus.consecutiveErrors = 0;
         serviceApiStatus.successfulRequests++;
         
+        // If this was a successful recovery attempt, reset the fallback state
+        if (isRecoveryAttempt) {
+            console.log('✅ [RECOVERY_SUCCESS] API key is now active. Disabling anonymous fallback.');
+            serviceApiStatus.isUsingAnonymousFallback = false;
+            serviceApiStatus.primaryApiKeyCooldownUntil = 0;
+        }
+        
         // Update performance metrics
         const responseTime = performance.now() - startTime;
         serviceApiStatus.averageResponseTime = 
@@ -268,24 +308,51 @@ export async function fetchWithSmartRetry(url: string, config: AxiosRequestConfi
           }
           
           if (error.response?.status === 429) {
-            // Handle rate limit specifically
-            const retryAfterHeader = error.response.headers['retry-after'];
-            const cooldownDuration = retryAfterHeader 
-              ? parseInt(retryAfterHeader, 10) * 1000 
-              : COINGECKO_RATE_LIMIT_COOLDOWN;
-              
-            serviceApiStatus.rateLimitCooldownUntil = Date.now() + cooldownDuration;
-            
-            // Reduce batch size on rate limit
-            if (API_CONFIG.COINGECKO.ADAPTIVE_BATCHING) {
-              serviceApiStatus.currentBatchSize = Math.max(
-                Math.floor(serviceApiStatus.currentBatchSize * 0.8), 
-                ADAPTIVE_BATCH_SIZE_MIN
-              );
+            // Rate Limit Hit
+            if (useApiKey) {
+                // This was a keyed request. Initiate failover.
+                const keyCooldown = COINGECKO_RATE_LIMIT_COOLDOWN;
+                serviceApiStatus.primaryApiKeyCooldownUntil = Date.now() + keyCooldown;
+                serviceApiStatus.isUsingAnonymousFallback = true;
+                useApiKey = false; // Switch to anonymous for the next attempt
+
+                if (isRecoveryAttempt) {
+                    console.warn(`🔴 [RECOVERY_FAILURE] API key still rate-limited. Extending cooldown for ${keyCooldown / 1000}s.`);
+                } else {
+                    console.warn(`🟡 [FAILOVER_TRIGGER] Primary API key rate-limited. Activating cooldown for ${keyCooldown / 1000}s. Attempting anonymous fallback.`);
+                }
+                
+                // Make sure next attempt is anonymous
+                if (config.params?.x_cg_demo_api_key) {
+                    delete config.params.x_cg_demo_api_key;
+                }
+
+                // Immediately continue to the next iteration to try the anonymous request without a long delay
+                attempt--; // Decrement attempt to not count this as a full retry
+                await new Promise(resolve => setTimeout(resolve, 500)); // Small delay before retrying
+                continue;
+
+            } else {
+                // This was an anonymous request that failed. This is a hard limit.
+                const retryAfterHeader = error.response.headers['retry-after'];
+                const cooldownDuration = retryAfterHeader 
+                  ? parseInt(retryAfterHeader, 10) * 1000 
+                  : COINGECKO_RATE_LIMIT_COOLDOWN;
+                  
+                serviceApiStatus.rateLimitCooldownUntil = Date.now() + cooldownDuration;
+                console.error(`🔴 [FAILOVER_FAILURE] Anonymous fallback failed (429). Activating global cooldown for ${cooldownDuration / 1000}s.`);
+
+                // Update adaptive batching
+                if (API_CONFIG.COINGECKO.ADAPTIVE_BATCHING) {
+                    serviceApiStatus.currentBatchSize = Math.max(
+                        Math.floor(serviceApiStatus.currentBatchSize * 0.8), 
+                        ADAPTIVE_BATCH_SIZE_MIN
+                    );
+                }
+
+                console.warn(`🟢 [RATE_LIMIT] ${priority} priority CoinGecko 429. Cooldown: ${cooldownDuration / 1000}s. Reduced batch size to ${serviceApiStatus.currentBatchSize}. URL: ${url}`);
+                throw new Error(`API rate limit hit on primary and fallback. Global cooldown for ${cooldownDuration / 1000}s.`);
             }
-            
-            console.warn(`🟢 [RATE_LIMIT] ${priority} priority CoinGecko 429. Cooldown: ${cooldownDuration / 1000}s. Reduced batch size to ${serviceApiStatus.currentBatchSize}. URL: ${url}`);
-            throw new Error(`API rate limit hit (429). Cooldown active for ${cooldownDuration / 1000}s.`);
           }
         }
         
