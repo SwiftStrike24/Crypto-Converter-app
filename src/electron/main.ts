@@ -483,6 +483,28 @@ function createWindow() {
     mainWindow?.loadFile(indexPath);
   });
 
+  // Intercept new window requests to customize them
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Security: Deny requests for URLs we don't trust.
+    if (!url.startsWith('https:')) {
+      return { action: 'deny' };
+    }
+
+    // Return window configuration
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        frame: true,
+        backgroundColor: '#121212',
+        webPreferences: {
+          nodeIntegration: false,
+          contextIsolation: true,
+        },
+        icon: getIconPath(),
+      },
+    };
+  });
+
   // Add IPC handler for window resizing
   ipcMain.on('set-window-size', (_, { width, height, isFullScreen }) => {
     if (!mainWindow) return;
