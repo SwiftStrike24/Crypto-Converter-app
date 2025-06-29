@@ -12,6 +12,7 @@ import { checkForUpdates } from '../services/updateService';
 import RangeBar from './RangeBar';
 import WaveLoadingPlaceholder from './WaveLoadingPlaceholder';
 import { RATE_LIMIT_UI_MESSAGE } from '../constants/cryptoConstants';
+import LiveTimeAgo from './LiveTimeAgo';
 
 const HeaderContainer = styled.div`
   display: flex;
@@ -918,15 +919,6 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
     updatePrices(true).catch(console.error);
   };
 
-  const formatTimeAgo = (date: Date): string => {
-    const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
-    if (seconds < 60) return `${seconds}s ago`;
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    return `${hours}h ago`;
-  };
-
   const formatPrice = (price: number, fiat: string): string => {
     let formattedValue: string;
 
@@ -1203,7 +1195,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
       {showPrice && (
         <ExchangeRate $isError={!!error}>
           <LastUpdated className="last-updated">
-            {lastUpdated ? formatTimeAgo(lastUpdated) : ''}
+            {lastUpdated ? <LiveTimeAgo date={lastUpdated} /> : ''}
           </LastUpdated>
           {getPrice()}
         </ExchangeRate>

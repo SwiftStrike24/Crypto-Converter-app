@@ -1,6 +1,6 @@
 {
   "name": "cryptovertx",
-  "version": "1.7.8",
+  "version": "1.7.9",
   "description": "A sleek cryptocurrency converter desktop app",
   "main": "./dist-electron/main.js",
   "scripts": {
