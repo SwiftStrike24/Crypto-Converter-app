@@ -3,6 +3,7 @@ import styled, { keyframes } from 'styled-components';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { FaMagnifyingGlassChart, FaArrowLeft } from 'react-icons/fa6';
 import TechnicalAnalysisWidget from '../components/TechnicalAnalysisWidget';
+import { TradingViewMarket, SUPPORTED_TRADING_VIEW_MARKETS } from '../constants/cryptoConstants';
 
 const glow = keyframes`
   0%, 100% {
@@ -197,8 +198,6 @@ const MarketButton = styled.button<MarketButtonProps>`
   }
 `;
 
-type Market = 'MEXC' | 'CRYPTO' | 'BINANCE';
-
 const AnalysisIcon = () => (
   <FaMagnifyingGlassChart />
 );
@@ -216,7 +215,7 @@ const _TechnicalAnalysisPage: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [selectedInterval] = useState<'1h'>('1h');
-  const [selectedMarket, setSelectedMarket] = useState<Market>('BINANCE');
+  const [selectedMarket, setSelectedMarket] = useState<TradingViewMarket>('BINANCE');
 
   const { cryptoId, currency } = location.state as LocationState || {
     cryptoId: 'BTC',
@@ -264,7 +263,7 @@ const _TechnicalAnalysisPage: React.FC = () => {
         <ControlsWrapper>
             <MarketLabel>Exchange View</MarketLabel>
             <MarketButtons>
-                {(['BINANCE', 'CRYPTO', 'MEXC'] as Market[]).map((market) => (
+                {SUPPORTED_TRADING_VIEW_MARKETS.map((market) => (
                     <MarketButton
                         key={market}
                         $active={selectedMarket === market}

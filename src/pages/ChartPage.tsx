@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 // import { motion } from 'framer-motion'; // Temporarily comment out motion import
 import { TokenStats } from '../components/TokenStats';
 import TradingViewWidget from '../components/TradingViewWidget';
+import { TradingViewMarket, SUPPORTED_TRADING_VIEW_MARKETS } from '../constants/cryptoConstants';
 
 const glow = keyframes`
   0%, 100% {
@@ -225,8 +226,6 @@ const MarketButton = styled.button<MarketButtonProps>`
   }
 `;
 
-type Market = 'BINANCE' | 'MEXC' | 'PYTH' | 'CRYPTO';
-
 const BackIcon = () => (
   <svg 
     viewBox="0 0 24 24" 
@@ -263,7 +262,7 @@ const _ChartPage: React.FC = () => {
   console.log('--- ChartPage Render ---');
   const location = useLocation();
   const navigate = useNavigate();
-  const [selectedMarket, setSelectedMarket] = useState<Market>('CRYPTO');
+  const [selectedMarket, setSelectedMarket] = useState<TradingViewMarket>('CRYPTO');
   const [isWidgetLoading, setIsWidgetLoading] = useState(true);
 
   useEffect(() => {
@@ -313,7 +312,7 @@ const _ChartPage: React.FC = () => {
         <HeaderRight>
           <MarketLabel>Exchange View</MarketLabel>
           <MarketButtons>
-            {(['CRYPTO', 'PYTH', 'BINANCE', 'MEXC'] as Market[]).map((market) => (
+            {(SUPPORTED_TRADING_VIEW_MARKETS).map((market) => (
               <MarketButton
                 key={market}
                 $active={selectedMarket === market}

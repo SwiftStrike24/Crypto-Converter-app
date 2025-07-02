@@ -1,5 +1,6 @@
 import { useEffect, useRef, memo, useState } from 'react';
 import styled from 'styled-components';
+import { TradingViewMarket } from '../constants/cryptoConstants';
 
 const WidgetContainer = styled.div`
   height: 100%;
@@ -75,7 +76,7 @@ const ErrorMessage = styled.div`
 interface TradingViewWidgetProps {
   cryptoId: string;
   timeframe?: string;
-  market?: 'BINANCE' | 'MEXC' | 'PYTH' | 'CRYPTO';
+  market?: TradingViewMarket;
   currency?: string;
 }
 
@@ -136,11 +137,13 @@ function TradingViewWidget({ cryptoId, timeframe = '1D', market = 'PYTH', curren
       symbol = `PYTH:${cryptoId}USD|${timeframe}|${currency}`;
     } else if (market === 'CRYPTO') {
       symbol = `CRYPTO:${cryptoId}USD|${timeframe}|${currency}`;
+    } else if (market === 'BYBIT') {
+      symbol = `BYBIT:${cryptoId}USDT|${timeframe}|${currency}`;
     } else {
       symbol = `${market}:${cryptoId}USDT|${timeframe}|${currency}`;
     }
     
-    console.log(`🔄 Loading ${symbol} chart...`);
+    console.log(`[TradingViewWidget] Attempting to load TradingView symbol: ${symbol}`);
 
     const widgetConfig = {
       "symbols": [[symbol]],

@@ -86,6 +86,12 @@ export const COINGECKO_API_BASE_URL = 'https://api.coingecko.com/api/v3';
 // Other constants were renamed for clarity and consistency (e.g., CACHE_DURATION to PRICE_CACHE_DURATION).
 // API_BASE is now COINGECKO_API_BASE_URL, but API_CONFIG.COINGECKO.BASE_URL is the primary reference.
 
+// NEW: Unified TradingView market types
+export type TradingViewMarket = 'CRYPTO' | 'PYTH' | 'BINANCE' | 'MEXC' | 'BYBIT';
+
+// NEW: Single source of truth for supported markets
+export const SUPPORTED_TRADING_VIEW_MARKETS: TradingViewMarket[] = ['CRYPTO', 'PYTH', 'BINANCE', 'MEXC', 'BYBIT'];
+
 // Stablecoin detection configuration
 export const STABLECOIN_CATEGORIES = [
   'stablecoins',

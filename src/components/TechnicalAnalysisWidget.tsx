@@ -1,5 +1,6 @@
 import { useEffect, useRef, memo, useState } from 'react';
 import styled from 'styled-components';
+import { TradingViewMarket } from '../constants/cryptoConstants';
 
 const WidgetContainer = styled.div`
   height: 100%;
@@ -48,7 +49,7 @@ const RefContainer = styled.div`
 
 interface TechnicalAnalysisWidgetProps {
   cryptoId: string;
-  market?: 'MEXC' | 'CRYPTO' | 'BINANCE' | 'PYTH';
+  market?: TradingViewMarket;
   interval?: '1m' | '5m' | '15m' | '30m' | '1h' | '2h' | '4h' | '1D' | '1W' | '1M';
   currency?: string;
 }
@@ -104,11 +105,13 @@ function TechnicalAnalysisWidget({
       symbol = `BINANCE:${cryptoId}USDT`; // Using BINANCE for better compatibility
     } else if (market === 'CRYPTO') {
       symbol = `CRYPTO:${cryptoId}${currency}`;
+    } else if (market === 'BYBIT') {
+      symbol = `BYBIT:${cryptoId}USDT`;
     } else {
       symbol = `${market}:${cryptoId}USDT`;
     }
     
-    console.log(`🔄 Loading Technical Analysis for ${symbol}...`);
+    console.log(`[TechnicalAnalysisWidget] Attempting to load TradingView symbol: ${symbol}`);
 
     try {
       // Create script element

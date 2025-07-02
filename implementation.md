@@ -197,8 +197,8 @@ The application primarily uses React Context API for managing global state:
     *   `Converter.tsx`: Core UI for cryptocurrency conversion.
     *   `AddCryptoModal.tsx`: Modal for searching and adding new cryptocurrencies.
     *   `ManageTokens.tsx`: Page for viewing and removing user-added custom tokens.
-    *   `ChartPage.tsx`: A modern dashboard page for token analysis. It features a responsive two-column layout, with the main `TradingViewWidget` on the left and a detailed statistics sidebar on the right.
-    *   `TechnicalAnalysisPage.tsx`: A dedicated technical analysis dashboard. It mirrors the modern, two-column layout of the `ChartPage`, featuring the `TechnicalAnalysisWidget` in the main content area and the `TokenStats` component in a sidebar, providing a consistent and comprehensive analysis experience.
+    *   `ChartPage.tsx`: A modern dashboard page for token analysis. It features a responsive two-column layout, with the main `TradingViewWidget` on the left and a detailed statistics sidebar on the right. It now uses a centralized list of exchanges, including Bybit, for a consistent user experience.
+    *   `TechnicalAnalysisPage.tsx`: A dedicated technical analysis dashboard. It mirrors the modern, two-column layout of the `ChartPage`, featuring the `TechnicalAnalysisWidget` in the main content area and the `TokenStats` component in a sidebar. It now uses a centralized list of exchanges, including Bybit, providing a consistent and comprehensive analysis experience.
     *   `Header.tsx`, `Footer.tsx`: Standard layout components.
     *   `LivePrice.tsx`: Component for displaying real-time price updates.
     *   `LiveTimeAgo.tsx`: A small, efficient component that renders a self-updating timestamp (e.g., "5s ago"), ensuring the "last updated" indicator in the `Header` is always live without causing unnecessary re-renders of the entire header.
@@ -210,6 +210,7 @@ The application primarily uses React Context API for managing global state:
 ## 6. Key Features Implemented
 
 *   **Modern Charting Dashboard**: The `ChartPage` provides a comprehensive and visually appealing dashboard for analyzing cryptocurrencies. It integrates a powerful `TradingViewWidget` with a dedicated `TokenStats` sidebar, all within a responsive two-column grid layout.
+*   **Unified Exchange Views**: The list of supported exchanges for charting (e.g., Binance, MEXC, Bybit) is now centralized in `src/constants/cryptoConstants.ts` and used consistently across both the `ChartPage` and `TechnicalAnalysisPage` to prevent discrepancies and improve maintainability.
 *   **Animated Launch Screen**: An initial loading screen built with `framer-motion` that provides a polished startup experience before the main application UI is displayed.
 *   **Real-time Crypto-to-Fiat Conversion:** Core functionality of the application.
 *   **Live Fiat Exchange Rates:** USD to CAD/EUR rates via Open Exchange Rates API for accurate conversions.
