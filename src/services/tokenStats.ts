@@ -22,6 +22,7 @@ export interface TokenStatsData {
   currentPrice: number;
   athRaw: number;
   atlRaw: number;
+  volatility7d: number;
 }
 
 export const getTokenStats = async (
@@ -44,10 +45,29 @@ export const getTokenStats = async (
     // Calculate 7-day low and high
     let low7d = 0;
     let high7d = 0;
+    let volatility7d = 0;
+
     if (chartDataResponse && chartDataResponse.prices) {
       const prices7d = chartDataResponse.prices.map((p: number[]) => p[1]);
       low7d = Math.min(...prices7d);
       high7d = Math.max(...prices7d);
+
+      // Calculate 7d volatility
+      if (prices7d.length > 1) {
+        const dailyReturns: number[] = [];
+        for (let i = 1; i < prices7d.length; i++) {
+          if (prices7d[i - 1] !== 0) {
+            dailyReturns.push((prices7d[i] / prices7d[i - 1]) - 1);
+          }
+        }
+        
+        if (dailyReturns.length > 1) {
+          const n = dailyReturns.length;
+          const mean = dailyReturns.reduce((a, b) => a + b) / n;
+          const variance = dailyReturns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1);
+          volatility7d = Math.sqrt(variance);
+        }
+      }
     }
 
     // Check for essential data points to determine if we have full data
@@ -77,6 +97,7 @@ export const getTokenStats = async (
       currentPrice: tokenData.current_price ?? 0,
       athRaw: tokenData.ath ?? 0,
       atlRaw: tokenData.atl ?? 0,
+      volatility7d,
     };
   } catch (error) {
     console.error(`Failed to get token stats for ${id}:`, error);

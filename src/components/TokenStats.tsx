@@ -258,6 +258,7 @@ interface TokenStatsData {
   high7d: string;
   marketCapRank: number;
   currentPrice: number;
+  volatility7d: number;
 }
 
 const formatNumber = (num: number | null | undefined, currency: string = 'USD'): string => {
@@ -403,6 +404,7 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
         high7d: formatNumber(statsData.high7d, currency),
         marketCapRank: statsData.marketCapRank,
         currentPrice: statsData.currentPrice,
+        volatility7d: statsData.volatility7d,
       });
       setRetryCount(0);
       setRetryProgress(0);
@@ -515,6 +517,15 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
             <StatLabel>7d Range</StatLabel>
             <StatValue>{stats?.low7d} – {stats?.high7d}</StatValue>
         </StatRow>
+        {stats && stats.volatility7d > 0 && (
+            <StatRow>
+                <StatLabel>
+                    Volatility (7d)
+                    <InfoIcon title="7-day historical volatility (standard deviation of daily returns)">ⓘ</InfoIcon>
+                </StatLabel>
+                <StatValue>{(stats.volatility7d * 100).toFixed(2)}%</StatValue>
+            </StatRow>
+        )}
       </StatGroup>
       <StatRow>
         <StatLabel>
