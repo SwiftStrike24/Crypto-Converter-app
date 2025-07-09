@@ -438,15 +438,26 @@ const Tooltip = styled.div`
   }
 `;
 
-const ButtonWrapper = styled.div<{ $tooltipStyle?: React.CSSProperties }>`
+const ButtonWrapper = styled.div<{ $tooltipStyle?: React.CSSProperties; $isResultVisible?: boolean }>`
   position: fixed;
   z-index: 10;
-  transition: transform 0.3s ease;
-  
+  transition:
+    transform 0.3s ease,
+    bottom 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  bottom: ${props => (props.$isResultVisible ? '2px' : '15px')};
+
+  &.right-button {
+    right: 20px;
+  }
+
+  &.left-button {
+    left: 20px;
+  }
+
   &:has(> button:hover) {
     transform: translateY(-2px);
   }
-  
+
   &:has(> button:hover) ${Tooltip} {
     opacity: 1;
     visibility: visible;
@@ -1546,6 +1557,8 @@ const Converter: React.FC<ConverterProps> = ({
     }
   }, [fiatDropdownOpen]);
 
+  const isResultVisible = !!((cryptoAmount || fiatAmount) && !error);
+
   return (
     <ConverterContainer>
       <InputGroup>
@@ -1820,16 +1833,21 @@ const Converter: React.FC<ConverterProps> = ({
       <ButtonWrapper
         $tooltipStyle={chartTooltipStyle}
         className="right-button"
-        style={{ bottom: '20px', right: '20px' }}
         onMouseEnter={() => handleButtonHover('chart')}
         onMouseLeave={handleButtonLeave}
+        $isResultVisible={isResultVisible}
       >
-        <ChartButton ref={chartButtonRef} onClick={() => navigate('/chart', {
-          state: {
-            cryptoId: selectedCrypto,
-            currency: selectedFiat
+        <ChartButton
+          ref={chartButtonRef}
+          onClick={() =>
+            navigate('/chart', {
+              state: {
+                cryptoId: selectedCrypto,
+                currency: selectedFiat,
+              },
+            })
           }
-        })}>
+        >
           <ChartIcon />
         </ChartButton>
         <Tooltip ref={chartTooltipRef}>View Price Chart</Tooltip>
@@ -1838,16 +1856,21 @@ const Converter: React.FC<ConverterProps> = ({
       <ButtonWrapper
         $tooltipStyle={analysisTooltipStyle}
         className="left-button"
-        style={{ bottom: '20px', left: '20px' }}
         onMouseEnter={() => handleButtonHover('analysis')}
         onMouseLeave={handleButtonLeave}
+        $isResultVisible={isResultVisible}
       >
-        <AnalysisButton ref={analysisButtonRef} onClick={() => navigate('/analysis', {
-          state: {
-            cryptoId: selectedCrypto,
-            currency: selectedFiat
+        <AnalysisButton
+          ref={analysisButtonRef}
+          onClick={() =>
+            navigate('/analysis', {
+              state: {
+                cryptoId: selectedCrypto,
+                currency: selectedFiat,
+              },
+            })
           }
-        })}>
+        >
           <AnalysisIcon />
         </AnalysisButton>
         <Tooltip ref={analysisTooltipRef}>Technical Analysis</Tooltip>
