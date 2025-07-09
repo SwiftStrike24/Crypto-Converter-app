@@ -19,6 +19,9 @@ export interface TokenStatsData {
   marketCapRank: number;
   dataSource: 'coingecko' | 'cryptocompare';
   hasFullData: boolean;
+  currentPrice: number;
+  athRaw: number;
+  atlRaw: number;
 }
 
 export const getTokenStats = async (
@@ -71,6 +74,9 @@ export const getTokenStats = async (
       marketCapRank: tokenData.market_cap_rank ?? 0,
       dataSource: 'coingecko',
       hasFullData,
+      currentPrice: tokenData.current_price ?? 0,
+      athRaw: tokenData.ath ?? 0,
+      atlRaw: tokenData.atl ?? 0,
     };
   } catch (error) {
     console.error(`Failed to get token stats for ${id}:`, error);

@@ -54,9 +54,12 @@ const InfoIcon = styled.span`
   }
 `;
 
-const StatValue = styled.span<{ $isLimited?: boolean }>`
-  color: ${props => props.$isLimited ? '#9ca3af' : '#fff'};
-  font-size: 1rem;
+const StatValue = styled.span<{ $isLimited?: boolean; $isNegative?: boolean; $isPositive?: boolean }>`
+  color: ${props => 
+    props.$isNegative ? '#ef4444' : 
+    props.$isPositive ? '#22c55e' :
+    props.$isLimited ? '#9ca3af' : '#fff'};
+  font-size: 0.95rem;
   font-weight: 600;
   text-align: right;
   display: flex;
@@ -244,7 +247,9 @@ interface TokenStatsData {
   dataSource: 'coingecko' | 'cryptocompare';
   hasFullData: boolean;
   ath: string;
+  athRaw: number;
   atl: string;
+  atlRaw: number;
   athDate: string;
   atlDate: string;
   low24h: string;
@@ -252,6 +257,7 @@ interface TokenStatsData {
   low7d: string;
   high7d: string;
   marketCapRank: number;
+  currentPrice: number;
 }
 
 const formatNumber = (num: number | null | undefined, currency: string = 'USD'): string => {
@@ -386,7 +392,9 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
         dataSource: statsData.dataSource,
         hasFullData: statsData.hasFullData,
         ath: formatNumber(statsData.ath, currency),
+        athRaw: statsData.ath,
         atl: formatNumber(statsData.atl, currency),
+        atlRaw: statsData.atl,
         athDate: formatDate(statsData.athDate),
         atlDate: formatDate(statsData.atlDate),
         low24h: formatNumber(statsData.low24h, currency),
@@ -394,6 +402,7 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
         low7d: formatNumber(statsData.low7d, currency),
         high7d: formatNumber(statsData.high7d, currency),
         marketCapRank: statsData.marketCapRank,
+        currentPrice: statsData.currentPrice,
       });
       setRetryCount(0);
       setRetryProgress(0);
@@ -422,6 +431,32 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
     fetchStats();
     return () => clearTimeouts();
   }, [fetchStats, clearTimeouts]);
+
+  const athDropInfo = React.useMemo(() => {
+    if (stats?.athRaw == null || stats?.currentPrice == null || stats.athRaw === 0) {
+      return null;
+    }
+    const priceDrop = stats.currentPrice - stats.athRaw; // Negative if price dropped
+    const percentageDrop = (priceDrop / stats.athRaw) * 100;
+    
+    return {
+        priceDrop,
+        percentageDrop
+    };
+  }, [stats]);
+
+  const atlIncreaseInfo = React.useMemo(() => {
+    if (stats?.atlRaw == null || stats?.currentPrice == null || stats.atlRaw === 0) {
+      return null;
+    }
+    const priceIncrease = stats.currentPrice - stats.atlRaw;
+    const percentageIncrease = (priceIncrease / stats.atlRaw) * 100;
+    
+    return {
+        priceIncrease,
+        percentageIncrease
+    };
+  }, [stats]);
 
   const handleRetry = () => {
     setRetryCount(0);
@@ -533,6 +568,18 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
             <DateLabel>{stats?.athDate || 'N/A'}</DateLabel>
         </StatValueWithDate>
       </StatRow>
+      {athDropInfo !== null && (
+        <StatRow>
+          <StatLabel>
+            From ATH
+            <InfoIcon title="Drop from All-Time High (price and percentage)">ⓘ</InfoIcon>
+          </StatLabel>
+          <StatValue $isNegative={athDropInfo.priceDrop < 0}>
+            {formatNumber(athDropInfo.priceDrop, currency)}
+            {` (${athDropInfo.percentageDrop.toFixed(2)}%)`}
+          </StatValue>
+        </StatRow>
+      )}
       <StatRow>
         <StatLabel>
           All-Time Low
@@ -543,6 +590,18 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
             <DateLabel>{stats?.atlDate || 'N/A'}</DateLabel>
         </StatValueWithDate>
       </StatRow>
+      {atlIncreaseInfo !== null && (
+        <StatRow>
+          <StatLabel>
+            From ATL
+            <InfoIcon title="Increase from All-Time Low (price and percentage)">ⓘ</InfoIcon>
+          </StatLabel>
+          <StatValue $isPositive={atlIncreaseInfo.priceIncrease > 0}>
+            {formatNumber(atlIncreaseInfo.priceIncrease, currency)}
+            {` (+${atlIncreaseInfo.percentageIncrease.toFixed(2)}%)`}
+          </StatValue>
+        </StatRow>
+      )}
       <StatRow>
         <StatLabel>
           Market Rank
