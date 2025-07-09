@@ -1,4 +1,9 @@
-import { STABLECOIN_CATEGORIES, STABLECOIN_SYMBOL_PATTERNS } from '../constants/cryptoConstants';
+import { 
+  STABLECOIN_CATEGORIES, 
+  STABLECOIN_SYMBOL_PATTERNS,
+  STABLECOIN_LOWER_BOUND_USD,
+  STABLECOIN_UPPER_BOUND_USD,
+} from '../constants/cryptoConstants';
 
 export interface CoinDetailedMetadata {
   id: string;
@@ -50,34 +55,46 @@ export function isStablecoinFromSymbol(symbol: string): boolean {
 }
 
 /**
- * Comprehensive stablecoin check using metadata and fallback to symbol patterns
+ * Comprehensive stablecoin check using a multi-factor approach:
+ * 1. Signal Check: Checks if metadata (categories) or symbol suggests it's a stablecoin.
+ * 2. Price Verification: If a signal is found, verifies the price is within a stable range.
  */
-export function isStablecoin(metadata: CoinDetailedMetadata | null, symbol?: string): boolean {
-  // Primary check: use categories from detailed metadata
-  if (metadata?.categories) {
-    const categoriesResult = isStablecoinFromCategories(metadata.categories);
-    console.log(`🪙 [STABLECOIN_CHECK] ${metadata.symbol}: Categories check result: ${categoriesResult}`, {
-      categories: metadata.categories,
-      matchingCategories: metadata.categories.filter(cat => 
-        STABLECOIN_CATEGORIES.some(stableCategory => 
-          cat.toLowerCase().includes(stableCategory.toLowerCase()) ||
-          stableCategory.toLowerCase().includes(cat.toLowerCase())
-        )
-      )
-    });
-    return categoriesResult;
-  }
-
-  // Fallback: check symbol patterns
+export function isStablecoin(
+  metadata: CoinDetailedMetadata | null,
+  symbol?: string,
+  priceInUsd?: number | null,
+): boolean {
   const symbolToCheck = symbol || metadata?.symbol;
-  if (symbolToCheck) {
-    const symbolResult = isStablecoinFromSymbol(symbolToCheck);
-    console.log(`🪙 [STABLECOIN_CHECK] ${symbolToCheck}: Symbol pattern check result: ${symbolResult}`);
-    return symbolResult;
+  if (!symbolToCheck) {
+    return false;
   }
 
-  console.log(`🪙 [STABLECOIN_CHECK] No metadata or symbol available for stablecoin check`);
-  return false;
+  // 1. Signal Check: Does it identify as a stablecoin by category or symbol?
+  const hasCategorySignal = metadata?.categories ? isStablecoinFromCategories(metadata.categories) : false;
+  const hasSymbolSignal = isStablecoinFromSymbol(symbolToCheck);
+  const hasStablecoinSignal = hasCategorySignal || hasSymbolSignal;
+
+  if (!hasStablecoinSignal) {
+    return false; // Not a stablecoin if it doesn't even claim to be one.
+  }
+
+  // 2. Price Verification: If it claims to be a stablecoin, is it actually stable?
+  if (priceInUsd === null || typeof priceInUsd === 'undefined') {
+    // Price is not available, fall back to the signal.
+    // This maintains functionality for offline or initial-load scenarios.
+    console.log(`🪙 [STABLECOIN_CHECK] ${symbolToCheck} has signal but no price data. Assuming stable: ${hasStablecoinSignal}`);
+    return hasStablecoinSignal;
+  }
+
+  const isPriceStable = priceInUsd >= STABLECOIN_LOWER_BOUND_USD && priceInUsd <= STABLECOIN_UPPER_BOUND_USD;
+
+  if (!isPriceStable) {
+    console.log(`🪙 [STABLECOIN_CHECK] ${symbolToCheck} has a stablecoin signal but its price ($${priceInUsd}) is outside the stable range. Result: false`);
+  } else {
+    console.log(`🪙 [STABLECOIN_CHECK] ${symbolToCheck} confirmed as stablecoin. Signal: ${hasStablecoinSignal}, Price: $${priceInUsd}. Result: true`);
+  }
+
+  return isPriceStable;
 }
 
 /**

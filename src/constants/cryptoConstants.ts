@@ -142,6 +142,13 @@ export const STABLECOIN_SYMBOL_PATTERNS = [
   /^zusd$/i,        // ZUSD
 ];
 
+// Price range for stablecoin verification
+export const STABLECOIN_PRICE_THRESHOLD_USD = 1.0;
+export const STABLECOIN_PRICE_DEVIATION = 0.02; // Allows for a +/- 2% deviation
+export const STABLECOIN_LOWER_BOUND_USD = STABLECOIN_PRICE_THRESHOLD_USD - STABLECOIN_PRICE_DEVIATION; // $0.98
+export const STABLECOIN_UPPER_BOUND_USD = STABLECOIN_PRICE_THRESHOLD_USD + STABLECOIN_PRICE_DEVIATION; // $1.02
+
+
 // Cache key for detailed coin metadata
 export const CACHE_STORAGE_KEY_COIN_DETAILS = 'cryptovertx-coin-details-cache';
 export const COIN_DETAILS_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours

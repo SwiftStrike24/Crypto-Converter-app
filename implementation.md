@@ -245,13 +245,16 @@ The application primarily uses React Context API for managing global state:
 *   **Version Management:** Centralized version handling (`versionManager.ts`), automated version injection during build, and version comparison for updates.
 *   **Loading Placeholders:** Implemented a smooth shimmer/wave animation (`WaveLoadingPlaceholder.tsx`) to replace numerical placeholders (e.g., previous `$1` estimates or "N/A") in the `Converter` result display and `Header` price display during price fetching or when data is pending. This enhances UX by providing visual feedback without showing potentially misleading or jarring placeholder numbers.
 *   **Build Compression:** Uses `normal` compression level for a balance between installer size and installation speed, improving the initial setup experience.
-*   **Multi-Layer Stablecoin Detection:** Introduced a multi-layer stablecoin detection system that automatically switches the target fiat currency based on the type of stablecoin selected by the user, enhancing the user experience for stablecoin conversions.
+*   **Robust Stablecoin Detection:** Implemented a multi-factor stablecoin detection system. It first checks if a token's metadata (CoinGecko categories) or symbol suggests it's a stablecoin. If this initial check is positive, it then verifies the token's live price against a defined range (e.g., $0.98-$1.02) to confirm it's actually trading at its peg. This prevents false positives from de-pegged or low-value tokens and ensures the automatic fiat currency switching is accurate.
 
 ### Phase 4: Chart Page UI/UX Overhaul (v1.7.3)
 Completely redesigned the `ChartPage` to improve information hierarchy and visual appeal. This involved moving from a simple stacked layout to a modern two-column dashboard, redesigning the header for unified controls, and transforming `TokenStats` into a detailed sidebar panel with improved data visualization, including a horizontal progress bar for circulating supply. This phase also included significant bug fixes related to data fetching and currency formatting to ensure a stable and intuitive user experience.
 
 ### Phase 5: Technical Analysis Page UI/UX Overhaul (v1.7.6)
 Transformed the `TechnicalAnalysisPage` from a simple modal overlay into a full-featured dashboard. The new design mirrors the `ChartPage`'s modern, two-column layout, integrating the `TechnicalAnalysisWidget` with the `TokenStats` sidebar. This creates a unified, aesthetically consistent, and more functional analysis environment for the user, moving away from a jarring popup to a seamless, integrated page experience.
+
+### Phase 6: Robust Stablecoin Verification (v1.8.1)
+Refactored the stablecoin detection logic to be more robust and prevent false positives. The system now uses a two-factor approach: it first checks for metadata signals (categories, symbol) that indicate a token is *supposed* to be a stablecoin, and then it performs a price verification check to ensure the token is *actually* trading near its peg (e.g., within a $0.98-$1.02 USD range). This prevents low-value non-stablecoins or de-pegged stablecoins from triggering the auto-switch logic.
 
 ## 7. Build and Development Process
 
@@ -426,3 +429,6 @@ Completely redesigned the `ChartPage` to improve information hierarchy and visua
 
 ### Phase 5: Technical Analysis Page UI/UX Overhaul (v1.7.6)
 Transformed the `TechnicalAnalysisPage` from a simple modal overlay into a full-featured dashboard. The new design mirrors the `ChartPage`'s modern, two-column layout, integrating the `TechnicalAnalysisWidget` with the `TokenStats` sidebar. This creates a unified, aesthetically consistent, and more functional analysis environment for the user, moving away from a jarring popup to a seamless, integrated page experience. 
+
+### Phase 6: Robust Stablecoin Verification (v1.8.1)
+Refactored the stablecoin detection logic to be more robust and prevent false positives. The system now uses a two-factor approach: it first checks for metadata signals (categories, symbol) that indicate a token is *supposed* to be a stablecoin, and then it performs a price verification check to ensure the token is *actually* trading near its peg (e.g., within a $0.98-$1.02 USD range). This prevents low-value non-stablecoins or de-pegged stablecoins from triggering the auto-switch logic. 

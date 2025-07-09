@@ -892,9 +892,10 @@ const Converter: React.FC<ConverterProps> = ({
       try {
         // Get detailed metadata for stablecoin detection
         const coinDetails = await getCoinDetails(cryptoId);
+        const priceInUsd = prices[selectedCrypto]?.usd?.price;
         
         // Check if it's a stablecoin
-        const isStablecoinToken = isStablecoin(coinDetails, selectedCrypto);
+        const isStablecoinToken = isStablecoin(coinDetails, selectedCrypto, priceInUsd);
         
         if (isStablecoinToken) {
           // Get the appropriate target fiat for this stablecoin
@@ -913,7 +914,8 @@ const Converter: React.FC<ConverterProps> = ({
         console.error(`🔴 [STABLECOIN_CHECK] Error checking stablecoin status for ${selectedCrypto}:`, error);
         
         // Fallback: use symbol-based detection
-        const isStablecoinBySymbol = isStablecoin(null, selectedCrypto);
+        const priceInUsd = prices[selectedCrypto]?.usd?.price;
+        const isStablecoinBySymbol = isStablecoin(null, selectedCrypto, priceInUsd);
         if (isStablecoinBySymbol && selectedFiat !== 'CAD' && !userManuallySetFiat) {
           console.log(`🪙 [STABLECOIN_FALLBACK] Using symbol-based detection for ${selectedCrypto}, switching to CAD`);
           setSelectedFiat('CAD');
