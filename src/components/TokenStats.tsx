@@ -251,6 +251,7 @@ interface TokenStatsData {
   high24h: string;
   low7d: string;
   high7d: string;
+  marketCapRank: number;
 }
 
 const formatNumber = (num: number | null | undefined, currency: string = 'USD'): string => {
@@ -392,6 +393,7 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
         high24h: formatNumber(statsData.high24h, currency),
         low7d: formatNumber(statsData.low7d, currency),
         high7d: formatNumber(statsData.high7d, currency),
+        marketCapRank: statsData.marketCapRank,
       });
       setRetryCount(0);
       setRetryProgress(0);
@@ -540,6 +542,15 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
             <StatValue>{stats?.atl || 'N/A'}</StatValue>
             <DateLabel>{stats?.atlDate || 'N/A'}</DateLabel>
         </StatValueWithDate>
+      </StatRow>
+      <StatRow>
+        <StatLabel>
+          Market Rank
+          <InfoIcon title={`Rank based on market capitalization`}>ⓘ</InfoIcon>
+        </StatLabel>
+        <StatValue $isLimited={!stats?.hasFullData}>
+          {stats?.marketCapRank ? `#${stats.marketCapRank}` : 'N/A'}
+        </StatValue>
       </StatRow>
 
       {stats && <DataSourceBadge style={{ alignSelf: 'center', marginTop: '0.5rem' }} $source={stats.dataSource}>

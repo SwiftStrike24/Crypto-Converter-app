@@ -16,6 +16,7 @@ export interface TokenStatsData {
   high24h: number;
   low7d: number;
   high7d: number;
+  marketCapRank: number;
   dataSource: 'coingecko' | 'cryptocompare';
   hasFullData: boolean;
 }
@@ -67,6 +68,7 @@ export const getTokenStats = async (
       high24h: tokenData.high_24h ?? 0,
       low7d,
       high7d,
+      marketCapRank: tokenData.market_cap_rank ?? 0,
       dataSource: 'coingecko',
       hasFullData,
     };

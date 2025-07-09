@@ -202,7 +202,7 @@ The application primarily uses React Context API for managing global state:
     *   `Header.tsx`, `Footer.tsx`: Standard layout components.
     *   `LivePrice.tsx`: Component for displaying real-time price updates.
     *   `LiveTimeAgo.tsx`: A small, efficient component that renders a self-updating timestamp (e.g., "5s ago"), ensuring the "last updated" indicator in the `Header` is always live without causing unnecessary re-renders of the entire header.
-    *   `TokenStats.tsx`: A detailed statistics panel displayed within the `ChartPage` sidebar. It shows key metrics like Market Cap, Volume, All-Time High/Low, and a visual progress bar for Circulating Supply. It features robust, locale-aware currency formatting.
+    *   `TokenStats.tsx`: A detailed statistics panel displayed within the `ChartPage` sidebar. It shows key metrics like Market Rank, Market Cap, Volume, All-Time High/Low, and a visual progress bar for Circulating Supply. It features robust, locale-aware currency formatting.
     *   `InstanceDialog.tsx`: Dialog shown when a second instance of the app is attempted.
     *   `UpdateDialog.tsx`: Modal for handling the in-app update flow.
     *   `LoadingScreen.tsx`: An initial launch screen that displays an animated logo and progress bar to improve perceived startup performance. Controlled by `App.tsx`.
