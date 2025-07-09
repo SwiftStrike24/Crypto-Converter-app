@@ -4,6 +4,8 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCrypto } from '../context/CryptoContext';
 import { FiArrowLeft, FiTrash2, FiTrash } from 'react-icons/fi';
+import DefaultTokensDisplay from '../components/DefaultTokensDisplay';
+import { DEFAULT_TOKEN_SYMBOLS } from '../constants/cryptoConstants';
 
 const PageContainer = styled(motion.div)`
   height: 100%;
@@ -106,27 +108,16 @@ const Title = styled.h1`
 `;
 
 const TokensContainer = styled(motion.div)`
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  max-width: 800px;
-  margin: 0 auto;
-  width: 100%;
-  background: #1a1a1a;
-  border-radius: 16px;
-  padding: 16px;
-  max-height: calc(100vh - 200px);
+  flex: 1;
   overflow-y: auto;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 0 8px;
 
   &::-webkit-scrollbar {
     width: 8px;
   }
 
   &::-webkit-scrollbar-track {
-    background: #1a1a1a;
-    border-radius: 8px;
+    background: transparent;
   }
 
   &::-webkit-scrollbar-thumb {
@@ -137,6 +128,20 @@ const TokensContainer = styled(motion.div)`
       background: #444;
     }
   }
+`;
+
+const CustomTokensList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 800px;
+  margin: 0 auto 24px;
+  width: 100%;
+  background: #1a1a1a;
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 `;
 
 const TokenItem = styled(motion.div)`
@@ -415,7 +420,7 @@ const ManageTokens: React.FC = () => {
     deleteCrypto, 
     tokenMetadata // Get tokenMetadata from context
   } = useCrypto(); 
-  const defaultTokens = new Set(['BTC', 'ETH', 'SOL', 'USDC', 'XRP']);
+  const defaultTokens = new Set(DEFAULT_TOKEN_SYMBOLS);
   const [confirmDialog, setConfirmDialog] = useState(false);
   const [newlyAddedTokens, setNewlyAddedTokens] = useState<Set<string>>(new Set());
 
@@ -543,91 +548,94 @@ const ManageTokens: React.FC = () => {
         animate="animate"
         exit="exit"
       >
-        {customTokens.length > 0 ? (
-          <motion.div variants={listVariants}>
-            <AnimatePresence>
-              {customTokens.map(symbol => {
-                // Get crypto ID and image URL
-                const id = getCryptoId(symbol);
-                const imageUrl = id ? tokenMetadata[id]?.image : null;
-                
-                return (
-                  <TokenItem
-                    key={`token-${symbol}-${isNewlyAdded(symbol) ? 'new' : 'existing'}`}
-                    variants={isNewlyAdded(symbol) ? newItemVariants : itemVariants}
-                    layout
-                    initial="initial"
-                    animate="animate"
-                    exit="exit"
-                    style={{
-                      boxShadow: isNewlyAdded(symbol) 
-                        ? '0 0 0 1px rgba(139, 92, 246, 0.3), 0 4px 12px rgba(139, 92, 246, 0.15)' 
-                        : undefined,
-                      borderColor: isNewlyAdded(symbol) 
-                        ? 'rgba(139, 92, 246, 0.2)' 
-                        : undefined
-                    }}
-                  >
-                    {/* Icon Section */}
-                    <IconContainer>
-                      {imageUrl ? (
-                        <>
-                          <StyledTokenIcon 
-                            src={imageUrl} 
-                            alt={`${symbol} icon`}
-                            onError={handleImageError} 
-                          />
-                          {/* Hidden fallback for error case */}
-                          <StyledTokenFallbackIcon 
-                            className="fallback-icon" 
-                            style={{ display: 'none', position: 'absolute', top: 0, left: 0 }}
-                          >
+        <CustomTokensList>
+          {customTokens.length > 0 ? (
+            <motion.div variants={listVariants}>
+              <AnimatePresence>
+                {customTokens.map(symbol => {
+                  // Get crypto ID and image URL
+                  const id = getCryptoId(symbol);
+                  const imageUrl = id ? tokenMetadata[id]?.image : null;
+                  
+                  return (
+                    <TokenItem
+                      key={`token-${symbol}-${isNewlyAdded(symbol) ? 'new' : 'existing'}`}
+                      variants={isNewlyAdded(symbol) ? newItemVariants : itemVariants}
+                      layout
+                      initial="initial"
+                      animate="animate"
+                      exit="exit"
+                      style={{
+                        boxShadow: isNewlyAdded(symbol) 
+                          ? '0 0 0 1px rgba(139, 92, 246, 0.3), 0 4px 12px rgba(139, 92, 246, 0.15)' 
+                          : undefined,
+                        borderColor: isNewlyAdded(symbol) 
+                          ? 'rgba(139, 92, 246, 0.2)' 
+                          : undefined
+                      }}
+                    >
+                      {/* Icon Section */}
+                      <IconContainer>
+                        {imageUrl ? (
+                          <>
+                            <StyledTokenIcon 
+                              src={imageUrl} 
+                              alt={`${symbol} icon`}
+                              onError={handleImageError} 
+                            />
+                            {/* Hidden fallback for error case */}
+                            <StyledTokenFallbackIcon 
+                              className="fallback-icon" 
+                              style={{ display: 'none', position: 'absolute', top: 0, left: 0 }}
+                            >
+                              {symbol.charAt(0).toUpperCase()}
+                            </StyledTokenFallbackIcon>
+                          </>
+                        ) : (
+                          <StyledTokenFallbackIcon className="fallback-icon">
                             {symbol.charAt(0).toUpperCase()}
                           </StyledTokenFallbackIcon>
-                        </>
-                      ) : (
-                        <StyledTokenFallbackIcon className="fallback-icon">
-                          {symbol.charAt(0).toUpperCase()}
-                        </StyledTokenFallbackIcon>
-                      )}
-                    </IconContainer>
-                    
-                    {/* Info Section */}
-                    <TokenInfo>
-                      <div className="token-symbol">
-                        {symbol}
-                        {isNewlyAdded(symbol) && (
-                          <NewTokenBadge>NEW</NewTokenBadge>
                         )}
-                      </div>
-                      <div className="token-id">{id || 'Loading...'}</div>
-                    </TokenInfo>
-                    
-                    {/* Delete Button */}
-                    <DeleteButton
-                      onClick={() => handleDeleteToken(symbol)}
-                      title="Delete token"
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.9 }}
-                    >
-                      <FiTrash2 size={20} />
-                    </DeleteButton>
-                  </TokenItem>
-                );
-              })}
-            </AnimatePresence>
-          </motion.div>
-        ) : (
-          <Message
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1, transition: { delay: 0.2 } }}
-          >
-            No custom tokens added yet.
-            <br />
-            <br />
-            Click the + button to add new tokens.
-          </Message>
-        )}
+                      </IconContainer>
+                      
+                      {/* Info Section */}
+                      <TokenInfo>
+                        <div className="token-symbol">
+                          {symbol}
+                          {isNewlyAdded(symbol) && (
+                            <NewTokenBadge>NEW</NewTokenBadge>
+                          )}
+                        </div>
+                        <div className="token-id">{id || 'Loading...'}</div>
+                      </TokenInfo>
+                      
+                      {/* Delete Button */}
+                      <DeleteButton
+                        onClick={() => handleDeleteToken(symbol)}
+                        title="Delete token"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                      >
+                        <FiTrash2 size={20} />
+                      </DeleteButton>
+                    </TokenItem>
+                  );
+                })}
+              </AnimatePresence>
+            </motion.div>
+          ) : (
+            <Message
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1, transition: { delay: 0.2 } }}
+            >
+              No custom tokens added yet.
+              <br />
+              <br />
+              Click the + button to add new tokens.
+            </Message>
+          )}
+        </CustomTokensList>
+        <DefaultTokensDisplay />
       </TokensContainer>
       
       <AnimatePresence>

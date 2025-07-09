@@ -4,7 +4,10 @@ export const DEFAULT_CRYPTO_IDS: { [key: string]: string } = {
   SOL: 'solana',
   USDC: 'usd-coin',
   XRP: 'ripple',
+  SUI: 'sui',
 };
+
+export const DEFAULT_TOKEN_SYMBOLS = Object.keys(DEFAULT_CRYPTO_IDS);
 
 export const CONVERSION_RATES: Record<string, Record<string, number>> = {
   BTC: { usd: 65000, eur: 59800, cad: 88400 },

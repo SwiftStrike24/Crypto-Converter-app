@@ -196,7 +196,7 @@ The application primarily uses React Context API for managing global state:
     *   `App.tsx`: Main application component, sets up routing and global providers.
     *   `Converter.tsx`: Core UI for cryptocurrency conversion.
     *   `AddCryptoModal.tsx`: Modal for searching and adding new cryptocurrencies.
-    *   `ManageTokens.tsx`: Page for viewing and removing user-added custom tokens.
+    *   `ManageTokens.tsx`: Page for viewing and removing user-added custom tokens. It now also features a separate, read-only section to display the non-removable "Core Tokens" (like BTC, ETH) for user reference.
     *   `ChartPage.tsx`: A modern dashboard page for token analysis. It features a responsive two-column layout, with the main `TradingViewWidget` on the left and a detailed statistics sidebar on the right. It now uses a centralized list of exchanges, including Bybit, for a consistent user experience.
     *   `TechnicalAnalysisPage.tsx`: A dedicated technical analysis dashboard. It mirrors the modern, two-column layout of the `ChartPage`, featuring the `TechnicalAnalysisWidget` in the main content area and the `TokenStats` component in a sidebar. It now uses a centralized list of exchanges, including Bybit, providing a consistent and comprehensive analysis experience.
     *   `Header.tsx`, `Footer.tsx`: Standard layout components.
