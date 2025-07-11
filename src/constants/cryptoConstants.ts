@@ -5,6 +5,9 @@ export const DEFAULT_CRYPTO_IDS: { [key: string]: string } = {
   USDC: 'usd-coin',
   XRP: 'ripple',
   SUI: 'sui',
+  BONK: 'bonk',
+  FARTCOIN: 'fartcoin',
+  TRUMP: 'trump',
 };
 
 export const DEFAULT_TOKEN_SYMBOLS = Object.keys(DEFAULT_CRYPTO_IDS);
@@ -15,6 +18,9 @@ export const CONVERSION_RATES: Record<string, Record<string, number>> = {
   SOL: { usd: 145, eur: 133, cad: 197 },
   USDC: { usd: 1, eur: 0.92, cad: 1.36 },
   XRP: { usd: 0.52, eur: 0.48, cad: 0.71 },
+  BONK: { usd: 0.000024, eur: 0.000022, cad: 0.000033 },
+  FARTCOIN: { usd: 1.32, eur: 1.21, cad: 1.80 },
+  TRUMP: { usd: 0.01, eur: 0.009, cad: 0.014 },
 };
 
 export const STORAGE_KEY_CUSTOM_TOKENS = 'cryptovertx-tokens';
@@ -55,6 +61,9 @@ export const POPULAR_TOKEN_IDS_TO_PRELOAD = [
     'solana',
     'usd-coin',
     'sui',
+    'bonk',
+    'fartcoin',
+    'trump',
   ];
 
 export const API_CONFIG = {
