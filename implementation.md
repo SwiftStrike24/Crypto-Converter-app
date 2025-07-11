@@ -23,6 +23,16 @@ The application primarily uses React Context API for managing global state:
 
 *   **`CryptoContext` (`src/context/CryptoContext.tsx`):**
     *   Manages core cryptocurrency data: prices in USD, EUR, CAD, 24-hour percentage change, 24-hour low/high range.
+    *   **Core Default Tokens:** The application now includes 9 core tokens in the `DEFAULT_CRYPTO_IDS` constant:
+        *   **BTC** (Bitcoin): `bitcoin`
+        *   **ETH** (Ethereum): `ethereum`
+        *   **SOL** (Solana): `solana`
+        *   **USDC** (USD Coin): `usd-coin`
+        *   **XRP** (Ripple): `ripple`
+        *   **SUI** (Sui): `sui`
+        *   **BONK** (Bonk): `bonk` - Popular Solana-based meme coin
+        *   **FARTCOIN** (Fartcoin): `fartcoin` - Trending meme coin
+        *   **TRUMP** (Trump): `trump` - Political meme coin
     *   The `CryptoPriceData` interface now defines `price` as `number | null` to accommodate states where a definitive price isn't available (e.g., for newly added tokens before an API fetch, or when an estimated price for an unknown token is generated).
     *   Handles available tokens (default set + user-added custom tokens).
     *   Stores token metadata: name, symbol, image URL, rank.
@@ -155,7 +165,7 @@ The application primarily uses React Context API for managing global state:
     *   Token metadata: `localStorage` key `cryptovertx-metadata-cache`.
     *   Token icon URLs: `localStorage` with `ICON_CACHE_PREFIX`.
     *   Configurable cache durations.
-*   **Initial Token Preloading:** To provide immediate data for popular tokens on application startup, a predefined list of token IDs (`POPULAR_TOKEN_IDS_TO_PRELOAD` in `src/constants/cryptoConstants.ts`) is used to fetch initial market data. This list is dynamically updated by the `scripts/fetchTop100CoinGeckoIds.ts` script, which fetches the current top 100 tokens by market cap from CoinGecko. The `PRELOAD_POPULAR_TOKENS_ENABLED` constant controls this feature.
+*   **Initial Token Preloading:** To provide immediate data for popular tokens on application startup, a predefined list of token IDs (`POPULAR_TOKEN_IDS_TO_PRELOAD` in `src/constants/cryptoConstants.ts`) is used to fetch initial market data. This list now includes the new core meme coins (bonk, fartcoin, trump) in addition to the existing popular tokens. This list is dynamically updated by the `scripts/fetchTop100CoinGeckoIds.ts` script, which fetches the current top 100 tokens by market cap from CoinGecko. The `PRELOAD_POPULAR_TOKENS_ENABLED` constant controls this feature.
 *   **Batching:**
     *   `CryptoContext` batches multiple price update requests (`MAX_BATCH_SIZE`).
     *   Metadata fetching is also batched (`fetchMetadataInBatches`).
