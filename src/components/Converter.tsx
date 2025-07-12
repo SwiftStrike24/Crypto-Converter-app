@@ -598,6 +598,231 @@ const RateLimitIndicator = styled.div`
   }
 `;
 
+// Modern 2025 Refresh Button Component
+const ModernRefreshContainer = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 15px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  
+  /* Glassmorphism effect */
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  
+  /* Advanced shadows for depth */
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.1),
+    0 2px 16px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  
+  /* Subtle gradient overlay */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    background: linear-gradient(135deg, 
+      rgba(255, 255, 255, 0.1) 0%, 
+      rgba(255, 255, 255, 0.05) 50%, 
+      rgba(255, 255, 255, 0.02) 100%);
+    pointer-events: none;
+  }
+  
+  /* Animated border glow */
+  &::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 16px;
+    background: linear-gradient(45deg, 
+      transparent 30%, 
+      rgba(139, 92, 246, 0.3) 50%, 
+      transparent 70%);
+    background-size: 200% 200%;
+    animation: borderGlow 3s ease-in-out infinite;
+    z-index: -1;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  
+  &:hover::after {
+    opacity: 1;
+  }
+  
+  /* Breathing animation when rate limited */
+  &.rate-limited {
+    animation: breathe 2s ease-in-out infinite;
+  }
+  
+  @keyframes borderGlow {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  
+  @keyframes breathe {
+    0% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.02); opacity: 1; }
+    100% { transform: scale(1); opacity: 0.9; }
+  }
+`;
+
+const RefreshButton = styled.button`
+  position: relative;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  /* Glassmorphism button effect */
+  background: rgba(139, 92, 246, 0.1);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  
+  /* Icon styling */
+  svg {
+    width: 18px;
+    height: 18px;
+    color: #8b5cf6;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    filter: drop-shadow(0 2px 8px rgba(139, 92, 246, 0.3));
+  }
+  
+  /* Hover effects */
+  &:hover {
+    transform: scale(1.05);
+    background: rgba(139, 92, 246, 0.15);
+    border-color: rgba(139, 92, 246, 0.4);
+    box-shadow: 
+      0 4px 20px rgba(139, 92, 246, 0.2),
+      0 0 0 4px rgba(139, 92, 246, 0.1);
+      
+    svg {
+      color: #a78bfa;
+      transform: scale(1.1);
+      filter: drop-shadow(0 4px 12px rgba(139, 92, 246, 0.4));
+    }
+  }
+  
+  /* Active/Click effect */
+  &:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
+  }
+  
+  /* Rotating animation when refreshing */
+  &.refreshing svg {
+    animation: smoothRotate 1s linear infinite;
+  }
+  
+  /* Success state */
+  &.success {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.3);
+    
+    svg {
+      color: #22c55e;
+      animation: successBounce 0.6s ease;
+    }
+  }
+  
+  @keyframes smoothRotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  
+  @keyframes successBounce {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+  }
+  
+  /* Ripple effect */
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    background: radial-gradient(circle, rgba(139, 92, 246, 0.3) 0%, transparent 70%);
+    transform: scale(0);
+    transition: transform 0.3s ease;
+    pointer-events: none;
+  }
+  
+  &:active::before {
+    transform: scale(1);
+    transition: transform 0.1s ease;
+  }
+`;
+
+const RefreshText = styled.span`
+  margin-left: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #e5e7eb;
+  letter-spacing: 0.3px;
+  
+  /* Animated text gradient */
+  background: linear-gradient(90deg, 
+    #e5e7eb 0%, 
+    #a78bfa 30%, 
+    #e5e7eb 60%, 
+    #8b5cf6 100%);
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: textShimmer 3s ease-in-out infinite;
+  
+  @keyframes textShimmer {
+    0% { background-position: 300% 0; }
+    50% { background-position: -100% 0; }
+    100% { background-position: 300% 0; }
+  }
+`;
+
+const CountdownTimer = styled.div`
+  margin-left: 8px;
+  font-size: 0.75rem;
+  color: #8b5cf6;
+  font-weight: 600;
+  opacity: 0.8;
+  
+  /* Pulsing animation */
+  animation: countdownPulse 1s ease-in-out infinite;
+  
+  @keyframes countdownPulse {
+    0% { opacity: 0.8; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.05); }
+    100% { opacity: 0.8; transform: scale(1); }
+  }
+`;
+
+const SuccessRipple = styled.div`
+  position: absolute;
+  inset: -2px;
+  border-radius: 14px;
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.2) 0%, transparent 70%);
+  transform: scale(0);
+  animation: successRipple 0.6s ease-out;
+  pointer-events: none;
+  
+  @keyframes successRipple {
+    0% { transform: scale(0); opacity: 1; }
+    100% { transform: scale(1.2); opacity: 0; }
+  }
+`;
+
 const Converter: React.FC<ConverterProps> = ({ 
   onCryptoChange, 
   onFiatChange,
@@ -620,6 +845,8 @@ const Converter: React.FC<ConverterProps> = ({
   const [fiatDropdownStyle, setFiatDropdownStyle] = useState<CSSProperties>({});
   const [showWaveInResultBox, setShowWaveInResultBox] = useState(false);
   const [userManuallySetFiat, setUserManuallySetFiat] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showSuccessRipple, setShowSuccessRipple] = useState(false);
   
   // Refs for handling outside clicks and scrolling
   const cryptoDropdownRef = useRef<HTMLDivElement>(null);
@@ -1878,21 +2105,50 @@ const Converter: React.FC<ConverterProps> = ({
         <Tooltip ref={analysisTooltipRef}>Technical Analysis</Tooltip>
       </ButtonWrapper>
 
-      {/* Add the rate limit indicator */}
-      {isCoinGeckoRateLimitedGlobal && (
-        <RateLimitIndicator>
-          <FiRefreshCw 
-            style={{ marginRight: '6px', cursor: 'pointer' }} 
-            size={14}
-            onClick={() => updatePrices(false)} 
-            title="Try using cached data"
-          />
-          {getCoinGeckoRetryAfterSeconds() > 0 
-            ? `${RATE_LIMIT_UI_MESSAGE} Retry in ${getCoinGeckoRetryAfterSeconds()}s.`
-            : RATE_LIMIT_UI_MESSAGE
-          }
-        </RateLimitIndicator>
-      )}
+                                                       {/* Modern refresh button - replaces the old rate limit indicator */}
+         {isCoinGeckoRateLimitedGlobal && (
+           <ModernRefreshContainer className={getCoinGeckoRetryAfterSeconds() > 0 ? 'rate-limited' : ''}>
+            <RefreshButton
+              onClick={async () => {
+                setIsRefreshing(true);
+                try {
+                  await updatePrices(false);
+                  // Show success state
+                  setIsRefreshing(false);
+                  setShowSuccessRipple(true);
+                  
+                  // Reset success state after animation
+                  setTimeout(() => {
+                    setShowSuccessRipple(false);
+                  }, 600);
+                } catch (error) {
+                  console.error('Error refreshing prices:', error);
+                  setIsRefreshing(false);
+                }
+              }}
+              className={`${isRefreshing ? 'refreshing' : ''} ${showSuccessRipple ? 'success' : ''}`}
+              title="Refresh data using cached information"
+            >
+              <FiRefreshCw />
+              {/* Success ripple effect */}
+              {showSuccessRipple && <SuccessRipple />}
+            </RefreshButton>
+            
+            <RefreshText>
+              {isRefreshing 
+                ? 'Refreshing...' 
+                : getCoinGeckoRetryAfterSeconds() > 0 
+                  ? 'API Rate Limited' 
+                  : 'Refresh Available'}
+            </RefreshText>
+            
+            {getCoinGeckoRetryAfterSeconds() > 0 && !isRefreshing && (
+              <CountdownTimer>
+                {getCoinGeckoRetryAfterSeconds()}s
+              </CountdownTimer>
+            )}
+          </ModernRefreshContainer>
+        )}
     </ConverterContainer>
   );
 };
