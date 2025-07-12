@@ -205,10 +205,18 @@ The application primarily uses React Context API for managing global state:
 *   **Key UI Components:**
     *   `App.tsx`: Main application component, sets up routing and global providers.
     *   `Converter.tsx`: Core UI for cryptocurrency conversion.
-    *   `AddCryptoModal.tsx`: Modal for searching and adding new cryptocurrencies.
-    *   `ManageTokens.tsx`: Page for viewing and removing user-added custom tokens. It now also features a separate, read-only section to display the non-removable "Core Tokens" (like BTC, ETH) for user reference.
-    *   `ChartPage.tsx`: A modern dashboard page for token analysis. It features a responsive two-column layout, with the main `TradingViewWidget` on the left and a detailed statistics sidebar on the right. It now uses a centralized list of exchanges, including Bybit, for a consistent user experience.
-    *   `TechnicalAnalysisPage.tsx`: A dedicated technical analysis dashboard. It mirrors the modern, two-column layout of the `ChartPage`, featuring the `TechnicalAnalysisWidget` in the main content area and the `TokenStats` component in a sidebar. It now uses a centralized list of exchanges, including Bybit, providing a consistent and comprehensive analysis experience.
+        *   Features "View Price Chart" and "Technical Analysis" buttons styled with the modern "Liquid Glass" theme, incorporating gradients, blurs, and interactive glows for a sleek, tactile feel.
+    *   `AddCryptoModal.tsx`: Modal for searching and adding new cryptocurrencies. This has been fully redesigned as the `AddTokens` page, featuring the "Liquid Glass" theme for a consistent and modern UI.
+        *   Search results will now visually indicate when a token has already been added to the user's collection, disabling the item and showing an "Added" badge to prevent duplicates.
+    *   `ManageTokens.tsx`: Page for viewing and removing user-added custom tokens.
+        *   Fully redesigned with the "Liquid Glass" theme, featuring a new background, glass-paneled header and list container, and updated button styles for a cohesive, modern look.
+        *   It now also features a separate, read-only section to display the non-removable "Core Tokens" (like BTC, ETH) for user reference.
+    *   `ChartPage.tsx`: A modern dashboard page for token analysis.
+        *   The entire page has been redesigned with the "Liquid Glass" theme, featuring a radial gradient background, floating glass panels, and updated button styles for a cohesive, modern aesthetic.
+        *   It features a responsive two-column layout, with the main `TradingViewWidget` on the left and a detailed statistics sidebar on the right. It now uses a centralized list of exchanges, including Bybit, for a consistent user experience.
+    *   `TechnicalAnalysisPage.tsx`: A dedicated technical analysis dashboard.
+        *   The entire page has been redesigned with the "Liquid Glass" theme, ensuring a consistent and modern UI across the application's chart and analysis views.
+        *   It mirrors the modern, two-column layout of the `ChartPage`, featuring the `TechnicalAnalysisWidget` in the main content area and the `TokenStats` component in a sidebar. It now uses a centralized list of exchanges, including Bybit, providing a consistent and comprehensive analysis experience.
     *   `Header.tsx`, `Footer.tsx`: Standard layout components.
     *   `LivePrice.tsx`: Component for displaying real-time price updates.
     *   `LiveTimeAgo.tsx`: A small, efficient component that renders a self-updating timestamp (e.g., "5s ago"), ensuring the "last updated" indicator in the `Header` is always live without causing unnecessary re-renders of the entire header.
@@ -245,6 +253,7 @@ The application primarily uses React Context API for managing global state:
     *   **Source:** Checks for updates from a Cloudflare R2 bucket.
     *   **Process:** Implements a user-friendly, graphical update flow.
         *   **Check:** The user initiates a check from the app header. `updateService.ts` compares the local app version against the latest version available in the R2 bucket.
+            *   **UI Feedback:** The "Check for Updates" button provides enhanced visual feedback based on 2025 "Liquid Glass" design trends. It features a "breathing" glow and an interactive icon animation that combines rotation with dynamic scaling and a glowing `drop-shadow` effect. This makes the icon itself feel animated and responsive, moving beyond simple spinning. It also provides a tactile, glassy "press-in" effect on click.
         *   **Download:** If an update is found, the new installer (`.msi` or `.exe` for portable fallback) is downloaded silently to a temporary directory. The `download-update` IPC handler in `updateHandler.ts` manages this, sending progress updates to the UI and verifying file integrity upon completion.
         *   **Install:** Once downloaded, the user is prompted to "Install & Restart". Upon confirmation, the `install-update` IPC handler in `updateHandler.ts` is triggered. It launches the graphical installer, which presents a standard setup wizard. The application then quits to allow the installer to proceed without file conflicts.
         *   **Relaunch & Verify:** The user completes the installation via the setup wizard, which includes a "Launch application" option at the end. When the new version of the app starts, the `main.ts` process detects an `update.flag` file. It sends an `update-successful` IPC message to the renderer to trigger a success notification and then deletes the flag file.

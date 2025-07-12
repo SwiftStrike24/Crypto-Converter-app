@@ -62,33 +62,113 @@ const PowerButton = styled.button`
   }
 `;
 
-const UpdateButton = styled.button`
-  width: 20px;
-  height: 20px;
+const UpdateButton = styled.button<{ $isChecking: boolean }>`
+  width: 22px; /* Slightly larger for presence */
+  height: 22px;
   border-radius: 50%;
-  border: none;
+  border: 1px solid rgba(139, 92, 246, 0.4); /* Glassy edge */
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  background: #8b5cf6;
+  position: relative;
+  overflow: hidden; /* To contain inner glows */
   
-  &:hover {
-    background: #9f7aea;
-    transform: scale(1.05);
-    box-shadow: 0 0 12px rgba(139, 92, 246, 0.6);
-  }
+  /* Liquid Glass Foundation */
+  background: linear-gradient(145deg, rgba(139, 92, 246, 0.7), rgba(109, 40, 217, 0.8));
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.2), /* Inner highlight */
+    0 2px 4px rgba(0, 0, 0, 0.3); /* Outer shadow for depth */
 
-  &:active {
-    transform: scale(0.95);
+  /* Transition for all properties */
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Inner glow pseudo-element */
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.25), transparent 70%);
+    opacity: 0.8;
+    transition: opacity 0.3s ease;
   }
 
   svg {
     width: 12px;
     height: 12px;
     color: white;
+    z-index: 2;
+    transition: transform 0.3s ease;
+    filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
+  }
+
+  /* --- Interactive States --- */
+  &:hover:not([disabled]) {
+    transform: scale(1.1); /* Lift */
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.25),
+      0 4px 12px rgba(139, 92, 246, 0.5); /* Glow */
+    border-color: rgba(139, 92, 246, 0.7);
+
+    &::before {
+      opacity: 1;
+    }
+  }
+
+  &:active:not([disabled]) {
+    transform: scale(0.98); /* Press-in */
+    background: linear-gradient(145deg, rgba(120, 70, 230, 0.8), rgba(90, 30, 190, 0.9));
+    box-shadow: 
+      inset 0 2px 2px rgba(0, 0, 0, 0.3), /* Deeper inner shadow */
+      0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    filter: grayscale(50%);
+    opacity: 0.7;
+  }
+
+  /* --- Checking Animation --- */
+  ${({ $isChecking }) => $isChecking && css`
+    animation: breathingGlow 2s infinite ease-in-out;
+
+    svg {
+      animation: interactiveSpin 1.8s infinite cubic-bezier(0.6, 0, 0.4, 1);
+    }
+  `}
+
+  @keyframes breathingGlow {
+    0%, 100% {
+      box-shadow: 
+        inset 0 1px 1px rgba(255, 255, 255, 0.2),
+        0 2px 8px rgba(139, 92, 246, 0.4);
+    }
+    50% {
+      box-shadow: 
+        inset 0 1px 1px rgba(255, 255, 255, 0.25),
+        0 4px 16px rgba(139, 92, 246, 0.7);
+    }
+  }
+
+  @keyframes interactiveSpin {
+    0% {
+      transform: rotate(0deg) scale(1);
+      filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.3));
+    }
+    50% {
+      transform: rotate(180deg) scale(1.15);
+      filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.6));
+    }
+    100% {
+      transform: rotate(360deg) scale(1);
+      filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.3));
+    }
   }
 `;
 
@@ -560,20 +640,6 @@ const UpdateTooltipHeader = styled.div`
 // --- End Update Check Tooltip Styles ---
 
 
-const UpdateButtonSpinner = styled.div`
-  animation: spin 1s linear infinite;
-  
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-  
-  /* Add subtle glow effect when spinning */
-  svg {
-    filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.6));
-  }
-`;
-
 // Add rate limit indicator styled component
 const RateLimitIndicator = styled.div`
   position: absolute;
@@ -673,6 +739,9 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleMouseEnter = useCallback((key: string) => {
+    if (key === 'update') {
+      console.log('🔄 [Animation State] Mouse Enter: Update Button');
+    }
     if (hoverTimeoutRef.current) {
         clearTimeout(hoverTimeoutRef.current);
     }
@@ -835,6 +904,9 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   }, [tooltipRefs]);
 
   const handleMouseLeave = useCallback((key: string) => {
+    if (key === 'update') {
+      console.log('🔄 [Animation State] Mouse Leave: Update Button');
+    }
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
     }
@@ -896,6 +968,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const handleCheckUpdate = async () => {
     if (isCheckingUpdate) return;
     
+    console.log('🔄 [Animation State] Click: Update Button -> Checking started');
     try {
       setIsCheckingUpdate(true);
       const result = await checkForUpdates();
@@ -903,15 +976,19 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
       if (result.hasUpdate) {
         setUpdateInfo(result);
         setIsUpdateDialogOpen(true);
+        console.log('🔄 [Animation State] Checking Finished: Update found');
       } else {
         const versionToShow = result.latestVersion || result.currentVersion || '';
         showUpdateTooltip(`You're already using the latest version (${versionToShow}).`);
+        console.log('🔄 [Animation State] Checking Finished: No update available');
       }
     } catch (error) {
       console.error('Error checking for updates:', error);
       showUpdateTooltip('Could not check for updates. Please try again later.', 'error');
+      console.log('🔄 [Animation State] Checking Finished: Error');
     } finally {
       setIsCheckingUpdate(false);
+      console.log('🔄 [Animation State] State Reset: Back to idle');
     }
   };
 
@@ -1212,8 +1289,8 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
           onMouseEnter={() => handleMouseEnter('update')}
           onMouseLeave={() => handleMouseLeave('update')}
         >
-          <UpdateButton onClick={handleCheckUpdate} disabled={isCheckingUpdate}>
-            {isCheckingUpdate ? <UpdateButtonSpinner><FiRefreshCw /></UpdateButtonSpinner> : <FiRefreshCw />}
+          <UpdateButton onClick={handleCheckUpdate} disabled={isCheckingUpdate} $isChecking={isCheckingUpdate}>
+            <FiRefreshCw />
           </UpdateButton>
           <Tooltip
             ref={updateHoverTooltipRef}

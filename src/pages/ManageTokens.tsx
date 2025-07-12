@@ -8,15 +8,14 @@ import DefaultTokensDisplay from '../components/DefaultTokensDisplay';
 import { DEFAULT_TOKEN_SYMBOLS } from '../constants/cryptoConstants';
 
 const PageContainer = styled(motion.div)`
-  height: 100%;
-  width: 100%;
-  background: linear-gradient(135deg, rgba(18, 18, 18, 0.97), rgba(26, 26, 28, 0.95));
+  height: 100vh;
+  width: 100vw;
+  background: radial-gradient(ellipse at bottom, #111111 0%, #030305 100%);
   color: white;
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 24px;
-  backdrop-filter: blur(10px);
   position: fixed;
   top: 0;
   left: 0;
@@ -28,10 +27,19 @@ const PageContainer = styled(motion.div)`
 const Header = styled.div`
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.75rem 1rem;
+  background: rgba(28, 28, 40, 0.6);
+  border-radius: 12px;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.2);
   position: relative;
+  z-index: 10;
 `;
 
 const HeaderContent = styled.div`
@@ -47,64 +55,78 @@ const HeaderActions = styled.div`
 `;
 
 const BackButton = styled.button`
-  background: none;
-  border: none;
-  color: #8b5cf6;
+  background: linear-gradient(145deg, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.05));
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  color: #c4b5fd;
   cursor: pointer;
-  padding: 8px;
+  padding: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
 
   &:hover {
-    background: rgba(139, 92, 246, 0.1);
-    transform: scale(1.05);
+    background: linear-gradient(145deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.1));
+    transform: translateY(-2px);
+    color: #ddd6fe;
+    border-color: rgba(139, 92, 246, 0.3);
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.08),
+      0 4px 8px rgba(0, 0, 0, 0.2),
+      0 0 10px rgba(139, 92, 246, 0.3);
   }
   
   &:active {
-    transform: scale(0.95);
+    transform: translateY(0) scale(0.98);
+    box-shadow: inset 0 2px 2px rgba(0, 0, 0, 0.1);
   }
 `;
 
 const ClearAllButton = styled(motion.button)`
-  background: rgba(239, 68, 68, 0.1);
+  background: linear-gradient(145deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.25));
   border: 1px solid rgba(239, 68, 68, 0.3);
-  color: #ef4444;
+  color: #fca5a5;
   cursor: pointer;
-  padding: 8px 16px;
+  padding: 10px 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border-radius: 12px;
-  transition: all 0.2s ease;
+  border-radius: 10px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   font-weight: 500;
   font-size: 0.9rem;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
 
-  &:hover {
-    background: rgba(239, 68, 68, 0.15);
-    border-color: rgba(239, 68, 68, 0.4);
+  &:hover:not(:disabled) {
+    background: linear-gradient(145deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.35));
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #fecaca;
+    transform: translateY(-2px);
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.1),
+      0 4px 10px rgba(239, 68, 68, 0.2);
   }
   
-  &:active {
-    transform: scale(0.95);
+  &:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
   }
   
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    background: rgba(239, 68, 68, 0.05);
-    border-color: rgba(239, 68, 68, 0.1);
+    filter: grayscale(40%);
   }
 `;
 
 const Title = styled.h1`
   margin: 0;
-  font-size: 2rem;
-  color: #ffffff;
+  font-size: 1.8rem;
+  color: #e5e7eb;
   font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.3);
 `;
 
 const TokensContainer = styled(motion.div)`
@@ -137,28 +159,31 @@ const CustomTokensList = styled.div`
   max-width: 800px;
   margin: 0 auto 24px;
   width: 100%;
-  background: #1a1a1a;
+  background: rgba(28, 28, 40, 0.5);
   border-radius: 16px;
   padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 `;
 
 const TokenItem = styled(motion.div)`
   padding: 16px;
   border-radius: 12px;
-  background: #2a2a2a;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
   display: flex;
   align-items: center;
   gap: 16px;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   
   &:hover {
-    background: #333;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.05));
+    transform: translateY(-2px) scale(1.01);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   }
 `;
 
@@ -187,8 +212,8 @@ const TokenInfo = styled.div`
 `;
 
 const DeleteButton = styled(motion.button)`
-  background: none;
-  border: none;
+  background: transparent;
+  border: 1px solid transparent;
   color: #ef4444;
   cursor: pointer;
   padding: 8px;
@@ -198,18 +223,22 @@ const DeleteButton = styled(motion.button)`
   border-radius: 50%;
   transition: all 0.2s ease;
 
-  &:hover {
-    background: rgba(239, 68, 68, 0.1);
+  &:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
     transform: scale(1.1);
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.2);
   }
   
-  &:active {
-    transform: scale(0.9);
+  &:active:not(:disabled) {
+    transform: scale(0.95);
   }
 
   &:disabled {
     color: #666;
     cursor: not-allowed;
+    opacity: 0.5;
   }
 `;
 
@@ -226,22 +255,22 @@ const ConfirmDialog = styled(motion.div)`
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(10, 10, 10, 0.5);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 1000;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
 `;
 
 const DialogContent = styled(motion.div)`
-  background: #242424;
+  background: linear-gradient(145deg, rgba(40, 40, 50, 0.8), rgba(25, 25, 35, 0.85));
   border-radius: 16px;
   padding: 24px;
   width: 90%;
   max-width: 400px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 `;
 
 const DialogTitle = styled.h3`
@@ -263,34 +292,40 @@ const DialogActions = styled.div`
 `;
 
 const DialogButton = styled(motion.button)<{ variant?: 'danger' | 'cancel' }>`
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: none;
+  padding: 10px 18px;
+  border-radius: 10px;
+  border: 1px solid;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s ease;
-  
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
+
   background: ${props => props.variant === 'danger' 
-    ? 'rgba(239, 68, 68, 0.1)' 
-    : 'rgba(75, 85, 99, 0.1)'};
+    ? 'linear-gradient(145deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.25))' 
+    : 'linear-gradient(145deg, rgba(75, 85, 99, 0.2), rgba(55, 65, 81, 0.25))'};
   
   color: ${props => props.variant === 'danger' 
-    ? '#ef4444' 
-    : '#9ca3af'};
-  
-  border: 1px solid ${props => props.variant === 'danger' 
-    ? 'rgba(239, 68, 68, 0.3)' 
-    : 'rgba(75, 85, 99, 0.2)'};
+    ? '#fca5a5' 
+    : '#d1d5db'};
 
-  &:hover {
+  border-color: ${props => props.variant === 'danger' 
+    ? 'rgba(239, 68, 68, 0.3)' 
+    : 'rgba(75, 85, 99, 0.3)'};
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px ${props => props.variant === 'danger' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(0,0,0,0.2)'};
     background: ${props => props.variant === 'danger' 
-      ? 'rgba(239, 68, 68, 0.15)' 
-      : 'rgba(75, 85, 99, 0.15)'};
-    transform: translateY(-1px);
+      ? 'linear-gradient(145deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.35))' 
+      : 'linear-gradient(145deg, rgba(75, 85, 99, 0.3), rgba(55, 65, 81, 0.35))'};
+    color: ${props => props.variant === 'danger' ? '#fecaca' : '#fff'};
+    border-color: ${props => props.variant === 'danger' 
+      ? 'rgba(239, 68, 68, 0.5)' 
+      : 'rgba(75, 85, 99, 0.5)'};
   }
   
-  &:active {
-    transform: translateY(1px);
+  &:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
   }
 `;
 

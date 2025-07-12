@@ -481,53 +481,60 @@ const ButtonWrapper = styled.div<{ $tooltipStyle?: React.CSSProperties; $isResul
 
 const ChartButton = styled.button`
   position: relative;
-  background: rgba(25, 25, 35, 0.5);
-  color: #8b5cf6;
-  border: 1px solid rgba(139, 92, 246, 0.2);
-  border-radius: 50%;
   width: 44px;
   height: 44px;
+  border-radius: 50%;
   cursor: pointer;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
+
+  /* Liquid Glass Foundation */
+  background: linear-gradient(145deg, rgba(45, 45, 55, 0.7), rgba(25, 25, 35, 0.8));
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #a78bfa; /* Slightly brighter base color */
+
+  /* Depth and Edge Highlights */
+  box-shadow: 
+    inset 0 1px 1px rgba(255, 255, 255, 0.1), /* Inner highlight */
+    0 2px 5px rgba(0, 0, 0, 0.3); /* Outer shadow for depth */
+
+  /* Smooth transitions for all properties */
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  transform-origin: center;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2), 0 0 0 rgba(139, 92, 246, 0);
-  
+
+  /* Hover State: Lift and Glow */
   &:hover {
-    transform: scale(1.08);
-    border-color: rgba(139, 92, 246, 0.5);
-    color: #a78bfa;
-    background: rgba(139, 92, 246, 0.15);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2), 0 0 12px rgba(139, 92, 246, 0.4);
-    animation: buttonGlow 2s infinite;
+    transform: scale(1.1);
+    border-color: rgba(139, 92, 246, 0.6);
+    color: #c4b5fd; /* Brighter icon on hover */
+    background: linear-gradient(145deg, rgba(55, 55, 65, 0.8), rgba(35, 35, 45, 0.9));
+    box-shadow: 
+      inset 0 1px 1px rgba(255, 255, 255, 0.15),
+      0 4px 12px rgba(0, 0, 0, 0.3), /* Deeper outer shadow */
+      0 0 15px rgba(139, 92, 246, 0.4); /* Enhanced purple glow */
   }
 
+  /* Active State: Press-in effect */
   &:active {
-    transform: translateY(0) scale(0.95);
-    background: rgba(139, 92, 246, 0.2);
-    animation: none;
+    transform: scale(1.0);
+    background: linear-gradient(145deg, rgba(35, 35, 45, 0.7), rgba(15, 15, 25, 0.8));
+    box-shadow: 
+      inset 0 2px 3px rgba(0, 0, 0, 0.4), /* Darker inner shadow */
+      0 1px 2px rgba(0, 0, 0, 0.2);
   }
 
   svg {
     width: 24px;
     height: 24px;
-    transition: transform 0.3s ease;
-    filter: drop-shadow(0 2px 4px rgba(139, 92, 246, 0.2));
+    transition: all 0.3s ease;
+    filter: drop-shadow(0 1px 2px rgba(139, 92, 246, 0.3));
   }
 
   &:hover svg {
-    transform: scale(1.1);
-    filter: drop-shadow(0 4px 8px rgba(139, 92, 246, 0.3));
-  }
-
-  @keyframes buttonGlow {
-    0% { box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2), 0 0 8px rgba(139, 92, 246, 0.3); }
-    50% { box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2), 0 0 16px rgba(139, 92, 246, 0.5); }
-    100% { box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2), 0 0 8px rgba(139, 92, 246, 0.3); }
+    transform: scale(1.05) rotate(-5deg); /* More interactive icon movement */
+    filter: drop-shadow(0 2px 4px rgba(139, 92, 246, 0.5));
   }
 
   @media (max-width: 768px) {

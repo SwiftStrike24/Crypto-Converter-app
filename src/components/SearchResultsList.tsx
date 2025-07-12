@@ -50,23 +50,28 @@ const ResultsContainer = styled(motion.div)`
    }
 `;
 
-const CryptoItem = styled(motion.div)<{ isSelected: boolean }>`
+const CryptoItem = styled(motion.div)<{ isSelected: boolean; isAdded: boolean }>`
   padding: 12px 14px; // Adjusted padding
   border-radius: 8px; // Slightly less round
-  cursor: pointer;
+  cursor: ${props => props.isAdded ? 'not-allowed' : 'pointer'};
   display: flex;
   align-items: center;
   gap: 12px; 
-  background: ${props => props.isSelected ? 'rgba(139, 92, 246, 0.2)' : '#2b2b2b'}; // Adjusted background
-  transition: background 0.1s ease-out, border-color 0.1s ease-out; // Faster transition
-  border: 1px solid ${props => props.isSelected ? 'rgba(139, 92, 246, 0.45)' : '#383838'}; // Adjusted borders
+  background: ${props => props.isSelected ? 'rgba(139, 92, 246, 0.2)' : '#2b2b2b'};
+  transition: background 0.1s ease-out, border-color 0.1s ease-out, opacity 0.2s ease;
+  border: 1px solid ${props => props.isSelected ? 'rgba(139, 92, 246, 0.45)' : '#383838'};
   position: relative; 
   overflow: hidden; 
   flex-shrink: 0;
+  opacity: ${props => props.isAdded ? 0.5 : 1};
   
   &:hover {
-    background: ${props => props.isSelected ? 'rgba(139, 92, 246, 0.25)' : '#363636'}; 
-    border-color: ${props => props.isSelected ? 'rgba(139, 92, 246, 0.6)' : '#4d4d4d'}; 
+    background: ${props => 
+      props.isAdded ? (props.isSelected ? 'rgba(139, 92, 246, 0.2)' : '#2b2b2b') : 
+      props.isSelected ? 'rgba(139, 92, 246, 0.25)' : '#363636'}; 
+    border-color: ${props => 
+      props.isAdded ? (props.isSelected ? 'rgba(139, 92, 246, 0.45)' : '#383838') :
+      props.isSelected ? 'rgba(139, 92, 246, 0.6)' : '#4d4d4d'}; 
   }
 
   img {
@@ -96,18 +101,34 @@ const CryptoItem = styled(motion.div)<{ isSelected: boolean }>`
       text-transform: uppercase;
     }
   }
+  
+  .status-icon-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: auto;
+    padding-left: 6px;
+    flex-shrink: 0;
+  }
 
   .check-icon {
     color: #b39ddb; // Softer purple
     opacity: ${props => props.isSelected ? 1 : 0};
     transform: ${props => props.isSelected ? 'scale(1)' : 'scale(0.6)'}; // Start smaller
     transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); 
-    flex-shrink: 0;
-    margin-left: auto; 
-    padding-left: 6px; 
   }
   
   // Remove media query for simplicity or adjust if needed for extreme small screens
+`;
+
+const AddedBadge = styled.div`
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #a78bfa;
+  background: rgba(139, 92, 246, 0.1);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(139, 92, 246, 0.2);
 `;
 
 const SkeletonItem = styled(motion.div)`
@@ -179,6 +200,7 @@ interface SearchResultsListProps {
   searchTerm: string;
   selectedCryptos: Map<string, ICryptoResult>;
   onToggleSelection: (crypto: ICryptoResult) => void;
+  existingTokens: Set<string>;
 }
 
 // --- Individual Result Item (Memoized + ForwardRef) ---
@@ -186,18 +208,20 @@ interface SearchResultsListProps {
 interface CryptoResultItemProps {
   crypto: ICryptoResult;
   isSelected: boolean;
+  isAdded: boolean;
   onToggleSelection: (crypto: ICryptoResult) => void;
   index: number; 
 }
 
 // Wrap the functional component with forwardRef FIRST, then memo
 const CryptoResultItem = React.memo(React.forwardRef<HTMLDivElement, CryptoResultItemProps>(
-  ({ crypto, isSelected, onToggleSelection, index }, ref) => {
+  ({ crypto, isSelected, isAdded, onToggleSelection, index }, ref) => {
     return (
       <CryptoItem
         ref={ref} 
         isSelected={isSelected}
-        onClick={() => onToggleSelection(crypto)}
+        isAdded={isAdded}
+        onClick={() => !isAdded && onToggleSelection(crypto)}
         variants={{
           // Slightly faster animations
           hidden: { opacity: 0, y: 10 },
@@ -223,8 +247,10 @@ const CryptoResultItem = React.memo(React.forwardRef<HTMLDivElement, CryptoResul
           <div className="crypto-name" title={crypto.name}>{crypto.name}</div>
           <div className="crypto-symbol">{crypto.symbol}</div>
         </div>
-        <motion.div layout>
-          {isSelected ? (
+        <motion.div layout className="status-icon-container">
+          {isAdded ? (
+            <AddedBadge>Added</AddedBadge>
+          ) : isSelected ? (
             <FiCheck className="check-icon" size={18} /> // Slightly smaller icon
           ) : (
             <FiPlus className="check-icon" size={18} />
@@ -248,7 +274,8 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
   isSearching, 
   searchTerm, 
   selectedCryptos, 
-  onToggleSelection 
+  onToggleSelection,
+  existingTokens
 }) => {
   const renderContent = () => {
     if (isSearching) {
@@ -268,6 +295,7 @@ export const SearchResultsList: React.FC<SearchResultsListProps> = ({
               key={crypto.id} 
               crypto={crypto}
               isSelected={selectedCryptos.has(crypto.id)}
+              isAdded={existingTokens.has(crypto.symbol.toUpperCase())}
               onToggleSelection={onToggleSelection}
               index={index}
             />
