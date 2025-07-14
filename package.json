@@ -19,7 +19,10 @@
     "electron:build-all": "cross-env NODE_ENV=production tsx scripts/build.ts --all",
     "build-app": "tsx scripts/build.ts",
     "update-top-tokens": "tsx scripts/fetchTop100CoinGeckoIds.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "security:check": "pnpm audit && pnpm outdated",
+    "security:update": "pnpm update electron@latest electron-builder@latest && pnpm audit fix",
+    "security:test": "echo 'Run VirusTotal test after build'"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.504.0",
@@ -58,8 +61,8 @@
     "chalk": "^5.4.1",
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
-    "electron": "^27.1.2",
-    "electron-builder": "^24.9.1",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "eslint": "^8.54.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.4",
@@ -131,7 +134,7 @@
       "shortcutName": "CryptoVertX",
       "artifactName": "${productName}-Setup-v${version}.${ext}"
     },
-    "electronVersion": "27.1.2",
+    "electronVersion": "33.2.0",
     "buildDependenciesFromSource": false,
     "nodeGypRebuild": false,
     "forceCodeSigning": false

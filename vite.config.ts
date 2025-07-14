@@ -30,6 +30,22 @@ export default defineConfig(({ mode }) => ({
             reportCompressedSize: false
           }
         }
+      },
+      {
+        entry: 'src/electron/preload.ts',
+        onstart(options) {
+          // Notify the Renderer-Process to reload the page when the Preload-Scripts build is complete, 
+          // instead of restarting the entire Electron App.
+          options.reload()
+        },
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            rollupOptions: {
+              external: ['electron']
+            }
+          }
+        }
       }
     ]),
     renderer()
@@ -45,7 +61,7 @@ export default defineConfig(({ mode }) => ({
     strictPort: false,
     proxy: {
       '/api-proxy': {
-        target: 'https://cryptovertx.com/api',
+        target: 'https://api.coingecko.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api-proxy/, ''),
         secure: true,
@@ -62,7 +78,7 @@ export default defineConfig(({ mode }) => ({
     emptyOutDir: true,
     minify: mode === 'production',
     sourcemap: false,
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 2000,
     target: 'esnext',
     reportCompressedSize: false,
     cssMinify: true,
@@ -74,9 +90,9 @@ export default defineConfig(({ mode }) => ({
       },
       output: {
         manualChunks: {
-          'vendor': ['react', 'react-dom', 'react-router-dom'],
+          'vendor': ['react', 'react-dom'],
           'ui': ['@mui/material', '@emotion/react', '@emotion/styled', 'styled-components'],
-          'charts': ['recharts'],
+          'charts': ['recharts', 'lightweight-charts'],
         },
         compact: true
       }

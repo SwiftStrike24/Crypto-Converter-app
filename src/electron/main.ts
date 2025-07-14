@@ -4,8 +4,25 @@ import fs from 'fs';
 import { initUpdateHandlers } from './updateHandler';
 import dotenv from 'dotenv';
 
+// Security imports
+import { session, protocol } from 'electron';
+
 // Load environment variables
 dotenv.config({ path: path.join(process.cwd(), '.env') });
+
+// Secure window defaults
+const SECURE_WINDOW_DEFAULTS: Electron.BrowserWindowConstructorOptions = {
+  webPreferences: {
+    contextIsolation: true,
+    nodeIntegration: false,
+    sandbox: true,
+    webSecurity: true,
+    allowRunningInsecureContent: false,
+    experimentalFeatures: false,
+    navigateOnDragDrop: false,
+    // Preload script will be added per window if needed
+  }
+};
 
 // Disable GPU acceleration to prevent crashes
 app.disableHardwareAcceleration();
@@ -191,14 +208,19 @@ function createDialogWindow() {
   
   const { workArea } = screen.getPrimaryDisplay();
   
+  // Get preload script path
+  const preloadPath = IS_DEV
+    ? path.join(__dirname, 'preload.ts')
+    : path.join(process.resourcesPath, 'app.asar/dist-electron/preload.js');
+  
   dialogWindow = new BrowserWindow({
     width: 450,
     height: 250,
     frame: false,
     transparent: false,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      ...SECURE_WINDOW_DEFAULTS.webPreferences,
+      preload: preloadPath,
     },
     x: Math.round(workArea.x + (workArea.width - 450) / 2),
     y: Math.round(workArea.y + (workArea.height - 250) / 2),
@@ -233,6 +255,9 @@ function createDialogWindow() {
 
 // Initialize app
 app.whenReady().then(() => {
+  // Set up security features
+  setupSecurity();
+  
   // Check for relaunch flag early in the process
   const isRelaunch = process.argv.includes('--relaunch');
   if (isRelaunch) {
@@ -314,6 +339,11 @@ console.log('Main process environment variables loaded:', {
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
 
+  // Get preload script path
+  const preloadPath = IS_DEV
+    ? path.join(__dirname, 'preload.ts')
+    : path.join(process.resourcesPath, 'app.asar/dist-electron/preload.js');
+
   mainWindow = new BrowserWindow({
     width: 400,
     height: 300,
@@ -321,9 +351,8 @@ function createWindow() {
     transparent: false,
     show: false,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      webSecurity: true,
+      ...SECURE_WINDOW_DEFAULTS.webPreferences,
+      preload: preloadPath,
       backgroundThrottling: false,
     },
     x: Math.round(workArea.x + (workArea.width - 400) / 2),
@@ -504,29 +533,6 @@ function createWindow() {
       },
     };
   });
-
-  // Add IPC handler for window resizing
-  ipcMain.on('set-window-size', (_, { width, height, isFullScreen }) => {
-    if (!mainWindow) return;
-    
-    const { workArea } = screen.getPrimaryDisplay();
-    const x = Math.round(workArea.x + (workArea.width - width) / 2);
-    const y = Math.round(workArea.y + (workArea.height - height) / 2);
-    
-    mainWindow.setMinimumSize(400, 300);
-    mainWindow.setBounds({ 
-      x, 
-      y, 
-      width, 
-      height 
-    }, true);
-
-    // Update window properties based on isFullScreen while keeping the window non-resizable
-    mainWindow.setResizable(false);
-    mainWindow.setMaximizable(false);
-    mainWindow.setAlwaysOnTop(!isFullScreen);
-    mainWindow.setSkipTaskbar(!isFullScreen);
-  });
 }
 
 // App lifecycle events
@@ -554,8 +560,22 @@ app.on('activate', () => {
 
 // Set up IPC handlers
 function setupIpcHandlers() {
+  // Helper function to validate sender
+  const isValidSender = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean => {
+    const webContents = event.sender;
+    const win = BrowserWindow.fromWebContents(webContents);
+    
+    // Only accept IPC from our own windows
+    return win === mainWindow || win === dialogWindow || 
+           (coingeckoWindow && win === coingeckoWindow);
+  };
+
   // Handle get-app-version request
-  ipcMain.handle('get-app-version', () => {
+  ipcMain.handle('get-app-version', (event) => {
+    if (!isValidSender(event)) {
+      throw new Error('Invalid sender');
+    }
+    
     // Try multiple sources for the most accurate version
     const packageVersion = app.getVersion();
     const envVersion = process.env.APP_VERSION;
@@ -563,34 +583,56 @@ function setupIpcHandlers() {
     return envVersion || packageVersion || 'unknown';
   });
   
-  // Handle get-env-vars request
-  ipcMain.handle('get-env-vars', () => {
+  // Handle get-env-vars request with filtered data
+  ipcMain.handle('get-env-vars', (event) => {
+    if (!isValidSender(event)) {
+      throw new Error('Invalid sender');
+    }
+    
     // Get the most up-to-date version info
     const currentAppVersion = appVersion || app.getVersion() || process.env.npm_package_version || '';
     
-    // Create a safe object with only the environment variables we want to expose
+    // Only expose non-sensitive data
     const safeEnv = {
-      CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || '',
-      R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || '',
-      R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '',
-      R2_ENDPOINT: process.env.R2_ENDPOINT || '',
-      R2_PUBLIC_URL: process.env.R2_PUBLIC_URL || '',
-      R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || 'cryptoconverter-downloads',
       APP_VERSION: currentAppVersion,
-      NODE_ENV: process.env.NODE_ENV || 'production'
+      NODE_ENV: process.env.NODE_ENV || 'production',
+      // API endpoints (no credentials)
+      COINGECKO_API_URL: 'https://api.coingecko.com/api/v3',
+      OPENEXCHANGERATES_API_URL: 'https://openexchangerates.org/api',
+      CRYPTOCOMPARE_API_URL: 'https://min-api.cryptocompare.com'
     };
     
-    console.log('Providing environment variables via IPC');
+    console.log('Providing safe environment variables via IPC');
     return safeEnv;
   });
   
   // Handle quit-app request
-  ipcMain.on('quit-app', () => {
+  ipcMain.on('quit-app', (event) => {
+    if (!isValidSender(event)) {
+      console.error('Invalid sender for quit-app');
+      return;
+    }
     app.quit();
   });
 
   // Handle opening external links securely
-  ipcMain.handle('open-external-link', async (_event, url) => {
+  ipcMain.handle('open-external-link', async (event, url) => {
+    if (!isValidSender(event)) {
+      throw new Error('Invalid sender');
+    }
+    
+    // Validate URL
+    try {
+      const parsedUrl = new URL(url);
+      // Only allow https URLs
+      if (parsedUrl.protocol !== 'https:') {
+        throw new Error('Only HTTPS URLs are allowed');
+      }
+    } catch (error) {
+      console.error('Invalid URL:', url, error);
+      return { success: false, error: 'Invalid URL' };
+    }
+    
     try {
       await shell.openExternal(url);
       return { success: true };
@@ -601,8 +643,13 @@ function setupIpcHandlers() {
     }
   });
 
-  // Handle opening links INTERNALLY (Singleton pattern for CoinGecko)
-  ipcMain.on('open-link-in-app', (_event, url) => {
+  // Handle opening links INTERNALLY with sender validation
+  ipcMain.on('open-link-in-app', (event, url) => {
+    if (!isValidSender(event)) {
+      console.error('Invalid sender for open-link-in-app');
+      return;
+    }
+    
     // Check if CoinGecko window exists and is usable
     if (coingeckoWindow && !coingeckoWindow.isDestroyed()) {
       const normalizeUrl = (inputUrl: string): string => {
@@ -645,6 +692,43 @@ function setupIpcHandlers() {
           coingeckoWindow = newWindow;
       }
     }
+  });
+  
+  // Handle window resizing with validation
+  ipcMain.on('set-window-size', (event, { width, height, isFullScreen }) => {
+    if (!isValidSender(event)) {
+      console.error('Invalid sender for set-window-size');
+      return;
+    }
+    
+    if (!mainWindow) return;
+    
+    // Validate dimensions
+    const minWidth = 400;
+    const minHeight = 300;
+    const maxWidth = 1920;
+    const maxHeight = 1080;
+    
+    width = Math.max(minWidth, Math.min(width, maxWidth));
+    height = Math.max(minHeight, Math.min(height, maxHeight));
+    
+    const { workArea } = screen.getPrimaryDisplay();
+    const x = Math.round(workArea.x + (workArea.width - width) / 2);
+    const y = Math.round(workArea.y + (workArea.height - height) / 2);
+    
+    mainWindow.setMinimumSize(minWidth, minHeight);
+    mainWindow.setBounds({ 
+      x, 
+      y, 
+      width, 
+      height 
+    }, true);
+
+    // Update window properties based on isFullScreen while keeping the window non-resizable
+    mainWindow.setResizable(false);
+    mainWindow.setMaximizable(false);
+    mainWindow.setAlwaysOnTop(!isFullScreen);
+    mainWindow.setSkipTaskbar(!isFullScreen);
   });
 }
 
@@ -691,4 +775,76 @@ function createInternalBrowserWindow(url: string) {
   });
 
   return newWindow;
+}
+
+function setupSecurity() {
+  // Content Security Policy
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // unsafe-eval needed for some frameworks
+          "style-src 'self' 'unsafe-inline'",
+          "img-src 'self' data: https:",
+          "font-src 'self' data:",
+          "connect-src 'self' https://api.coingecko.com https://openexchangerates.org https://min-api.cryptocompare.com https://*.r2.cloudflarestorage.com https://*.r2.dev wss:",
+          "media-src 'self'",
+          "object-src 'none'",
+          "base-uri 'self'",
+          "form-action 'self'",
+          "frame-ancestors 'none'"
+        ].join('; ')
+      }
+    });
+  });
+
+  // Permission request handler - deny all by default
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    // Deny all permissions - crypto converter doesn't need any special permissions
+    callback(false);
+  });
+
+  // Permission check handler
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => {
+    // Return false for all permission checks
+    return false;
+  });
+
+  // Prevent new window creation from web content
+  app.on('web-contents-created', (_event, contents) => {
+    contents.on('will-navigate', (event, navigationUrl) => {
+      const parsedUrl = new URL(navigationUrl);
+      
+      // Only allow navigation to expected origins
+      const allowedOrigins = [
+        'file://',
+        'http://localhost:5173', // Vite dev server
+        'https://api.coingecko.com',
+        'https://openexchangerates.org',
+        'https://min-api.cryptocompare.com'
+      ];
+      
+      const isAllowed = allowedOrigins.some(origin => navigationUrl.startsWith(origin));
+      
+      if (!isAllowed && IS_DEV) {
+        console.warn('Navigation blocked to:', navigationUrl);
+      }
+      
+      if (!isAllowed) {
+        event.preventDefault();
+      }
+    });
+
+    // Prevent webview tag
+    contents.on('will-attach-webview', (event) => {
+      event.preventDefault();
+    });
+
+    // Block new window creation
+    contents.setWindowOpenHandler(() => {
+      return { action: 'deny' };
+    });
+  });
 }
