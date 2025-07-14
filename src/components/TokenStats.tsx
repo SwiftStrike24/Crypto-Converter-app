@@ -54,7 +54,7 @@ const InfoIcon = styled.span`
   }
 `;
 
-const StatValue = styled.span<{ $isLimited?: boolean; $isNegative?: boolean; $isPositive?: boolean }>`
+const StatValue = styled.span<{ $isLimited?: boolean; $isNegative?: boolean; $isPositive?: boolean; $isNewATH?: boolean }>`
   color: ${props => 
     props.$isNegative ? '#ef4444' : 
     props.$isPositive ? '#22c55e' :
@@ -65,6 +65,14 @@ const StatValue = styled.span<{ $isLimited?: boolean; $isNegative?: boolean; $is
   display: flex;
   align-items: center;
   gap: 0.5rem;
+
+  ${props => props.$isNewATH && `
+    background: linear-gradient(45deg, #fde047, #facc15, #eab308);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 700;
+    filter: drop-shadow(0 0 4px rgba(250, 204, 21, 0.4));
+  `}
 `;
 
 const StatValueWithDate = styled.div`
@@ -582,12 +590,16 @@ const _TokenStats: React.FC<TokenStatsProps> = ({ cryptoId, currency }) => {
       {athDropInfo !== null && (
         <StatRow>
           <StatLabel>
-            From ATH
-            <InfoIcon title="Drop from All-Time High (price and percentage)">ⓘ</InfoIcon>
+            {athDropInfo.priceDrop > 0 ? 'New ATH!' : 'From ATH'}
+            <InfoIcon title={
+                athDropInfo.priceDrop > 0 
+                ? "New All-Time High! Price is above previous ATH." 
+                : "Drop from All-Time High (price and percentage)"
+            }>ⓘ</InfoIcon>
           </StatLabel>
-          <StatValue $isNegative={athDropInfo.priceDrop < 0}>
-            {formatNumber(athDropInfo.priceDrop, currency)}
-            {` (${athDropInfo.percentageDrop.toFixed(2)}%)`}
+          <StatValue $isNegative={athDropInfo.priceDrop < 0} $isNewATH={athDropInfo.priceDrop > 0}>
+            {athDropInfo.priceDrop > 0 ? '+' : ''}{formatNumber(athDropInfo.priceDrop, currency)}
+            {` (${athDropInfo.priceDrop > 0 ? '+' : ''}${athDropInfo.percentageDrop.toFixed(2)}%)`}
           </StatValue>
         </StatRow>
       )}
