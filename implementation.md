@@ -224,9 +224,11 @@ The application primarily uses React Context API for managing global state:
     *   `InstanceDialog.tsx`: Dialog shown when a second instance of the app is attempted. Redesigned with the "Liquid Glass" theme to ensure UI consistency.
     *   `UpdateDialog.tsx`: Modal for handling the in-app update flow.
     *   `LoadingScreen.tsx`: An initial launch screen that displays an animated logo and progress bar to improve perceived startup performance. Controlled by `App.tsx`.
+    *   `BorderBeam.tsx`: A purely decorative component that creates a soft, animated gradient beam around the main application window, enhancing the "Liquid Glass" theme. It is implemented using performant, hardware-accelerated CSS animations.
 
 ## 6. Key Features Implemented
 
+*   **Animated Gradient Border**: A subtle, non-distracting "liquid glass" beam of light that slowly rotates around the border of the main application window. This is a purely cosmetic feature designed to enhance the modern aesthetic of the application without impacting performance.
 *   **Modern Charting Dashboard**: The `ChartPage` provides a comprehensive and visually appealing dashboard for analyzing cryptocurrencies. It integrates a powerful `TradingViewWidget` with a dedicated `TokenStats` sidebar, all within a responsive two-column grid layout.
 *   **Unified Exchange Views**: The list of supported exchanges for charting (e.g., Binance, MEXC, Bybit) is now centralized in `src/constants/cryptoConstants.ts` and used consistently across both the `ChartPage` and `TechnicalAnalysisPage` to prevent discrepancies and improve maintainability.
 *   **Animated Launch Screen**: An initial loading screen built with `framer-motion` that provides a polished startup experience before the main application UI is displayed.

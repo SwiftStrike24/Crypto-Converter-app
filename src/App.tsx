@@ -12,6 +12,7 @@ import TechnicalAnalysisPage from './pages/TechnicalAnalysisPage';
 import { CryptoProvider } from './context/CryptoContext';
 import { CryptoCompareProvider } from './context/CryptoCompareContext';
 import { ExchangeRatesProvider } from './context/ExchangeRatesContext';
+import { BorderBeam } from './components/BorderBeam';
 import InstanceDialog from './pages/InstanceDialog';
 import LoadingScreen from './components/LoadingScreen';
 
@@ -36,6 +37,15 @@ const ContentContainer = styled.div`
   display: flex;
   flex-direction: column;
   gap: 15px;
+`;
+
+const MainContentWrapper = styled.div`
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
 `;
 
 const AppContent: React.FC = () => {
@@ -71,16 +81,19 @@ const AppContent: React.FC = () => {
       <Route path="/analysis" element={<TechnicalAnalysisPage />} />
       <Route path="/" element={
         <AppContainer $isFullScreen={false}>
-          <Header selectedCrypto={selectedCrypto} selectedFiat={selectedFiat} />
-          <ContentContainer>
-            <Converter 
-              onCryptoChange={setSelectedCrypto} 
-              onFiatChange={setSelectedFiat}
-              defaultCrypto={selectedCrypto}
-              defaultFiat={selectedFiat}
-            />
-            <Footer />
-          </ContentContainer>
+          <BorderBeam />
+          <MainContentWrapper>
+            <Header selectedCrypto={selectedCrypto} selectedFiat={selectedFiat} />
+            <ContentContainer>
+              <Converter 
+                onCryptoChange={setSelectedCrypto} 
+                onFiatChange={setSelectedFiat}
+                defaultCrypto={selectedCrypto}
+                defaultFiat={selectedFiat}
+              />
+              <Footer />
+            </ContentContainer>
+          </MainContentWrapper>
         </AppContainer>
       } />
       <Route path="/instance-dialog" element={<InstanceDialog />} />
