@@ -7,7 +7,7 @@ export const DEFAULT_CRYPTO_IDS: { [key: string]: string } = {
   SUI: 'sui',
   BONK: 'bonk',
   FARTCOIN: 'fartcoin',
-  TRUMP: 'trump',
+  TRUMP: 'official-trump',
 };
 
 export const DEFAULT_TOKEN_SYMBOLS = Object.keys(DEFAULT_CRYPTO_IDS);
@@ -63,7 +63,7 @@ export const POPULAR_TOKEN_IDS_TO_PRELOAD = [
     'sui',
     'bonk',
     'fartcoin',
-    'trump',
+    'official-trump',
   ];
 
 export const API_CONFIG = {
