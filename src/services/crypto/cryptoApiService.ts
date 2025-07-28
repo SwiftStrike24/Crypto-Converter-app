@@ -424,6 +424,28 @@ export async function fetchCoinMarkets(ids: string[], vs_currency: string = 'usd
   }
 }
 
+export async function fetchTopCoinMarkets(vs_currency: string = 'usd', page: number = 1, per_page: number = 250, priority: RequestPriority = RequestPriority.NORMAL) {
+  const params = {
+    vs_currency,
+    order: 'market_cap_desc',
+    per_page,
+    page,
+    sparkline: false,
+    price_change_percentage: '24h',
+  };
+  
+  console.debug(`🔵 [FETCH_TOP_MARKETS] ${priority} priority requesting top ${per_page} coins`);
+  
+  try {
+    const response = await fetchWithSmartRetry(`${API_CONFIG.COINGECKO.BASE_URL}/coins/markets`, { params, timeout: 10000 }, priority);
+    console.log(`🎉 [FETCH_TOP_MARKETS_SUCCESS] ${priority} priority: Retrieved ${response.data?.length || 0} market records`);
+    return response.data;
+  } catch (error: any) {
+    console.error(`🔴 [FETCH_TOP_MARKETS_FAIL] ${priority} priority: Failed to fetch top markets: ${error.message}`);
+    throw error;
+  }
+}
+
 export async function fetchSimplePrice(ids: string[], vs_currencies: string = 'usd,eur,cad', priority: RequestPriority = RequestPriority.NORMAL) {
   if (!ids || ids.length === 0) {
     console.warn('🟡 [FETCH_SIMPLE] No IDs provided, returning empty object');
@@ -527,6 +549,19 @@ export async function fetchCoinMarketChart(coinId: string, vs_currency: string, 
     return response.data;
   } catch (error: any) {
     console.error(`🔴 [FETCH_CHART_FAIL] ${priority} priority: Failed to fetch chart for ${coinId}: ${error.message}`);
+    throw error;
+  }
+}
+
+export async function fetchTrendingEndpointData(priority: RequestPriority = RequestPriority.NORMAL) {
+  const url = `${API_CONFIG.COINGECKO.BASE_URL}/search/trending`;
+  console.debug(`🔵 [FETCH_TRENDING_ENDPOINT] ${priority} priority requesting trending coins`);
+  try {
+    const response = await fetchWithSmartRetry(url, { timeout: 10000 }, priority);
+    console.log(`🎉 [FETCH_TRENDING_ENDPOINT_SUCCESS] ${priority} priority: Retrieved ${response.data?.coins?.length || 0} trending records`);
+    return response.data;
+  } catch (error: any) {
+    console.error(`🔴 [FETCH_TRENDING_ENDPOINT_FAIL] ${priority} priority: Failed to fetch trending endpoint data: ${error.message}`);
     throw error;
   }
 }

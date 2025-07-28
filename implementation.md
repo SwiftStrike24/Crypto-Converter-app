@@ -205,7 +205,9 @@ The application primarily uses React Context API for managing global state:
 *   **Key UI Components:**
     *   `App.tsx`: Main application component, sets up routing and global providers.
     *   `Converter.tsx`: Core UI for cryptocurrency conversion.
-        *   Features "View Price Chart" and "Technical Analysis" buttons styled with the modern "Liquid Glass" theme, incorporating gradients, blurs, and interactive glows for a sleek, tactile feel.
+        *   Features "View Price Chart", "Technical Analysis", and "Trending Tokens" buttons styled with the modern "Liquid Glass" theme, incorporating gradients, blurs, and interactive glows for a sleek, tactile feel.
+        *   The circular navigation buttons are positioned using `ButtonContainer` styling with `position: fixed` and `bottom: 15px` for consistent placement.
+        *   The "View [Token] on CoinGecko" link positioning can be controlled via the `CoinGeckoLink` styled component's `margin-top` property (currently set to 45px for optimal spacing).
     *   `AddCryptoModal.tsx`: Modal for searching and adding new cryptocurrencies. This has been fully redesigned as the `AddTokens` page, featuring the "Liquid Glass" theme for a consistent and modern UI.
         *   Search results will now visually indicate when a token has already been added to the user's collection, disabling the item and showing an "Added" badge to prevent duplicates.
     *   `ManageTokens.tsx`: Page for viewing and removing user-added custom tokens.
@@ -217,7 +219,7 @@ The application primarily uses React Context API for managing global state:
     *   `TechnicalAnalysisPage.tsx`: A dedicated technical analysis dashboard.
         *   The entire page has been redesigned with the "Liquid Glass" theme, ensuring a consistent and modern UI across the application's chart and analysis views.
         *   It mirrors the modern, two-column layout of the `ChartPage`, featuring the `TechnicalAnalysisWidget` in the main content area and the `TokenStats` component in a sidebar. It now uses a centralized list of exchanges, including Bybit, providing a consistent and comprehensive analysis experience.
-    *   `Header.tsx`, `Footer.tsx`: Standard layout components.
+    *   `Header.tsx`, `Footer.tsx`: Standard layout components. Footer is now positioned absolutely at the bottom of the application window for consistent placement across all pages.
     *   `LivePrice.tsx`: Component for displaying real-time price updates.
     *   `LiveTimeAgo.tsx`: A small, efficient component that renders a self-updating timestamp (e.g., "5s ago"), ensuring the "last updated" indicator in the `Header` is always live without causing unnecessary re-renders of the entire header.
     *   `TokenStats.tsx`: A detailed statistics panel displayed within the `ChartPage` sidebar. It shows key metrics like Market Rank, Market Cap, Volume, All-Time High/Low, and a visual progress bar for Circulating Supply. It also calculates and displays the percentage drop from the token's All-Time High (ATH), the percentage increase from its All-Time Low (ATL), and its 7-day volatility, highlighting significant changes with color. It features robust, locale-aware currency formatting.
@@ -225,10 +227,16 @@ The application primarily uses React Context API for managing global state:
     *   `UpdateDialog.tsx`: Modal for handling the in-app update flow.
     *   `LoadingScreen.tsx`: An initial launch screen that displays an animated logo and progress bar to improve perceived startup performance. Controlled by `App.tsx`.
     *   `BorderBeam.tsx`: A purely decorative component that creates a soft, animated gradient beam around the main application window, enhancing the "Liquid Glass" theme. It is implemented using performant, hardware-accelerated CSS animations.
+    *   `TrendingTokensPage.tsx`: Full-page component that displays a grid of the top trending tokens based on 24-hour percentage change. Features a centered "🔥 Trending Tokens" title, custom scrollbar styling matching the ManageTokens page design, and smart navigation flow that preserves user context when navigating to/from chart pages.
+    *   `TrendingTokenCard.tsx`: A reusable UI card for displaying a single token in the trending list, styled with the "Liquid Glass" theme. Includes navigation state management to enable proper back navigation flow.
 
 ## 6. Key Features Implemented
 
 *   **Animated Gradient Border**: A subtle, non-distracting "liquid glass" beam of light that slowly rotates around the border of the main application window. This is a purely cosmetic feature designed to enhance the modern aesthetic of the application without impacting performance.
+*   **Trending Tokens Page**: A dedicated page accessible from the converter that shows the top cryptocurrency gainers over the last 24 hours. The page automatically refreshes and uses cached data as a fallback. Features include:
+    *   Centered "🔥 Trending Tokens" title for clear page identification
+    *   Custom scrollbar styling matching the application's "Liquid Glass" theme
+    *   Smart navigation flow that preserves user context when clicking between trending tokens and chart/analysis pages
 *   **Modern Charting Dashboard**: The `ChartPage` provides a comprehensive and visually appealing dashboard for analyzing cryptocurrencies. It integrates a powerful `TradingViewWidget` with a dedicated `TokenStats` sidebar, all within a responsive two-column grid layout.
 *   **Unified Exchange Views**: The list of supported exchanges for charting (e.g., Binance, MEXC, Bybit) is now centralized in `src/constants/cryptoConstants.ts` and used consistently across both the `ChartPage` and `TechnicalAnalysisPage` to prevent discrepancies and improve maintainability.
 *   **Animated Launch Screen**: An initial loading screen built with `framer-motion` that provides a polished startup experience before the main application UI is displayed.
@@ -267,6 +275,11 @@ The application primarily uses React Context API for managing global state:
 *   **Loading Placeholders:** Implemented a smooth shimmer/wave animation (`WaveLoadingPlaceholder.tsx`) to replace numerical placeholders (e.g., previous `$1` estimates or "N/A") in the `Converter` result display and `Header` price display during price fetching or when data is pending. This enhances UX by providing visual feedback without showing potentially misleading or jarring placeholder numbers.
 *   **Build Compression:** Uses `normal` compression level for a balance between installer size and installation speed, improving the initial setup experience.
 *   **Robust Stablecoin Detection:** Implemented a multi-factor stablecoin detection system. It first checks if a token's metadata (CoinGecko categories) or symbol suggests it's a stablecoin. If this initial check is positive, it then verifies the token's live price against a defined range (e.g., $0.98-$1.02) to confirm it's actually trading at its peg. This prevents false positives from de-pegged or low-value tokens and ensures the automatic fiat currency switching is accurate.
+*   **Smart Navigation Flow:** Implemented context-aware navigation that preserves user journey flow. When navigating from the TrendingTokensPage to ChartPage or TechnicalAnalysisPage, the back button intelligently returns users to the TrendingTokensPage instead of the default converter, maintaining navigation context and improving user experience.
+*   **Enhanced UI Positioning:** Optimized component positioning throughout the application:
+    *   Footer repositioned to absolute bottom of the window for consistent placement across all pages
+    *   CoinGecko link spacing adjusted for better visual hierarchy in the converter
+    *   Circular navigation button positioning made configurable via `ButtonContainer` styling for easy adjustment
 
 ### Phase 4: Chart Page UI/UX Overhaul (v1.7.3)
 Completely redesigned the `ChartPage` to improve information hierarchy and visual appeal. This involved moving from a simple stacked layout to a modern two-column dashboard, redesigning the header for unified controls, and transforming `TokenStats` into a detailed sidebar panel with improved data visualization, including a horizontal progress bar for circulating supply. This phase also included significant bug fixes related to data fetching and currency formatting to ensure a stable and intuitive user experience.
@@ -276,6 +289,9 @@ Transformed the `TechnicalAnalysisPage` from a simple modal overlay into a full-
 
 ### Phase 6: Robust Stablecoin Verification (v1.8.1)
 Refactored the stablecoin detection logic to be more robust and prevent false positives. The system now uses a two-factor approach: it first checks for metadata signals (categories, symbol) that indicate a token is *supposed* to be a stablecoin, and then it performs a price verification check to ensure the token is *actually* trading near its peg (e.g., within a $0.98-$1.02 USD range). This prevents low-value non-stablecoins or de-pegged stablecoins from triggering the auto-switch logic.
+
+### Phase 7: UI/UX Polish & Navigation Flow Enhancement (v1.9.4)
+Enhanced the overall user experience with strategic UI positioning improvements and intelligent navigation flow. Key improvements include repositioning the footer to the absolute bottom of the application window for consistent placement, optimizing the CoinGecko link spacing in the converter for better visual hierarchy, and implementing context-aware navigation that preserves user journey flow. The TrendingTokensPage received significant polish with the addition of a prominent "🔥 Trending Tokens" title and custom scrollbar styling that matches the application's "Liquid Glass" theme. Navigation intelligence was enhanced so that when users navigate from trending tokens to chart or analysis pages, the back button appropriately returns them to the trending page rather than the converter, maintaining proper navigation context throughout the user journey.
 
 ## 7. Build and Development Process
 

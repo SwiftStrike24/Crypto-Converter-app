@@ -273,6 +273,7 @@ const BackIcon = () => (
 interface LocationState {
   cryptoId: string;
   currency: string;
+  from?: string; // Optional field to track where navigation came from
 }
 
 const ChartWidgetContainer = styled.div`
@@ -304,9 +305,18 @@ const _ChartPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [location.state?.cryptoId, selectedMarket, location.state?.currency]);
 
-  const { cryptoId, currency } = location.state as LocationState || {
+  const { cryptoId, currency, from } = location.state as LocationState || {
     cryptoId: 'BTC',
     currency: 'USD'
+  };
+
+  // Function to handle back navigation based on where we came from
+  const handleBackNavigation = () => {
+    if (from === 'trending') {
+      navigate('/trending');
+    } else {
+      navigate('/'); // Default back to converter
+    }
   };
 
   if (!location.state?.cryptoId || !location.state?.currency) {
@@ -314,7 +324,7 @@ const _ChartPage: React.FC = () => {
     return (
       <PageContainer>
         <Header>
-           <BackButton onClick={() => navigate('/')}>
+           <BackButton onClick={handleBackNavigation}>
              <BackIcon /> Back
            </BackButton>
         </Header>
@@ -331,9 +341,9 @@ const _ChartPage: React.FC = () => {
     <PageContainer>
       <Header>
         <HeaderLeft>
-          <BackButton onClick={() => navigate('/')}>
+          <BackButton onClick={handleBackNavigation}>
             <BackIcon />
-            Back to Converter
+            {from === 'trending' ? 'Back to Trending' : 'Back to Converter'}
           </BackButton>
           <CurrencyBadge>
             <CurrencyIcon />

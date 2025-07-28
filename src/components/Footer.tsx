@@ -12,6 +12,11 @@ const FooterContainer = styled.div`
   display: flex;
   flex-direction: column;
   gap: 2px;
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
 `;
 
 const LinkButton = styled.button`

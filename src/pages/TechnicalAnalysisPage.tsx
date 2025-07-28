@@ -249,6 +249,7 @@ const BackIcon = () => (
 interface LocationState {
   cryptoId: string;
   currency: string;
+  from?: string; // Optional field to track where navigation came from
 }
 
 const _TechnicalAnalysisPage: React.FC = () => {
@@ -257,9 +258,18 @@ const _TechnicalAnalysisPage: React.FC = () => {
   const [selectedInterval] = useState<'1h'>('1h');
   const [selectedMarket, setSelectedMarket] = useState<TradingViewMarket>('BINANCE');
 
-  const { cryptoId, currency } = location.state as LocationState || {
+  const { cryptoId, currency, from } = location.state as LocationState || {
     cryptoId: 'BTC',
     currency: 'USD'
+  };
+
+  // Function to handle back navigation based on where we came from
+  const handleBackNavigation = () => {
+    if (from === 'trending') {
+      navigate('/trending');
+    } else {
+      navigate('/'); // Default back to converter
+    }
   };
 
   // Add location state check
@@ -270,7 +280,7 @@ const _TechnicalAnalysisPage: React.FC = () => {
     return (
         <PageContainer>
             <Header>
-               <BackButton onClick={() => navigate('/')}>
+               <BackButton onClick={handleBackNavigation}>
                  <BackIcon /> Back
                </BackButton>
             </Header>
@@ -282,7 +292,7 @@ const _TechnicalAnalysisPage: React.FC = () => {
   }
 
   const handleBack = () => {
-    navigate(-1);
+    handleBackNavigation();
   };
 
   return (

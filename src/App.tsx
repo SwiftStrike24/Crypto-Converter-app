@@ -9,6 +9,7 @@ import AddTokens from './pages/AddTokens';
 import ManageTokens from './pages/ManageTokens';
 import ChartPage from './pages/ChartPage';
 import TechnicalAnalysisPage from './pages/TechnicalAnalysisPage';
+import TrendingTokensPage from './pages/TrendingTokensPage'; // Import the new page
 import { CryptoProvider } from './context/CryptoContext';
 import { CryptoCompareProvider } from './context/CryptoCompareContext';
 import { ExchangeRatesProvider } from './context/ExchangeRatesContext';
@@ -53,7 +54,8 @@ const AppContent: React.FC = () => {
   const isFullScreen = location.pathname === '/add-tokens' || 
                       location.pathname === '/chart' || 
                       location.pathname === '/manage-tokens' ||
-                      location.pathname === '/analysis';
+                      location.pathname === '/analysis' ||
+                      location.pathname === '/trending'; // Add trending to full screen
   const [selectedCrypto, setSelectedCrypto] = useState('BTC');
   const [selectedFiat, setSelectedFiat] = useState('USD');
 
@@ -66,6 +68,8 @@ const AppContent: React.FC = () => {
       ipcRenderer.send('set-window-size', { width: 800, height: 600, isFullScreen: true });
     } else if (location.pathname === '/add-tokens') {
       ipcRenderer.send('set-window-size', { width: 800, height: 830, isFullScreen: true });
+    } else if (location.pathname === '/trending') {
+      ipcRenderer.send('set-window-size', { width: 1200, height: 800, isFullScreen: true });
     } else if (isFullScreen) {
       ipcRenderer.send('set-window-size', { width: 800, height: 600, isFullScreen: true });
     } else {
@@ -79,6 +83,7 @@ const AppContent: React.FC = () => {
       <Route path="/manage-tokens" element={<ManageTokens />} />
       <Route path="/chart" element={<ChartPage />} />
       <Route path="/analysis" element={<TechnicalAnalysisPage />} />
+      <Route path="/trending" element={<TrendingTokensPage />} />
       <Route path="/" element={
         <AppContainer $isFullScreen={false}>
           <BorderBeam />
@@ -91,8 +96,8 @@ const AppContent: React.FC = () => {
                 defaultCrypto={selectedCrypto}
                 defaultFiat={selectedFiat}
               />
-              <Footer />
             </ContentContainer>
+            <Footer />
           </MainContentWrapper>
         </AppContainer>
       } />

@@ -6,7 +6,7 @@ import { FiBarChart, FiRefreshCw } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import { ipcRenderer } from 'electron';
 import WaveLoadingPlaceholder from './WaveLoadingPlaceholder';
-import { FaMagnifyingGlassChart } from 'react-icons/fa6';
+import { FaMagnifyingGlassChart, FaFire } from 'react-icons/fa6';
 import { isStablecoin, getStablecoinTargetFiat } from '../utils/stablecoinDetection';
 
 
@@ -361,24 +361,28 @@ interface ConverterProps {
   defaultFiat: string;
 }
 
-const Tooltip = styled.div`
+const Tooltip = styled.div<{ $arrowOffset?: string }>`
   position: absolute;
   bottom: calc(100% + 8px);
-  padding: 8px 12px;
-  background: rgba(25, 25, 35, 0.95);
-  color: #f0f0f0;
+  padding: 10px 14px;
+  background: rgb(15, 15, 25);
+  color: #ffffff;
   font-size: 12px;
-  font-weight: 500;
-  border-radius: 6px;
+  font-weight: 600;
+  border-radius: 8px;
   white-space: nowrap;
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
   transform: translateY(4px);
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(139, 92, 246, 0.15);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(139, 92, 246, 0.2);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.6),
+    0 4px 16px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(139, 92, 246, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+
+  border: 1px solid rgba(139, 92, 246, 0.4);
   z-index: 1001;
   line-height: 1.4;
   letter-spacing: 0.3px;
@@ -386,43 +390,19 @@ const Tooltip = styled.div`
   left: 50%;
   transform: translateX(-50%) translateY(4px);
 
-  .right-button & {
-    left: auto;
-    right: 0;
-    transform: translateY(4px);
-    
-    &::after {
-      left: auto;
-      right: 15px;
-      transform: translateX(0);
-    }
-  }
-
-  .left-button & {
-    left: 0;
-    right: auto;
-    transform: translateY(4px);
-    
-    &::after {
-      left: 15px;
-      right: auto;
-      transform: translateX(0);
-    }
-  }
-
   &::after {
     content: '';
     position: absolute;
     top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    border-width: 5px;
+    left: ${props => props.$arrowOffset || '50%'};
+    transform: ${props => props.$arrowOffset ? 'translateX(0)' : 'translateX(-50%)'};
+    border-width: 6px;
     border-style: solid;
-    border-color: rgba(25, 25, 35, 0.95) transparent transparent transparent;
-    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.1));
+    border-color: rgb(15, 15, 25) transparent transparent transparent;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
   }
   
-  /* Subtle gradient and shimmer effect */
+  /* Enhanced gradient overlay for glass effect */
   &::before {
     content: '';
     position: absolute;
@@ -430,29 +410,38 @@ const Tooltip = styled.div`
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0) 60%);
-    border-radius: 6px;
+    background: linear-gradient(135deg, 
+      rgba(139, 92, 246, 0.15) 0%, 
+      rgba(139, 92, 246, 0.05) 50%,
+      rgba(255, 255, 255, 0.05) 100%
+    );
+    border-radius: 8px;
     opacity: 0;
     transition: opacity 0.3s ease;
     z-index: -1;
   }
 `;
 
-const ButtonWrapper = styled.div<{ $tooltipStyle?: React.CSSProperties; $isResultVisible?: boolean }>`
+const ButtonContainer = styled.div`
   position: fixed;
+  bottom: 5px;
+  width: calc(100% - 40px);
+  left: 20px;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+`;
+
+const ButtonWrapper = styled.div<{ $isResultVisible?: boolean }>`
+  position: relative;
   z-index: 10;
   transition:
     transform 0.3s ease,
     bottom 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-  bottom: ${props => (props.$isResultVisible ? '2px' : '15px')};
-
-  &.right-button {
-    right: 20px;
-  }
-
-  &.left-button {
-    left: 20px;
-  }
+  
+  /* Reset bottom positioning from individual wrappers */
+  bottom: 0;
+  pointer-events: auto; /* Enable pointer events for buttons inside */
 
   &:has(> button:hover) {
     transform: translateY(-2px);
@@ -461,9 +450,7 @@ const ButtonWrapper = styled.div<{ $tooltipStyle?: React.CSSProperties; $isResul
   &:has(> button:hover) ${Tooltip} {
     opacity: 1;
     visibility: visible;
-    transform: ${props => props.$tooltipStyle?.transform ?? 'translateX(-50%)'} translateY(0);
-    left: ${props => props.$tooltipStyle?.left ?? '50%'};
-    right: ${props => props.$tooltipStyle?.right ?? 'auto'};
+    transform: translateY(0);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 0 8px rgba(139, 92, 246, 0.4), 0 0 0 1px rgba(139, 92, 246, 0.2);
     animation: tooltipPulse 2s infinite;
     
@@ -549,6 +536,7 @@ const ChartButton = styled.button`
 `;
 
 const AnalysisButton = styled(ChartButton)``;
+const TrendingButton = styled(ChartButton)``; // New button for trending
 
 const ChartIcon = () => (
   <FiBarChart />
@@ -556,6 +544,10 @@ const ChartIcon = () => (
 
 const AnalysisIcon = () => (
   <FaMagnifyingGlassChart />
+);
+
+const TrendingIcon = () => (
+  <FaFire style={{ color: '#ff6b6b' }} />
 );
 
 // Styled component for CoinGecko link
@@ -566,7 +558,7 @@ const CoinGeckoLink = styled.button`
   text-decoration: underline;
   cursor: pointer;
   font-size: 12px;
-  margin-top: 10px;
+  margin-top: 52px;
   padding: 4px;
   align-self: center;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1419,77 +1411,100 @@ const Converter: React.FC<ConverterProps> = ({
     }
   };
 
-  // State for tooltip styles
-  const [chartTooltipStyle, setChartTooltipStyle] = useState<React.CSSProperties>({});
-  const [analysisTooltipStyle, setAnalysisTooltipStyle] = useState<React.CSSProperties>({});
+  // State for tooltip styles and arrow positioning
+  const [chartTooltipData, setChartTooltipData] = useState<{ style: React.CSSProperties; arrowOffset?: string }>({ style: {} });
+  const [analysisTooltipData, setAnalysisTooltipData] = useState<{ style: React.CSSProperties; arrowOffset?: string }>({ style: {} });
+  const [trendingTooltipData, setTrendingTooltipData] = useState<{ style: React.CSSProperties; arrowOffset?: string }>({ style: {} });
 
   // Refs for tooltips and buttons
   const chartButtonRef = useRef<HTMLButtonElement>(null);
   const analysisButtonRef = useRef<HTMLButtonElement>(null);
+  const trendingButtonRef = useRef<HTMLButtonElement>(null);
   const chartTooltipRef = useRef<HTMLDivElement>(null);
   const analysisTooltipRef = useRef<HTMLDivElement>(null);
+  const trendingTooltipRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const calculateTooltipStyle = (buttonRef: React.RefObject<HTMLButtonElement>, tooltipRef: React.RefObject<HTMLDivElement>): React.CSSProperties => {
-    if (!buttonRef.current || !tooltipRef.current) return {};
+    const calculateTooltipStyle = (buttonRef: React.RefObject<HTMLButtonElement>, tooltipRef: React.RefObject<HTMLDivElement>): { tooltipStyle: React.CSSProperties; arrowOffset?: string } => {
+    if (!buttonRef.current || !tooltipRef.current) return { tooltipStyle: {} };
 
+    const tooltipWidth = tooltipRef.current.offsetWidth;
+    const viewportWidth = window.innerWidth;
     const buttonRect = buttonRef.current.getBoundingClientRect();
-    const tooltipWidth = tooltipRef.current.offsetWidth; // Use offsetWidth after rendering
-    const appContainer = document.querySelector('#root > div'); // Assuming AppContainer is the main div in root
-    const containerRect = appContainer?.getBoundingClientRect() ?? { left: 0, right: window.innerWidth };
+    const buttonCenter = buttonRect.left + buttonRect.width / 2;
     const buffer = 15;
 
-    let finalStyle: React.CSSProperties = {
-        left: '50%',
-        right: 'auto',
-        transform: 'translateX(-50%)' // Default center
+    let tooltipStyle: React.CSSProperties = {
+      left: '50%',
+      transform: 'translateX(-50%) translateY(4px)'
     };
+    
+    let arrowOffset: string | undefined;
 
-    const buttonCenter = buttonRect.left + buttonRect.width / 2;
-    let tooltipLeftEdge = buttonCenter - tooltipWidth / 2;
-    let tooltipRightEdge = buttonCenter + tooltipWidth / 2;
+    // Check if tooltip would overflow on the left
+    const wouldOverflowLeft = buttonCenter - (tooltipWidth / 2) < buffer;
+    // Check if tooltip would overflow on the right  
+    const wouldOverflowRight = buttonCenter + (tooltipWidth / 2) > viewportWidth - buffer;
 
-    // Check container boundaries
-    if (tooltipLeftEdge < containerRect.left + buffer) {
-        finalStyle.left = `${buffer - buttonRect.left}px`; // Position relative to button
-        finalStyle.right = 'auto';
-        finalStyle.transform = 'translateX(0)';
-    } else if (tooltipRightEdge > containerRect.right - buffer) {
-        finalStyle.left = 'auto';
-        finalStyle.right = `${buffer}px`;
-        finalStyle.transform = 'translateX(0)';
+    if (wouldOverflowLeft) {
+      // Position tooltip to the right, align left edge with buffer
+      tooltipStyle = {
+        left: `${buffer - buttonRect.left}px`,
+        transform: 'translateY(4px)'
+      };
+      // Calculate arrow position to point to button center
+      const arrowLeftPosition = buttonCenter - buffer - 5; // 5px is half arrow width
+      arrowOffset = `${Math.max(15, arrowLeftPosition)}px`;
+    } else if (wouldOverflowRight) {
+      // Position tooltip so its right edge is at viewport edge minus buffer
+      const tooltipLeftPosition = viewportWidth - buffer - tooltipWidth;
+      const relativeToButton = tooltipLeftPosition - buttonRect.left;
+      
+      tooltipStyle = {
+        left: `${relativeToButton}px`,
+        transform: 'translateY(4px)'
+      };
+      
+      // Calculate arrow position to point to button center
+      const arrowFromLeft = buttonCenter - tooltipLeftPosition - 5; // 5px is half arrow width
+      arrowOffset = `${Math.max(15, Math.min(arrowFromLeft, tooltipWidth - 15))}px`;
     }
 
-    // Add the initial vertical offset for the hidden state
-    finalStyle.transform = `${finalStyle.transform || ''} translateY(4px)`;
-
-    return finalStyle;
+    return { tooltipStyle, arrowOffset };
   };
 
   // Debounced style calculation on hover
-  const handleButtonHover = (type: 'chart' | 'analysis') => {
+  const handleButtonHover = (type: 'chart' | 'analysis' | 'trending') => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
 
     hoverTimeoutRef.current = setTimeout(() => {
-      let style: React.CSSProperties = {};
       if (type === 'chart' && chartButtonRef.current && chartTooltipRef.current) {
           // Temporarily show tooltip to measure
           chartTooltipRef.current.style.visibility = 'visible';
           chartTooltipRef.current.style.opacity = '0';
-          style = calculateTooltipStyle(chartButtonRef, chartTooltipRef);
+          const { tooltipStyle, arrowOffset } = calculateTooltipStyle(chartButtonRef, chartTooltipRef);
           // Hide tooltip again
           chartTooltipRef.current.style.visibility = '';
           chartTooltipRef.current.style.opacity = '';
-          setChartTooltipStyle(style);
+          setChartTooltipData({ style: tooltipStyle, arrowOffset });
       } else if (type === 'analysis' && analysisButtonRef.current && analysisTooltipRef.current) {
           // Temporarily show tooltip to measure
           analysisTooltipRef.current.style.visibility = 'visible';
           analysisTooltipRef.current.style.opacity = '0';
-          style = calculateTooltipStyle(analysisButtonRef, analysisTooltipRef);
+          const { tooltipStyle, arrowOffset } = calculateTooltipStyle(analysisButtonRef, analysisTooltipRef);
            // Hide tooltip again
           analysisTooltipRef.current.style.visibility = '';
           analysisTooltipRef.current.style.opacity = '';
-          setAnalysisTooltipStyle(style);
+          setAnalysisTooltipData({ style: tooltipStyle, arrowOffset });
+      } else if (type === 'trending' && trendingButtonRef.current && trendingTooltipRef.current) {
+          // Temporarily show tooltip to measure
+          trendingTooltipRef.current.style.visibility = 'visible';
+          trendingTooltipRef.current.style.opacity = '0';
+          const { tooltipStyle, arrowOffset } = calculateTooltipStyle(trendingButtonRef, trendingTooltipRef);
+           // Hide tooltip again
+          trendingTooltipRef.current.style.visibility = '';
+          trendingTooltipRef.current.style.opacity = '';
+          setTrendingTooltipData({ style: tooltipStyle, arrowOffset });
       }
     }, 50); // Debounce slightly
   };
@@ -1839,51 +1854,80 @@ const Converter: React.FC<ConverterProps> = ({
         </CoinGeckoLink>
       )}
 
-      <ButtonWrapper
-        $tooltipStyle={chartTooltipStyle}
-        className="right-button"
-        onMouseEnter={() => handleButtonHover('chart')}
-        onMouseLeave={handleButtonLeave}
-        $isResultVisible={isResultVisible}
-      >
-        <ChartButton
-          ref={chartButtonRef}
-          onClick={() =>
-            navigate('/chart', {
-              state: {
-                cryptoId: selectedCrypto,
-                currency: selectedFiat,
-              },
-            })
-          }
+      <ButtonContainer>
+        <ButtonWrapper
+          onMouseEnter={() => handleButtonHover('analysis')}
+          onMouseLeave={handleButtonLeave}
         >
-          <ChartIcon />
-        </ChartButton>
-        <Tooltip ref={chartTooltipRef}>View Price Chart</Tooltip>
-      </ButtonWrapper>
+          <AnalysisButton
+            ref={analysisButtonRef}
+            onClick={() =>
+              navigate('/analysis', {
+                state: {
+                  cryptoId: selectedCrypto,
+                  currency: selectedFiat,
+                },
+              })
+            }
+          >
+            <AnalysisIcon />
+          </AnalysisButton>
+          <Tooltip 
+            ref={analysisTooltipRef}
+            style={analysisTooltipData.style}
+            $arrowOffset={analysisTooltipData.arrowOffset}
+          >
+            View Technical Analysis
+          </Tooltip>
+        </ButtonWrapper>
+        
+        <div style={{ display: 'flex', gap: '10px' }}>
+            <ButtonWrapper
+              onMouseEnter={() => handleButtonHover('chart')}
+              onMouseLeave={handleButtonLeave}
+            >
+              <ChartButton
+                ref={chartButtonRef}
+                onClick={() =>
+                  navigate('/chart', {
+                    state: {
+                      cryptoId: selectedCrypto,
+                      currency: selectedFiat,
+                    },
+                  })
+                }
+              >
+                <ChartIcon />
+              </ChartButton>
+              <Tooltip 
+                ref={chartTooltipRef}
+                style={chartTooltipData.style}
+                $arrowOffset={chartTooltipData.arrowOffset}
+              >
+                View Price Chart
+              </Tooltip>
+            </ButtonWrapper>
 
-      <ButtonWrapper
-        $tooltipStyle={analysisTooltipStyle}
-        className="left-button"
-        onMouseEnter={() => handleButtonHover('analysis')}
-        onMouseLeave={handleButtonLeave}
-        $isResultVisible={isResultVisible}
-      >
-        <AnalysisButton
-          ref={analysisButtonRef}
-          onClick={() =>
-            navigate('/analysis', {
-              state: {
-                cryptoId: selectedCrypto,
-                currency: selectedFiat,
-              },
-            })
-          }
-        >
-          <AnalysisIcon />
-        </AnalysisButton>
-        <Tooltip ref={analysisTooltipRef}>Technical Analysis</Tooltip>
-      </ButtonWrapper>
+            <ButtonWrapper
+              onMouseEnter={() => handleButtonHover('trending')}
+              onMouseLeave={handleButtonLeave}
+            >
+              <TrendingButton
+                ref={trendingButtonRef}
+                onClick={() => navigate('/trending')}
+              >
+                <TrendingIcon />
+              </TrendingButton>
+              <Tooltip 
+                ref={trendingTooltipRef}
+                style={trendingTooltipData.style}
+                $arrowOffset={trendingTooltipData.arrowOffset}
+              >
+                View Trending Tokens
+              </Tooltip>
+            </ButtonWrapper>
+        </div>
+      </ButtonContainer>
 
       {/* Add the rate limit indicator */}
       {isCoinGeckoRateLimitedGlobal && (
