@@ -16,13 +16,9 @@ const CardWrapper = styled(motion.div)`
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-
-  &:hover {
-    transform: translateY(-4px);
-    border-color: rgba(139, 92, 246, 0.4);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2), 0 0 20px rgba(139, 92, 246, 0.2);
-  }
+  
+  /* Remove conflicting CSS transitions - let Framer Motion handle all animations */
+  will-change: transform, box-shadow, border-color;
 `;
 
 const TokenInfo = styled.div`
@@ -36,12 +32,14 @@ const TokenIcon = styled.img`
   width: 32px;
   height: 32px;
   border-radius: 50%;
+  transition: transform 0.2s ease;
 `;
 
 const TokenName = styled.div`
   font-size: 1rem;
   font-weight: 600;
   color: #e0e0e0;
+  transition: color 0.2s ease;
 `;
 
 const TokenSymbol = styled.span`
@@ -49,6 +47,7 @@ const TokenSymbol = styled.span`
   color: #a0a0a0;
   margin-left: 0.25rem;
   text-transform: uppercase;
+  transition: color 0.2s ease;
 `;
 
 const PriceInfo = styled.div`
@@ -56,6 +55,7 @@ const PriceInfo = styled.div`
   font-weight: 500;
   color: #ffffff;
   margin-bottom: 0.5rem;
+  transition: color 0.2s ease;
 `;
 
 const ChangeBadge = styled.div<{ $isPositive: boolean }>`
@@ -66,13 +66,46 @@ const ChangeBadge = styled.div<{ $isPositive: boolean }>`
   color: ${props => (props.$isPositive ? '#16a34a' : '#dc2626')};
   background-color: ${props => (props.$isPositive ? 'rgba(22, 163, 74, 0.1)' : 'rgba(220, 38, 38, 0.1)')};
   display: inline-block;
+  transition: all 0.2s ease;
 `;
 
 const VolumeInfo = styled.div`
   font-size: 0.75rem;
   color: #a0a0a0;
   margin-top: 0.75rem;
+  transition: color 0.2s ease;
 `;
+
+// Enhanced hover variants for smooth, non-conflicting animations
+const cardVariants = {
+  initial: {
+    scale: 1,
+    y: 0,
+    borderColor: 'rgba(139, 92, 246, 0.2)',
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+  },
+  hover: {
+    scale: 1.02,
+    y: -6,
+    borderColor: 'rgba(139, 92, 246, 0.5)',
+    boxShadow: '0 12px 24px rgba(0, 0, 0, 0.15), 0 0 30px rgba(139, 92, 246, 0.25)',
+    transition: {
+      type: 'spring',
+      stiffness: 300,
+      damping: 20,
+      mass: 0.8,
+    },
+  },
+  tap: {
+    scale: 0.98,
+    y: -2,
+    transition: {
+      type: 'spring',
+      stiffness: 400,
+      damping: 25,
+    },
+  },
+};
 
 interface TrendingTokenCardProps {
   token: ITrendingToken;
@@ -80,17 +113,24 @@ interface TrendingTokenCardProps {
 
 const TrendingTokenCard: React.FC<TrendingTokenCardProps> = ({ token }) => {
   const navigate = useNavigate();
-  const { addCryptos } = useCrypto();
+  const { addTemporaryToken } = useCrypto();
 
   const handleClick = () => {
-    // Add the token to the global context to ensure its ID is available on the chart page
-    addCryptos([{ symbol: token.symbol.toUpperCase(), id: token.id }]);
+    console.log(`🔥 [TRENDING_CARD_CLICK] User clicked trending token: ${token.symbol} (${token.id}). Using addTemporaryToken for session-only viewing.`);
+    
+    // Add the token temporarily for chart viewing (does not persist to user's collection)
+    addTemporaryToken({
+      symbol: token.symbol.toUpperCase(),
+      id: token.id,
+      name: token.name,
+      image: token.image
+    });
     
     navigate('/chart', {
       state: {
         cryptoId: token.symbol.toUpperCase(),
         currency: 'USD',
-        from: 'trending', // Add information about where we came from
+        from: 'trending', // Track navigation source
       },
     });
   };
@@ -100,8 +140,10 @@ const TrendingTokenCard: React.FC<TrendingTokenCardProps> = ({ token }) => {
   return (
     <CardWrapper
       onClick={handleClick}
-      whileHover={{ scale: 1.03 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+      variants={cardVariants}
+      initial="initial"
+      whileHover="hover"
+      whileTap="tap"
     >
       <TokenInfo>
         <TokenIcon src={token.image} alt={token.name} />

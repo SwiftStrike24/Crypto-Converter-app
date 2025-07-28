@@ -76,6 +76,7 @@ interface CryptoContextType {
   lastUpdated: Date | null;
   addCrypto: (symbol: string, id?: string) => Promise<void>;
   addCryptos: (tokens: { symbol: string; id: string }[]) => Promise<void>;
+  addTemporaryToken: (token: { symbol: string; id: string; name: string; image: string }) => void;
   deleteCrypto: (symbol: string) => void;
   availableCryptos: string[];
   getCryptoId: (symbol: string) => string | undefined;
@@ -1178,6 +1179,9 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const addCryptos = useCallback(async (tokens: { symbol: string; id: string }[]) => {
     if (!tokens.length) return;
     
+    console.log(`📝 [ADD_CRYPTOS_PERSISTENCE] Called with ${tokens.length} tokens:`, tokens.map(t => `${t.symbol} (${t.id})`).join(', '));
+    console.log(`📝 [ADD_CRYPTOS_PERSISTENCE] This will update localStorage and add to user's permanent collection.`);
+    
     console.log(`[ADD_CRYPTOS_START] Processing batch add for ${tokens.length} tokens.`);
     const newCryptoIdsToAdd: Record<string, string> = {};
     const symbolsToProcessThisCall = new Set<string>();
@@ -1538,6 +1542,51 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         lastUpdated,
         addCrypto,
         addCryptos,
+        addTemporaryToken: (token) => {
+          const upperSymbol = token.symbol.toUpperCase();
+          const lowerId = token.id.toLowerCase();
+
+          console.log(`🔄 [ADD_TEMPORARY_TOKEN] Adding TEMPORARY (session-only) token ${upperSymbol} (${lowerId}). This will NOT be persisted to localStorage or user's collection.`);
+
+          // Check if token already exists permanently
+          if (cryptoIds[upperSymbol] === lowerId) {
+            console.log(`[ADD_TEMPORARY_TOKEN_EXISTS] Token ${upperSymbol} already exists permanently. No action needed.`);
+            return;
+          }
+
+          // Update cryptoIds in memory only (for getCryptoId to work)
+          setCryptoIds(prev => ({ ...prev, [upperSymbol]: lowerId }));
+
+          // Update tokenMetadata in memory only (for chart components to work)
+          setTokenMetadata(prev => ({
+            ...prev,
+            [lowerId]: {
+              symbol: upperSymbol,
+              name: token.name,
+              image: token.image,
+              rank: null // Will be updated when real data is fetched
+            }
+          }));
+
+          // Set temporary price data to enable chart functionality
+          setPrices(prev => ({
+            ...prev,
+            [upperSymbol]: getEstimatedPrice(upperSymbol)
+          }));
+
+          // Mark as pending for loading indicators
+          pendingPriceUpdates.current.add(upperSymbol);
+          console.log(`[ADD_TEMPORARY_TOKEN_PENDING] ${upperSymbol} marked as pending for UI loading states.`);
+
+          // Fetch real data in the background
+          fetchTokenMetadata([lowerId], RequestPriority.HIGH).then(() => {
+            console.log(`✅ [ADD_TEMPORARY_TOKEN_FETCH_SUCCESS] Real metadata/price fetched for temporary token ${upperSymbol}.`);
+          }).catch(error => {
+            console.error(`❌ [ADD_TEMPORARY_TOKEN_FETCH_ERROR] Failed to fetch data for temporary token ${upperSymbol}:`, error);
+            // Queue a price update as fallback
+            queuePriceUpdate([upperSymbol], true);
+          });
+        },
         deleteCrypto,
         availableCryptos,
         getCryptoId,

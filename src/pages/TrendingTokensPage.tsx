@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useCrypto } from '../context/CryptoContext';
 import { trendingService, ITrendingToken } from '../services/trendingService';
 import TrendingTokenCard from '../components/TrendingTokenCard';
@@ -74,10 +75,66 @@ const BackButton = styled.button`
 `;
 
 const BackIcon = () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{width: '18px', height: '18px'}}>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
       <path d="M19 12H5M12 19l-7-7 7-7"/>
     </svg>
 );
+
+// New styled components for status indicators
+const HeaderInfoContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+`;
+
+const CacheIndicator = styled.div`
+  font-size: 0.75rem;
+  color: #fbbf24;
+  margin-top: 2px;
+`;
+
+const RetryButton = styled.button`
+  margin-top: 10px;
+  padding: 8px 16px;
+  background: #8b5cf6;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #7c3aed;
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
+const WarningBanner = styled.div`
+  padding: 10px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  color: #fbbf24;
+  font-size: 0.9rem;
+  text-align: center;
+`;
+
+const ErrorBanner = styled.div`
+  padding: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  color: #ef4444;
+  font-size: 0.9rem;
+  text-align: center;
+`;
 
 const ContentGrid = styled.main`
   flex: 1;
@@ -105,7 +162,29 @@ const ContentGrid = styled.main`
 const TokensGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1rem;
+  gap: 1.5rem;
+  padding: 0.5rem;
+  
+  /* Ensure consistent spacing and prevent layout shifts during animations */
+  align-items: start;
+  
+  /* Performance optimizations for smooth animations */
+  will-change: auto;
+  transform: translateZ(0); /* Force hardware acceleration */
+  
+  /* Prevent any potential reflow issues */
+  grid-auto-rows: min-content;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    padding: 0.25rem;
+  }
+  
+  @media (min-width: 1200px) {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 2rem;
+  }
 `;
 
 const LoadingContainer = styled.div`
@@ -120,24 +199,85 @@ const ErrorMessage = styled.div`
     text-align: center;
 `;
 
+// Animation variants for smooth entrance
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+    },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: 'spring',
+      stiffness: 300,
+      damping: 24,
+    },
+  },
+};
+
 const TrendingTokensPage: React.FC = () => {
+  const navigate = useNavigate();
   const [tokens, setTokens] = useState<ITrendingToken[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [usingStaleData, setUsingStaleData] = useState(false);
   const { isCoinGeckoRateLimitedGlobal } = useCrypto();
-  const navigate = useNavigate();
 
   const fetchTokens = async () => {
     try {
       setError(null);
       setIsLoading(true);
-      const trendingTokens = await trendingService.fetchTrendingTokens();
-      setTokens(trendingTokens);
-      setLastUpdated(new Date());
+      
+      const result = await trendingService.fetchTrendingTokens();
+      setTokens(result.data);
+      setUsingStaleData(result.fromCache && (result.cacheAge || 0) > 5 * 60 * 1000);
+      
+      if (!result.fromCache) {
+        setLastUpdated(new Date());
+      } else if (result.cacheAge) {
+        // If using cache, set last updated to when the cache was created
+        setLastUpdated(new Date(Date.now() - result.cacheAge));
+      }
+      
+      if (result.fromCache && result.cacheAge) {
+        const ageMinutes = Math.round(result.cacheAge / (60 * 1000));
+        console.log(`📊 [TRENDING_PAGE] Using ${result.fromCache ? 'cached' : 'fresh'} data (${ageMinutes}m old)`);
+      }
+      
     } catch (err) {
-      setError('Failed to fetch trending tokens. Please try again later.');
-      console.error(err);
+      // Check if we have any stale cache as last resort
+      const cacheStatus = trendingService.getCacheStatus();
+      if (cacheStatus.hasCache) {
+        console.log('🔄 [TRENDING_PAGE] API failed, attempting to use any available cache');
+        // Try one more time to get stale data
+        try {
+          const staleCacheKey = `cryptovertx-cache-trending-tokens`;
+          const itemStr = localStorage.getItem(staleCacheKey);
+          if (itemStr) {
+            const cacheEntry = JSON.parse(itemStr);
+            setTokens(cacheEntry.data);
+            setUsingStaleData(true);
+            setLastUpdated(new Date(cacheEntry.timestamp));
+            setError('Using cached data - unable to fetch fresh trending tokens');
+            console.log('📊 [TRENDING_PAGE] Successfully loaded stale cache as fallback');
+          }
+        } catch (cacheErr) {
+          setError('Unable to fetch trending tokens and no cached data available');
+          console.error('❌ [TRENDING_PAGE] Complete failure - no API and no cache:', err);
+        }
+      } else {
+        setError('Unable to fetch trending tokens. Please check your connection and try again.');
+        console.error('❌ [TRENDING_PAGE] API failed and no cache available:', err);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -159,23 +299,64 @@ const TrendingTokensPage: React.FC = () => {
         <Title>
           🔥 Trending Tokens
         </Title>
-        {lastUpdated && !isLoading && <LiveTimeAgo date={lastUpdated} />}
+        {lastUpdated && !isLoading && (
+          <HeaderInfoContainer>
+            <LiveTimeAgo date={lastUpdated} />
+            {usingStaleData && (
+              <CacheIndicator>
+                📱 Cached Data
+              </CacheIndicator>
+            )}
+          </HeaderInfoContainer>
+        )}
       </Header>
       <ContentGrid>
         {isLoading ? (
           <LoadingContainer>
              <WaveLoadingPlaceholder width="200px" height="40px" />
           </LoadingContainer>
-        ) : error ? (
-          <ErrorMessage>{error}</ErrorMessage>
-        ) : isCoinGeckoRateLimitedGlobal ? (
-          <ErrorMessage>API rate limit reached. Displaying cached data if available.</ErrorMessage>
+        ) : error && tokens.length === 0 ? (
+          <ErrorMessage>
+            {error}
+            <RetryButton onClick={fetchTokens}>
+              Try Again
+            </RetryButton>
+          </ErrorMessage>
         ) : (
-          <TokensGrid>
-            {tokens.map(token => (
-              <TrendingTokenCard key={token.id} token={token} />
-            ))}
-          </TokensGrid>
+          <>
+            {error && tokens.length > 0 && (
+              <WarningBanner>
+                ⚠️ {error}
+              </WarningBanner>
+            )}
+            {isCoinGeckoRateLimitedGlobal && (
+              <ErrorBanner>
+                🚫 API rate limit reached. Displaying cached data.
+              </ErrorBanner>
+            )}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={tokens.length} // Re-animate when tokens change
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                style={{ display: 'contents' }} // Don't interfere with grid layout
+              >
+                <TokensGrid>
+                  {tokens.map((token, index) => (
+                    <motion.div
+                      key={token.id}
+                      variants={itemVariants}
+                      custom={index}
+                      style={{ display: 'contents' }} // Don't interfere with grid layout
+                    >
+                      <TrendingTokenCard token={token} />
+                    </motion.div>
+                  ))}
+                </TokensGrid>
+              </motion.div>
+            </AnimatePresence>
+          </>
         )}
       </ContentGrid>
     </PageContainer>

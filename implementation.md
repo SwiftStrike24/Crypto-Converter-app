@@ -73,6 +73,11 @@ The application primarily uses React Context API for managing global state:
             *   If the unified fetch provides price data for a token, it's removed from `pendingPriceUpdates`.
             *   If, after the unified fetch, some tokens still lack price data (or were skipped due to having recent metadata but possibly stale price), they are queued for a high-priority price update via `queuePriceUpdate`.
             *   `addCrypto(symbol, id)` is now a lightweight wrapper that calls `addCryptos([{ symbol, id }])`.
+        *   **`addTemporaryToken(token)`:**
+            *   **Purpose:** Adds tokens for session-only viewing (e.g., from trending tokens page) without persisting them to the user's permanent collection.
+            *   **Behavior:** Updates in-memory `cryptoIds` and `tokenMetadata` states to enable chart functionality, but does NOT modify `availableCryptos` or persist to `localStorage`.
+            *   **Use Case:** When users click on trending tokens to view charts without explicitly adding them to their collection.
+            *   **Session-Only:** Tokens added via this function are lost when the application restarts, ensuring they don't clutter the user's permanent token list.
         *   **`fetchTokenMetadata(specificTokens?)`:**
             *   Fetches market data from `/coins/markets`.
             *   Updates `tokenMetadata` state.
@@ -237,6 +242,8 @@ The application primarily uses React Context API for managing global state:
     *   Centered "🔥 Trending Tokens" title for clear page identification
     *   Custom scrollbar styling matching the application's "Liquid Glass" theme
     *   Smart navigation flow that preserves user context when clicking between trending tokens and chart/analysis pages
+    *   **Session-Only Token Viewing**: When users click on trending tokens to view charts, tokens are added temporarily using `addTemporaryToken()` rather than permanently to the user's collection. This prevents unwanted tokens from cluttering the manage tokens page while still enabling full chart functionality.
+    *   **Robust Caching System**: 5-minute fresh cache with 30-minute stale cache fallback. When API calls fail, the system automatically serves stale cached data with clear visual indicators. Includes "Try Again" functionality and detailed cache status reporting.
 *   **Modern Charting Dashboard**: The `ChartPage` provides a comprehensive and visually appealing dashboard for analyzing cryptocurrencies. It integrates a powerful `TradingViewWidget` with a dedicated `TokenStats` sidebar, all within a responsive two-column grid layout.
 *   **Unified Exchange Views**: The list of supported exchanges for charting (e.g., Binance, MEXC, Bybit) is now centralized in `src/constants/cryptoConstants.ts` and used consistently across both the `ChartPage` and `TechnicalAnalysisPage` to prevent discrepancies and improve maintainability.
 *   **Animated Launch Screen**: An initial loading screen built with `framer-motion` that provides a polished startup experience before the main application UI is displayed.

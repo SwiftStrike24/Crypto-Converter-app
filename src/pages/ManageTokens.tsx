@@ -460,6 +460,8 @@ const ManageTokens: React.FC = () => {
   const [newlyAddedTokens, setNewlyAddedTokens] = useState<Set<string>>(new Set());
 
   const customTokens = availableCryptos.filter(symbol => !defaultTokens.has(symbol));
+  
+  console.log(`📋 [MANAGE_TOKENS_RENDER] Displaying ${customTokens.length} custom tokens:`, customTokens.join(', '));
 
   useEffect(() => {
     const handleTokensPreAdd = (e: CustomEvent) => {
