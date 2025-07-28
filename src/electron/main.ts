@@ -654,6 +654,8 @@ function createInternalBrowserWindow(url: string) {
     return;
   }
 
+  console.log(`Creating new internal browser window for URL: ${url}`);
+
   const { workArea } = screen.getPrimaryDisplay();
   const width = Math.max(800, Math.round(workArea.width * 0.7));
   const height = Math.max(600, Math.round(workArea.height * 0.7));
@@ -676,14 +678,27 @@ function createInternalBrowserWindow(url: string) {
     }
   });
 
+  console.log(`Loading URL in internal browser window: ${url}`);
   newWindow.loadURL(url);
 
   newWindow.webContents.on('did-finish-load', () => {
-    newWindow.setTitle(newWindow.webContents.getTitle());
+    const newTitle = newWindow.webContents.getTitle();
+    console.log(`Internal browser window finished loading. Title: ${newTitle}`);
+    newWindow.setTitle(newTitle);
+  });
+
+  newWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`Internal browser window failed to load URL: ${validatedURL}`);
+    console.error(`Error code: ${errorCode}, Description: ${errorDescription}`);
+  });
+
+  newWindow.webContents.on('did-navigate', (_event, navigationUrl) => {
+    console.log(`Internal browser window navigated to: ${navigationUrl}`);
   });
 
   // Clean up when the window is closed
   newWindow.on('closed', () => {
+    console.log('Internal browser window closed');
     // Only clear the specific coingeckoWindow variable
     if (newWindow === coingeckoWindow) {
       coingeckoWindow = null;
@@ -692,3 +707,39 @@ function createInternalBrowserWindow(url: string) {
 
   return newWindow;
 }
+
+// Initialize handlers and global event listeners
+setupIpcHandlers();
+
+// Global logging for window creation to diagnose unexpected window creation
+app.on('web-contents-created', (_event, contents) => {
+  console.log(`New web-contents created: ${contents.getType()}`);
+  if (contents.getType() === 'window') {
+    console.log(`New window web-contents created`);
+  }
+});
+
+app.on('browser-window-created', (_event, window) => {
+  const title = window.getTitle();
+  const url = window.webContents.getURL();
+  console.log(`New BrowserWindow created with title: "${title}"`);
+  console.log(`Window webContents URL: "${url}"`);
+  
+  // Add stack trace to identify what's creating unexpected windows
+  if (!title && !url) {
+    console.error('UNEXPECTED EMPTY WINDOW CREATED! Stack trace:');
+    console.trace();
+  }
+  
+  // Monitor this window's URL changes to catch 404s
+  window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`BrowserWindow failed to load URL: ${validatedURL}`);
+    console.error(`Error code: ${errorCode}, Description: ${errorDescription}`);
+    if (errorCode === -6) { // FILE_NOT_FOUND
+      console.error('This appears to be the 404 window! Closing it...');
+      if (!window.isDestroyed()) {
+        window.close();
+      }
+    }
+  });
+});

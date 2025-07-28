@@ -474,7 +474,7 @@ export async function checkForUpdates() {
  * @param onProgress Progress callback
  * @returns Promise that resolves when download is complete
  */
-export async function downloadUpdate(url: string, onProgress: (progress: number) => void) {
+export async function downloadUpdate(url: string, onProgress: (progress: number | any) => void) {
   log.info(`Starting update download from URL: ${url}`);
 
   // This function should ONLY be called in an Electron environment.
@@ -490,9 +490,15 @@ export async function downloadUpdate(url: string, onProgress: (progress: number)
 
   log.info('Using Electron download manager for silent background download.');
   
-  // Set up progress listener
-  const progressListener = (_event: any, progress: number) => {
-    onProgress(progress);
+  // Set up progress listener - handle both old format (number) and new format (object)
+  const progressListener = (_event: any, progressData: number | any) => {
+    if (typeof progressData === 'number') {
+      // Legacy format - just a number
+      onProgress(progressData);
+    } else {
+      // Enhanced format - object with progress and additional data
+      onProgress(progressData);
+    }
   };
   
   // Register the progress listener. We use `once` and `on` to be safe, then clean up.
@@ -545,10 +551,16 @@ export async function installUpdate(filePath: string) {
     }
   } catch (error) {
     log.error('Installation trigger failed.', error);
-    // If there's an error, try to open the download page as a last resort.
+    // If there's an error, try to open the download page as a last resort using the default browser
     try {
-      window.open('https://cryptovertx.com/download', '_blank');
-      return { success: true, browserDownload: true, fallback: true };
+      if (window.electron?.ipcRenderer?.invoke) {
+        await window.electron.ipcRenderer.invoke('open-external', 'https://cryptovertx.com/download');
+        return { success: true, browserDownload: true, fallback: true };
+      } else {
+        // If IPC is not available, don't try window.open as it creates unwanted Electron windows
+        console.warn('IPC not available, skipping browser fallback');
+        throw error; // Re-throw the original error instead of opening a broken window
+      }
     } catch (fallbackError) {
       // Throw original error if fallback fails
       throw error;

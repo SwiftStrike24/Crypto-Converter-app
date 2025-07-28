@@ -273,8 +273,17 @@ The application primarily uses React Context API for managing global state:
             *   **UI Feedback:** The "Check for Updates" button provides enhanced visual feedback based on 2025 "Liquid Glass" design trends. It features a "breathing" glow and an interactive icon animation that combines rotation with dynamic scaling and a glowing `drop-shadow` effect. This makes the icon itself feel animated and responsive, moving beyond simple spinning. It also provides a tactile, glassy "press-in" effect on click.
         *   **Download:** If an update is found, the new installer (`.msi` or `.exe` for portable fallback) is downloaded silently to a temporary directory. The `download-update` IPC handler in `updateHandler.ts` manages this, sending progress updates to the UI and verifying file integrity upon completion.
         *   **Install:** Once downloaded, the user is prompted to "Install & Restart". Upon confirmation, the `install-update` IPC handler in `updateHandler.ts` is triggered. It launches the graphical installer, which presents a standard setup wizard. The application then quits to allow the installer to proceed without file conflicts.
+            *   **Enhanced Error Handling:** The system now provides intelligent error detection and user-friendly messaging for common installation issues:
+                *   **User Cancellation Detection:** When a user cancels the UAC prompt or denies administrator access, the system detects this specific scenario (typically "Failed to open path" from `shell.openPath`) and provides a clear, actionable message: "Installation was cancelled. Click 'Install & Restart' to try again, or run the installer manually."
+                *   **File Verification:** Before attempting installation, the system verifies the downloaded installer file exists and has a valid size, preventing attempts to launch corrupted or missing files.
+                *   **Smart UI State Management:** Installation cancellation errors return the UI to the 'downloaded' state (allowing immediate retry) rather than the 'error' state (which would show "Retry Download"). This provides a more intuitive user experience.
+                *   **Comprehensive Cleanup:** All error paths ensure proper cleanup of the `update.flag` file to prevent inconsistent states.
+                *   **Categorized Error Messages:** Different error types (access denied, file not found, corruption, etc.) receive specific, helpful error messages rather than generic technical errors.
+                *   **404 Popup Fix:** Fixed an issue where installation failures would trigger a fallback mechanism that incorrectly used `window.open()`, creating unwanted Electron windows showing 404 errors. The fallback now properly uses IPC to open the download page in the user's default browser.
+                *   **Robust Error Preservation:** Error messages are properly preserved through the IPC layer without being wrapped in generic "Installation failed" messages for user-friendly errors.
+            *   **Diagnostic Logging:** Enhanced logging throughout the update process helps identify edge cases and provides better debugging information for installation failures and unexpected window creation events.
         *   **Relaunch & Verify:** The user completes the installation via the setup wizard, which includes a "Launch application" option at the end. When the new version of the app starts, the `main.ts` process detects an `update.flag` file. It sends an `update-successful` IPC message to the renderer to trigger a success notification and then deletes the flag file.
-    *   **UI:** An `UpdateDialog.tsx` component manages the UI for the entire flow, showing the available update, download progress, and initiating the installation.
+    *   **UI:** An `UpdateDialog.tsx` component manages the UI for the entire flow, showing the available update, download progress, and initiating the installation. The dialog now provides contextual error messages and appropriate retry options based on the type of failure encountered.
 *   **Window Position Memory:** Remembers and restores window position on startup.
 *   **Focus/Blur Handling:** Implemented for window management.
 *   **Build Optimization:** Optimized chunk splitting (vendor, UI, charts), fast production builds, efficient caching, minimal output size.
@@ -360,6 +369,17 @@ Enhanced the overall user experience with strategic UI positioning improvements 
 *   Uses semantic versioning for comparison.
 *   Handles the download of the update package and launches the graphical installer.
 *   Supports both direct in-app updates and fallback browser-based downloads.
+*   **File Integrity Verification:** Implements adaptive verification logic:
+    *   If the server provides a `Content-Length` header, performs strict size verification against the downloaded file.
+    *   If the header is missing (common with chunked encoding), performs basic verification ensuring the file is not empty and has a reasonable minimum size for an installer (>1KB).
+    *   This approach maintains security while accommodating different server configurations and streaming methods.
+*   **Enhanced Progress Feedback:** Provides smooth, engaging progress visualization during updates:
+    *   **Real-Time Streaming Progress:** Uses actual download bytes to calculate precise progress percentage based on estimated file size (101MB from historical data).
+    *   **Rich Progress Metrics:** Displays download speed (MB/s), estimated time remaining (ETA), and transferred data (downloaded/total bytes).
+    *   **Intelligent Speed Calculation:** Implements smoothed download speed calculation using a rolling average of the last 10 speed samples to prevent UI jitter.
+    *   **Ultra-Smooth Animation:** Updates progress every 100ms for fluid visual feedback, with immediate responsiveness to data chunks.
+    *   **Enhanced UI Elements:** Features animated progress bars with shimmer effects, gradient fills, color-coded metrics (speed in green, ETA in orange, data in purple), and smooth spring animations.
+    *   **Adaptive Display:** Shows detailed metrics only when available, gracefully handling both legacy and enhanced progress data formats.
 
 ## 9. Configuration
 

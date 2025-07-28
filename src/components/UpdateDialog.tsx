@@ -148,18 +148,86 @@ const ProgressContainer = styled.div`
 
 const ProgressBar = styled.div`
   width: 100%;
-  height: 8px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
+  height: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
   overflow: hidden;
   margin-bottom: 8px;
+  position: relative;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.2);
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+      45deg,
+      transparent 25%,
+      rgba(255, 255, 255, 0.05) 25%,
+      rgba(255, 255, 255, 0.05) 50%,
+      transparent 50%,
+      transparent 75%,
+      rgba(255, 255, 255, 0.05) 75%
+    );
+    background-size: 20px 20px;
+    animation: progressBarAnimation 2s linear infinite;
+    border-radius: 8px;
+  }
+  
+  @keyframes progressBarAnimation {
+    0% { background-position: 0 0; }
+    100% { background-position: 20px 0; }
+  }
 `;
 
 const ProgressFill = styled(motion.div)<{ progress: number }>`
   height: 100%;
   width: ${props => props.progress}%;
-  background: linear-gradient(90deg, #8b5cf6, #a78bfa);
-  border-radius: 4px;
+  background: linear-gradient(90deg, #8b5cf6, #a78bfa, #c084fc);
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.4) 50%,
+      transparent
+    );
+    animation: progressShimmer 1.5s ease-in-out infinite;
+  }
+  
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, 0.2) 0%,
+      transparent 50%,
+      rgba(0, 0, 0, 0.1) 100%
+    );
+    border-radius: 8px;
+  }
+  
+  @keyframes progressShimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
 `;
 
 const ProgressText = styled.div`
@@ -167,9 +235,42 @@ const ProgressText = styled.div`
   color: #a0aec0;
   display: flex;
   justify-content: space-between;
+  font-weight: 500;
+  margin-bottom: 4px;
+  
+  span:last-child {
+    color: #8b5cf6;
+    font-weight: 600;
+  }
 `;
 
-const StatusMessage = styled(motion.div)<{ $type: 'success' | 'error' | 'info' }>`
+const ProgressStats = styled.div`
+  font-size: 10px;
+  color: #6b7280;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  
+  span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  
+  .speed {
+    color: #10b981;
+  }
+  
+  .eta {
+    color: #f59e0b;
+  }
+  
+  .size {
+    color: #8b5cf6;
+  }
+`;
+
+const StatusMessage = styled(motion.div)<{ $type: 'success' | 'error' | 'info' | 'warning' }>`
   margin-top: 12px;
   padding: 8px 12px;
   border-radius: 8px;
@@ -177,11 +278,13 @@ const StatusMessage = styled(motion.div)<{ $type: 'success' | 'error' | 'info' }
   background: ${props => 
     props.$type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 
     props.$type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 
+    props.$type === 'warning' ? 'rgba(234, 179, 8, 0.1)' : 
     'rgba(139, 92, 246, 0.1)'
   };
   color: ${props => 
     props.$type === 'success' ? '#10b981' : 
     props.$type === 'error' ? '#ef4444' : 
+    props.$type === 'warning' ? '#f59e0b' : 
     '#8b5cf6'
   };
   display: flex;
@@ -190,21 +293,6 @@ const StatusMessage = styled(motion.div)<{ $type: 'success' | 'error' | 'info' }
   white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
-`;
-
-// Loading animation component
-const LoadingPulse = styled(motion.div)`
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-left: 4px;
-`;
-
-const Dot = styled(motion.div)`
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background-color: currentColor;
 `;
 
 // Define a type for the update process state
@@ -228,9 +316,18 @@ interface UpdateDialogProps {
   };
 }
 
+interface ProgressData {
+  progress: number;
+  downloadedBytes?: number;
+  totalBytes?: number;
+  speed?: number;
+  eta?: number;
+}
+
 const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo }) => {
   const [updateState, setUpdateState] = useState<UpdateState>('idle');
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [progressData, setProgressData] = useState<ProgressData>({ progress: 0 });
   const [downloadedFilePath, setDownloadedFilePath] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -241,11 +338,33 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
     : '';
   const latestVersion = updateInfo?.latestVersion || '';
 
+  // Helper functions for formatting download metrics
+  const formatBytes = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const formatSpeed = (bytesPerSecond: number): string => {
+    return formatBytes(bytesPerSecond) + '/s';
+  };
+
+  const formatETA = (seconds: number): string => {
+    if (seconds <= 0) return '';
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m ${remainingSeconds}s`;
+  };
+
   // Reset state when dialog opens
   useEffect(() => {
     if (isOpen) {
       setUpdateState('idle');
       setDownloadProgress(0);
+      setProgressData({ progress: 0 });
       setDownloadedFilePath('');
       setErrorMessage('');
       
@@ -278,9 +397,20 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
     setUpdateState('downloading');
     setErrorMessage('');
     setDownloadProgress(0);
+    setProgressData({ progress: 0 });
 
     try {
-      const filePath = await downloadUpdate(updateInfo.downloadUrl, setDownloadProgress);
+      const filePath = await downloadUpdate(updateInfo.downloadUrl, (progressInfo: number | ProgressData) => {
+        if (typeof progressInfo === 'number') {
+          // Legacy format - just a number
+          setDownloadProgress(progressInfo);
+          setProgressData({ progress: progressInfo });
+        } else {
+          // Enhanced format - object with additional data
+          setDownloadProgress(progressInfo.progress);
+          setProgressData(progressInfo);
+        }
+      });
       setDownloadedFilePath(filePath);
       setUpdateState('downloaded');
     } catch (err) {
@@ -300,28 +430,36 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
     } catch (err) {
       const error = err as Error;
       console.error('Install error:', error.message);
-      setErrorMessage(error.message || 'Installation failed. Please run the installer manually.');
-      setUpdateState('error');
-    }
-  };
-
-  // Loading dots animation
-  const loadingVariants = {
-    animate: {
-      transition: {
-        staggerChildren: 0.2
+      
+      // Clean up the error message by removing IPC wrapper text
+      let cleanErrorMessage = error.message || 'Installation failed. Please run the installer manually.';
+      
+      // Remove the IPC error wrapper if present
+      if (cleanErrorMessage.startsWith('Error invoking remote method')) {
+        const match = cleanErrorMessage.match(/Error invoking remote method '[^']+': Error: (.+)/);
+        if (match && match[1]) {
+          cleanErrorMessage = match[1];
+        }
       }
-    }
-  };
-  
-  const dotVariants = {
-    initial: { opacity: 0, y: 0 },
-    animate: { 
-      opacity: [0, 1, 0],
-      y: [0, -5, 0],
-      transition: {
-        repeat: Infinity,
-        duration: 1
+      
+      // Check if this is a user cancellation error specifically
+      const isCancellation = cleanErrorMessage.includes('Installation was cancelled');
+      
+      // For cancellation, use an even more concise message
+      if (isCancellation) {
+        cleanErrorMessage = 'Installation cancelled. Try again.';
+      }
+      
+      setErrorMessage(cleanErrorMessage);
+      
+      // For cancellation errors, return to downloaded state so user can try again
+      // For other errors, go to error state
+      if (isCancellation) {
+        console.log('Installation cancelled, returning to downloaded state');
+        setUpdateState('downloaded');
+      } else {
+        console.log('Installation failed with error, setting error state');
+        setUpdateState('error');
       }
     }
   };
@@ -401,20 +539,79 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
                 </StatusMessage>
               )}
               
+              {updateState === 'downloaded' && errorMessage && (
+                <StatusMessage 
+                  $type="warning"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <FiX size={16} />
+                  {errorMessage}
+                </StatusMessage>
+              )}
+              
               {updateState === 'downloading' && (
                 <ProgressContainer>
                   <ProgressBar>
                     <ProgressFill 
                       progress={downloadProgress}
-                      initial={{ width: '0%' }}
-                      animate={{ width: `${downloadProgress}%` }}
-                      transition={{ type: 'spring', damping: 20, stiffness: 100 }}
+                      initial={{ width: '0%', opacity: 0 }}
+                      animate={{ 
+                        width: `${downloadProgress}%`,
+                        opacity: 1
+                      }}
+                      transition={{ 
+                        width: { 
+                          type: 'spring', 
+                          damping: 25, 
+                          stiffness: 120,
+                          mass: 0.8
+                        },
+                        opacity: { duration: 0.3 }
+                      }}
                     />
                   </ProgressBar>
                   <ProgressText>
-                    <span>Downloading update...</span>
-                    <span>{downloadProgress.toFixed(0)}%</span>
+                    <motion.span
+                      initial={{ opacity: 0, y: 5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 }}
+                    >
+                      Downloading update...
+                    </motion.span>
+                    <motion.span
+                      key={downloadProgress} // Re-animate when progress changes
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      {downloadProgress.toFixed(0)}%
+                    </motion.span>
                   </ProgressText>
+                  {(progressData.speed || progressData.downloadedBytes || progressData.eta) && (
+                    <ProgressStats>
+                      <span className="size">
+                        {progressData.downloadedBytes && progressData.totalBytes 
+                          ? `${formatBytes(progressData.downloadedBytes)} / ${formatBytes(progressData.totalBytes)}`
+                          : progressData.downloadedBytes 
+                            ? formatBytes(progressData.downloadedBytes)
+                            : ''
+                        }
+                      </span>
+                      <span>
+                        {progressData.speed && progressData.speed > 0 && (
+                          <span className="speed">
+                            {formatSpeed(progressData.speed)}
+                          </span>
+                        )}
+                        {progressData.eta && progressData.eta > 0 && (
+                          <span className="eta">
+                            ETA: {formatETA(progressData.eta)}
+                          </span>
+                        )}
+                      </span>
+                    </ProgressStats>
+                  )}
                 </ProgressContainer>
               )}
               
@@ -478,7 +675,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
               )}
 
               {updateState === 'error' && (
-                 <Button $primary onClick={handleDownload}>
+                <Button $primary onClick={handleDownload}>
                   <FiRefreshCw size={16} /> Retry Download
                 </Button>
               )}
