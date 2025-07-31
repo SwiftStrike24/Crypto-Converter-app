@@ -601,49 +601,315 @@ function setupIpcHandlers() {
     }
   });
 
-  // Handle opening links INTERNALLY (Singleton pattern for CoinGecko)
-  ipcMain.on('open-link-in-app', (_event, url) => {
-    // Check if CoinGecko window exists and is usable
-    if (coingeckoWindow && !coingeckoWindow.isDestroyed()) {
-      const normalizeUrl = (inputUrl: string): string => {
-        try {
-          const parsed = new URL(inputUrl);
-          // Rebuild without hash and search, remove trailing slash from pathname
-          return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/$/, '')}`;
-        } catch (e) {
-          console.warn('Failed to normalize URL:', inputUrl, e);
-          return inputUrl; // Return original if parsing fails
-        }
-      };
+  // Handle fetching news data from main process to avoid CSP issues
+  ipcMain.handle('fetch-news-data', async (_event, sources) => {
+    try {
+      console.log('[MAIN_PROCESS] Fetching news data from RSS sources');
       
-      const currentURL = coingeckoWindow.webContents.getURL();
-      const normalizedCurrentURL = normalizeUrl(currentURL);
-      const normalizedRequestedURL = normalizeUrl(url);
+      const fetchPromises = sources.map(async (source: { name: string; url: string }) => {
+        try {
+          console.log(`[MAIN_PROCESS] Fetching from ${source.name}: ${source.url}`);
+          
+          // Fetch RSS XML directly
+          const response = await fetch(source.url, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/rss+xml, application/xml, text/xml',
+              'User-Agent': 'CryptoVertX/1.0 (RSS Reader)'
+            },
+          });
 
-      console.log(`CoinGecko window open. Normalized Current: ${normalizedCurrentURL}, Normalized Req: ${normalizedRequestedURL}`);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
 
-      // ONLY load URL if normalized URLs are different
-      if (normalizedCurrentURL !== normalizedRequestedURL) {
-        console.log('Loading new URL into existing CoinGecko window.');
-        coingeckoWindow.loadURL(url);
+          const xmlText = await response.text();
+          console.log(`[MAIN_PROCESS] Downloaded RSS XML from ${source.name} (${xmlText.length} chars)`);
+          
+          // Parse RSS XML manually (simple parsing)
+          const articles = parseRSSXML(xmlText, source.name);
+          
+          console.log(`[MAIN_PROCESS] Successfully parsed ${articles.length} articles from ${source.name}`);
+          
+          return {
+            success: true,
+            source: source.name,
+            data: articles
+          };
+        } catch (error) {
+          console.warn(`[MAIN_PROCESS] Failed to fetch from ${source.name}:`, error);
+          return {
+            success: false,
+            source: source.name,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          };
+        }
+      });
+
+      const results = await Promise.allSettled(fetchPromises);
+      const processedResults = results.map(result => 
+        result.status === 'fulfilled' ? result.value : { success: false, error: 'Promise rejected' }
+      );
+
+      return { success: true, results: processedResults };
+    } catch (error) {
+      console.error('[MAIN_PROCESS] Critical error during news fetch:', error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      };
+    }
+  });
+
+  // Simple RSS XML parser function
+  function parseRSSXML(xmlText: string, sourceName: string) {
+    const articles: any[] = [];
+    
+    try {
+      // Extract items using regex (simple but effective for RSS)
+      const itemMatches = xmlText.match(/<item[^>]*>[\s\S]*?<\/item>/gi);
+      
+      if (itemMatches) {
+        itemMatches.slice(0, 20).forEach(item => { // Limit to 20 items
+          const article = {
+            title: extractXMLTag(item, 'title') || 'Untitled',
+            source: sourceName,
+            publishedAt: extractXMLTag(item, 'pubDate') || new Date().toISOString(),
+            summary: extractXMLTag(item, 'description') || '',
+            url: extractXMLTag(item, 'link') || extractXMLTag(item, 'guid') || '',
+            imageUrl: undefined as string | undefined
+          };
+          
+          // Try to extract image URL from multiple sources
+          let imageUrl: string | undefined = undefined;
+          
+          // Helper function to clean and validate URL
+          const cleanAndValidateUrl = (url: string): string | null => {
+            if (!url) return null;
+            
+            // Clean the URL
+            let cleanUrl = url.trim()
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&quot;/g, '"');
+            
+            // Remove any trailing characters that might be malformed
+            cleanUrl = cleanUrl.replace(/[^\w\-\.\/\:\?\=\&]+$/, '');
+            
+            // Additional check: try to construct URL to validate format
+            try {
+              const testUrl = new URL(cleanUrl);
+              // Check if the URL is actually reachable/valid format
+              if (!testUrl.hostname || testUrl.hostname.length < 3) {
+                return null;
+              }
+            } catch {
+              return null;
+            }
+            
+            return isValidImageUrl(cleanUrl) ? cleanUrl : null;
+          };
+          
+          // 1. Try enclosure first
+          const enclosureMatch = item.match(/<enclosure[^>]+url="([^"]+)"[^>]*>/i);
+          if (enclosureMatch) {
+            const cleanUrl = cleanAndValidateUrl(enclosureMatch[1]);
+            if (cleanUrl) imageUrl = cleanUrl;
+          }
+          
+          // 2. Try media:content or media:thumbnail (common in RSS feeds)
+          if (!imageUrl) {
+            const mediaContentMatch = item.match(/<media:content[^>]+url="([^"]+)"[^>]*>/i);
+            if (mediaContentMatch) {
+              const cleanUrl = cleanAndValidateUrl(mediaContentMatch[1]);
+              if (cleanUrl) imageUrl = cleanUrl;
+            }
+          }
+          
+          if (!imageUrl) {
+            const mediaThumbnailMatch = item.match(/<media:thumbnail[^>]+url="([^"]+)"[^>]*>/i);
+            if (mediaThumbnailMatch) {
+              const cleanUrl = cleanAndValidateUrl(mediaThumbnailMatch[1]);
+              if (cleanUrl) imageUrl = cleanUrl;
+            }
+          }
+          
+          // 3. Try to find image in description/content
+          if (!imageUrl) {
+            const imgMatch = article.summary.match(/<img[^>]+src="([^"]+)"/i);
+            if (imgMatch) {
+              const cleanUrl = cleanAndValidateUrl(imgMatch[1]);
+              if (cleanUrl) imageUrl = cleanUrl;
+            }
+          }
+          
+          // 4. For CoinDesk specifically, try to extract from content:encoded
+          if (!imageUrl && sourceName.includes('CoinDesk')) {
+            const contentEncodedMatch = item.match(/<content:encoded[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/i);
+            if (contentEncodedMatch) {
+              const contentImgMatch = contentEncodedMatch[1].match(/<img[^>]+src="([^"]+)"/i);
+              if (contentImgMatch) {
+                const cleanUrl = cleanAndValidateUrl(contentImgMatch[1]);
+                if (cleanUrl) imageUrl = cleanUrl;
+              }
+            }
+          }
+          
+          // 5. Additional fallback: look for any URL that looks like an image in the entire item
+          if (!imageUrl) {
+            const allUrlMatches = item.match(/https?:\/\/[^\s"<>]+\.(jpg|jpeg|png|gif|webp|svg)/gi);
+            if (allUrlMatches && allUrlMatches.length > 0) {
+              const cleanUrl = cleanAndValidateUrl(allUrlMatches[0]);
+              if (cleanUrl) imageUrl = cleanUrl;
+            }
+          }
+          
+          article.imageUrl = imageUrl;
+          
+          // Clean HTML from summary
+          article.summary = article.summary.replace(/<[^>]*>/g, '').trim();
+          if (article.summary.length > 200) {
+            article.summary = article.summary.substring(0, 197) + '...';
+          }
+          
+          if (article.title && article.url) {
+            articles.push(article);
+          }
+        });
+      }
+    } catch (error) {
+      console.error(`[MAIN_PROCESS] Error parsing RSS XML for ${sourceName}:`, error);
+    }
+    
+    return articles;
+  }
+
+  // Helper function to extract content from XML tags
+  function extractXMLTag(xml: string, tagName: string): string | null {
+    const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\/${tagName}>`, 'i');
+    const match = xml.match(regex);
+    if (match && match[1]) {
+      // Decode HTML entities and clean up
+      return match[1]
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1')
+        .trim();
+    }
+    return null;
+  }
+
+  // Helper function to validate image URLs
+  function isValidImageUrl(url: string): boolean {
+    if (!url || typeof url !== 'string') return false;
+    
+    // Check if it's a valid URL
+    try {
+      const urlObj = new URL(url);
+      // Only allow http/https protocols
+      if (!['http:', 'https:'].includes(urlObj.protocol)) return false;
+      
+      // Strict hostname validation - must be at least 4 characters and contain a dot
+      if (!urlObj.hostname || urlObj.hostname.length < 4 || !urlObj.hostname.includes('.')) {
+        return false;
+      }
+      
+      // Check for obviously malformed hostnames
+      if (urlObj.hostname.includes('..') || urlObj.hostname.startsWith('.') || urlObj.hostname.endsWith('.')) {
+        return false;
+      }
+      
+      // Check for common image extensions
+      const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?|$)/i;
+      if (imageExtensions.test(url)) {
+        return true;
+      }
+      
+      // Check for known image hosting domains and CDNs - be more specific
+      const imageHostingDomains = /\.(imgur|cloudinary|unsplash|pexels|pixabay|flickr|amazonaws|googleusercontent|wp|wordpress|gravatar|twimg|fbcdn|cdninstagram|ytimg)\.com$/i;
+      if (imageHostingDomains.test(urlObj.hostname)) {
+        return true;
+      }
+      
+      // Be more strict with jwpsrv - only allow if it has proper path structure
+      if (urlObj.hostname.includes('jwpsrv.com') && urlObj.pathname.includes('/') && urlObj.pathname.length > 10) {
+        return true;
+      }
+      
+      // Check for other common CDN patterns but be more strict
+      const cdnPatterns = /(cdn\.|images\.|static\.|media\.|assets\.|thumb)/i;
+      if (cdnPatterns.test(urlObj.hostname) && urlObj.pathname.length > 5) {
+        return true;
+      }
+      
+      // If URL contains common image-related keywords and has a reasonable path, it's likely an image
+      const imageKeywords = /(image|img|photo|pic|thumb|avatar|logo|banner)/i;
+      if (imageKeywords.test(url) && urlObj.pathname.length > 5) {
+        return true;
+      }
+      
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  // Handle opening links INTERNALLY
+  ipcMain.on('open-link-in-app', (_event, url) => {
+    // Check if this is a CoinGecko URL (use singleton pattern)
+    const isCoinGeckoUrl = url.includes('coingecko.com');
+    
+    if (isCoinGeckoUrl) {
+      // Use singleton pattern for CoinGecko URLs
+      if (coingeckoWindow && !coingeckoWindow.isDestroyed()) {
+        const normalizeUrl = (inputUrl: string): string => {
+          try {
+            const parsed = new URL(inputUrl);
+            // Rebuild without hash and search, remove trailing slash from pathname
+            return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/$/, '')}`;
+          } catch (e) {
+            console.warn('Failed to normalize URL:', inputUrl, e);
+            return inputUrl; // Return original if parsing fails
+          }
+        };
+        
+        const currentURL = coingeckoWindow.webContents.getURL();
+        const normalizedCurrentURL = normalizeUrl(currentURL);
+        const normalizedRequestedURL = normalizeUrl(url);
+
+        console.log(`CoinGecko window open. Normalized Current: ${normalizedCurrentURL}, Normalized Req: ${normalizedRequestedURL}`);
+
+        // ONLY load URL if normalized URLs are different
+        if (normalizedCurrentURL !== normalizedRequestedURL) {
+          console.log('Loading new URL into existing CoinGecko window.');
+          coingeckoWindow.loadURL(url);
+        } else {
+          console.log('Requested URL is the same as current. Focusing window only.');
+          // DO NOTHING here except focus/restore below
+        }
+
+        // Always focus and restore if minimized
+        if (coingeckoWindow.isMinimized()) {
+          coingeckoWindow.restore();
+        }
+        coingeckoWindow.focus();
+
       } else {
-        console.log('Requested URL is the same as current. Focusing window only.');
-        // DO NOTHING here except focus/restore below
+        console.log('Creating new CoinGecko window.');
+        // Create a new window and store the reference ONLY if creation succeeds
+        const newWindow = createInternalBrowserWindow(url);
+        if (newWindow) { // Check if window creation succeeded
+            coingeckoWindow = newWindow;
+        }
       }
-
-      // Always focus and restore if minimized
-      if (coingeckoWindow.isMinimized()) {
-        coingeckoWindow.restore();
-      }
-      coingeckoWindow.focus();
-
     } else {
-      console.log('Creating new CoinGecko window.');
-      // Create a new window and store the reference ONLY if creation succeeds
-      const newWindow = createInternalBrowserWindow(url);
-      if (newWindow) { // Check if window creation succeeded
-          coingeckoWindow = newWindow;
-      }
+      // For non-CoinGecko URLs (like news articles), always create a new window
+      console.log('Creating new browser window for:', url);
+      createInternalBrowserWindow(url);
     }
   });
 }

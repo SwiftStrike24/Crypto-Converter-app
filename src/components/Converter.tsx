@@ -6,7 +6,7 @@ import { FiBarChart, FiRefreshCw } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
 import { ipcRenderer } from 'electron';
 import WaveLoadingPlaceholder from './WaveLoadingPlaceholder';
-import { FaMagnifyingGlassChart, FaFire } from 'react-icons/fa6';
+import { FaMagnifyingGlassChart, FaFire, FaNewspaper } from 'react-icons/fa6';
 import { isStablecoin, getStablecoinTargetFiat } from '../utils/stablecoinDetection';
 
 
@@ -432,7 +432,12 @@ const ButtonContainer = styled.div`
   pointer-events: none;
 `;
 
-const ButtonWrapper = styled.div<{ $isResultVisible?: boolean }>`
+const ButtonGroup = styled.div`
+  display: flex;
+  gap: 10px;
+`;
+
+const ButtonWrapper = styled.div`
   position: relative;
   z-index: 10;
   transition:
@@ -537,6 +542,7 @@ const ChartButton = styled.button`
 
 const AnalysisButton = styled(ChartButton)``;
 const TrendingButton = styled(ChartButton)``; // New button for trending
+const NewsButton = styled(ChartButton)``; // New button for news
 
 const ChartIcon = () => (
   <FiBarChart />
@@ -548,6 +554,10 @@ const AnalysisIcon = () => (
 
 const TrendingIcon = () => (
   <FaFire style={{ color: '#ff6b6b' }} />
+);
+
+const NewsIcon = () => (
+  <FaNewspaper style={{ color: '#60a5fa' }} />
 );
 
 // Styled component for CoinGecko link
@@ -1415,14 +1425,17 @@ const Converter: React.FC<ConverterProps> = ({
   const [chartTooltipData, setChartTooltipData] = useState<{ style: React.CSSProperties; arrowOffset?: string }>({ style: {} });
   const [analysisTooltipData, setAnalysisTooltipData] = useState<{ style: React.CSSProperties; arrowOffset?: string }>({ style: {} });
   const [trendingTooltipData, setTrendingTooltipData] = useState<{ style: React.CSSProperties; arrowOffset?: string }>({ style: {} });
+  const [newsTooltipData, setNewsTooltipData] = useState<{ style: React.CSSProperties; arrowOffset?: string }>({ style: {} });
 
   // Refs for tooltips and buttons
   const chartButtonRef = useRef<HTMLButtonElement>(null);
   const analysisButtonRef = useRef<HTMLButtonElement>(null);
   const trendingButtonRef = useRef<HTMLButtonElement>(null);
+  const newsButtonRef = useRef<HTMLButtonElement>(null);
   const chartTooltipRef = useRef<HTMLDivElement>(null);
   const analysisTooltipRef = useRef<HTMLDivElement>(null);
   const trendingTooltipRef = useRef<HTMLDivElement>(null);
+  const newsTooltipRef = useRef<HTMLDivElement>(null);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const calculateTooltipStyle = (buttonRef: React.RefObject<HTMLButtonElement>, tooltipRef: React.RefObject<HTMLDivElement>): { tooltipStyle: React.CSSProperties; arrowOffset?: string } => {
@@ -1474,7 +1487,7 @@ const Converter: React.FC<ConverterProps> = ({
   };
 
   // Debounced style calculation on hover
-  const handleButtonHover = (type: 'chart' | 'analysis' | 'trending') => {
+  const handleButtonHover = (type: 'chart' | 'analysis' | 'trending' | 'news') => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
 
     hoverTimeoutRef.current = setTimeout(() => {
@@ -1505,6 +1518,15 @@ const Converter: React.FC<ConverterProps> = ({
           trendingTooltipRef.current.style.visibility = '';
           trendingTooltipRef.current.style.opacity = '';
           setTrendingTooltipData({ style: tooltipStyle, arrowOffset });
+      } else if (type === 'news' && newsButtonRef.current && newsTooltipRef.current) {
+          // Temporarily show tooltip to measure
+          newsTooltipRef.current.style.visibility = 'visible';
+          newsTooltipRef.current.style.opacity = '0';
+          const { tooltipStyle, arrowOffset } = calculateTooltipStyle(newsButtonRef, newsTooltipRef);
+           // Hide tooltip again
+          newsTooltipRef.current.style.visibility = '';
+          newsTooltipRef.current.style.opacity = '';
+          setNewsTooltipData({ style: tooltipStyle, arrowOffset });
       }
     }, 50); // Debounce slightly
   };
@@ -1581,7 +1603,7 @@ const Converter: React.FC<ConverterProps> = ({
     }
   }, [fiatDropdownOpen]);
 
-  const isResultVisible = !!((cryptoAmount || fiatAmount) && !error);
+
 
   return (
     <ConverterContainer>
@@ -1855,33 +1877,54 @@ const Converter: React.FC<ConverterProps> = ({
       )}
 
       <ButtonContainer>
-        <ButtonWrapper
-          onMouseEnter={() => handleButtonHover('analysis')}
-          onMouseLeave={handleButtonLeave}
-        >
-          <AnalysisButton
-            ref={analysisButtonRef}
-            onClick={() =>
-              navigate('/analysis', {
-                state: {
-                  cryptoId: selectedCrypto,
-                  currency: selectedFiat,
-                },
-              })
-            }
+        <ButtonGroup>
+          <ButtonWrapper
+            onMouseEnter={() => handleButtonHover('analysis')}
+            onMouseLeave={handleButtonLeave}
           >
-            <AnalysisIcon />
-          </AnalysisButton>
-          <Tooltip 
-            ref={analysisTooltipRef}
-            style={analysisTooltipData.style}
-            $arrowOffset={analysisTooltipData.arrowOffset}
+            <AnalysisButton
+              ref={analysisButtonRef}
+              onClick={() =>
+                navigate('/analysis', {
+                  state: {
+                    cryptoId: selectedCrypto,
+                    currency: selectedFiat,
+                  },
+                })
+              }
+            >
+              <AnalysisIcon />
+            </AnalysisButton>
+            <Tooltip 
+              ref={analysisTooltipRef}
+              style={analysisTooltipData.style}
+              $arrowOffset={analysisTooltipData.arrowOffset}
+            >
+              View Technical Analysis
+            </Tooltip>
+          </ButtonWrapper>
+
+          <ButtonWrapper
+            onMouseEnter={() => handleButtonHover('news')}
+            onMouseLeave={handleButtonLeave}
           >
-            View Technical Analysis
-          </Tooltip>
-        </ButtonWrapper>
+            <NewsButton
+              ref={newsButtonRef}
+              onClick={() => navigate('/news')}
+            >
+              <NewsIcon />
+            </NewsButton>
+            <Tooltip 
+              ref={newsTooltipRef}
+              style={newsTooltipData.style}
+              $arrowOffset={newsTooltipData.arrowOffset}
+            >
+              View Market News
+            </Tooltip>
+          </ButtonWrapper>
+        </ButtonGroup>
         
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <ButtonGroup>
             <ButtonWrapper
               onMouseEnter={() => handleButtonHover('chart')}
               onMouseLeave={handleButtonLeave}
@@ -1926,7 +1969,7 @@ const Converter: React.FC<ConverterProps> = ({
                 View Trending Tokens
               </Tooltip>
             </ButtonWrapper>
-        </div>
+        </ButtonGroup>
       </ButtonContainer>
 
       {/* Add the rate limit indicator */}

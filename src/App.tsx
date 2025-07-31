@@ -10,6 +10,7 @@ import ManageTokens from './pages/ManageTokens';
 import ChartPage from './pages/ChartPage';
 import TechnicalAnalysisPage from './pages/TechnicalAnalysisPage';
 import TrendingTokensPage from './pages/TrendingTokensPage'; // Import the new page
+import NewsPage from './pages/NewsPage';
 import { CryptoProvider } from './context/CryptoContext';
 import { CryptoCompareProvider } from './context/CryptoCompareContext';
 import { ExchangeRatesProvider } from './context/ExchangeRatesContext';
@@ -55,7 +56,8 @@ const AppContent: React.FC = () => {
                       location.pathname === '/chart' || 
                       location.pathname === '/manage-tokens' ||
                       location.pathname === '/analysis' ||
-                      location.pathname === '/trending'; // Add trending to full screen
+                      location.pathname === '/trending' ||
+                      location.pathname === '/news'; // Add news to full screen
   const [selectedCrypto, setSelectedCrypto] = useState('BTC');
   const [selectedFiat, setSelectedFiat] = useState('USD');
 
@@ -69,6 +71,8 @@ const AppContent: React.FC = () => {
     } else if (location.pathname === '/add-tokens') {
       ipcRenderer.send('set-window-size', { width: 800, height: 830, isFullScreen: true });
     } else if (location.pathname === '/trending') {
+      ipcRenderer.send('set-window-size', { width: 1200, height: 800, isFullScreen: true });
+    } else if (location.pathname === '/news') {
       ipcRenderer.send('set-window-size', { width: 1200, height: 800, isFullScreen: true });
     } else if (isFullScreen) {
       ipcRenderer.send('set-window-size', { width: 800, height: 600, isFullScreen: true });
@@ -84,6 +88,7 @@ const AppContent: React.FC = () => {
       <Route path="/chart" element={<ChartPage />} />
       <Route path="/analysis" element={<TechnicalAnalysisPage />} />
       <Route path="/trending" element={<TrendingTokensPage />} />
+      <Route path="/news" element={<NewsPage />} />
       <Route path="/" element={
         <AppContainer $isFullScreen={false}>
           <BorderBeam />

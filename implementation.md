@@ -200,6 +200,14 @@ The application primarily uses React Context API for managing global state:
 *   **SDK:** `@aws-sdk/client-s3` is used to interact with R2 (S3-compatible API).
 *   **Credentials:** Requires `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` in `.env`.
 
+### 4.5. News Service Enhancement
+
+*   **Enhanced `newsService.fetchNews(force?: boolean)`**: The news service now supports forced refresh functionality via an optional `force` parameter.
+    *   **Default Behavior (`force: false`)**: Serves cached data if available and fresh, maintains existing automatic refresh behavior.
+    *   **Forced Refresh (`force: true`)**: Bypasses all cache checks and fetches fresh data directly from RSS sources via IPC, ensuring users get the latest news when manually requested.
+    *   **Intelligent Caching Strategy**: Maintains the existing 10-minute fresh cache with 1-hour stale cache fallback while allowing immediate updates when needed.
+    *   **UI Integration**: Connected to the refresh button in `NewsPage.tsx` for seamless user-triggered updates.
+
 ## 5. UI and Styling
 
 *   **Component Library:** Material-UI (MUI v6.3.1 - noted as pre-release in `progress.md`).
@@ -234,6 +242,9 @@ The application primarily uses React Context API for managing global state:
     *   `BorderBeam.tsx`: A purely decorative component that creates a soft, animated gradient beam around the main application window, enhancing the "Liquid Glass" theme. It is implemented using performant, hardware-accelerated CSS animations.
     *   `TrendingTokensPage.tsx`: Full-page component that displays a grid of the top trending tokens based on 24-hour percentage change. Features a centered "🔥 Trending Tokens" title, custom scrollbar styling matching the ManageTokens page design, and smart navigation flow that preserves user context when navigating to/from chart pages.
     *   `TrendingTokenCard.tsx`: A reusable UI card for displaying a single token in the trending list, styled with the "Liquid Glass" theme. Includes navigation state management to enable proper back navigation flow.
+    *   `NewsPage.tsx`: Full-page component that displays the latest cryptocurrency news articles aggregated from multiple RSS feeds (Cointelegraph, Decrypt, U.Today). Features automatic refresh every 10 minutes, cached fallback data, and visual indicators for cache status. Matches the "Liquid Glass" design theme with custom scrollbar styling.
+        *   **Manual Refresh Button**: Features a modern, circular refresh button in the header with "Liquid Glass" styling that allows users to force immediate news updates. Includes smooth spin animations during loading, disabled states, and hover effects with gradient overlays and subtle transforms.
+    *   `NewsCard.tsx`: A reusable UI card for displaying individual news articles with title, summary, source, timestamp, and an optional article image. Includes "Read More" button that opens articles in the user's default browser via IPC communication.
 
 ## 6. Key Features Implemented
 
@@ -244,6 +255,16 @@ The application primarily uses React Context API for managing global state:
     *   Smart navigation flow that preserves user context when clicking between trending tokens and chart/analysis pages
     *   **Session-Only Token Viewing**: When users click on trending tokens to view charts, tokens are added temporarily using `addTemporaryToken()` rather than permanently to the user's collection. This prevents unwanted tokens from cluttering the manage tokens page while still enabling full chart functionality.
     *   **Robust Caching System**: 5-minute fresh cache with 30-minute stale cache fallback. When API calls fail, the system automatically serves stale cached data with clear visual indicators. Includes "Try Again" functionality and detailed cache status reporting.
+*   **Market News Page**: A comprehensive news aggregation system that fetches the latest cryptocurrency news from multiple RSS sources. Features include:
+    *   **Multi-Source RSS Aggregation**: Fetches from CoinDesk, Bitcoin.com, CryptoSlate, and Decrypt using direct RSS parsing in Electron's main process to avoid CSP issues
+    *   **10-Minute Refresh Cycle**: Automatically refreshes news articles every 10 minutes with manual refresh capability
+    *   **Manual Refresh Button**: A modern, animated refresh button in the header that forces immediate news updates, bypassing cache. Features liquid glass styling with smooth loading animations and disabled states during fetch operations.
+    *   **Intelligent Caching**: 10-minute fresh cache with 1-hour stale cache fallback for offline functionality
+    *   **In-App Browser Integration**: News articles open in internal browser windows for seamless reading experience (similar to CoinGecko integration)
+    *   **Rich Article Cards**: Displays article title, summary, source, timestamp, and optional images with "Liquid Glass" styling
+    *   **Content Normalization**: Extracts clean summaries from HTML content and handles various RSS feed formats consistently
+    *   **Smart Browser Management**: CoinGecko URLs use singleton pattern (one reusable window) while news articles create separate windows for better multi-article reading
+    *   **Enhanced Status Display**: Shows "Last updated" timestamp with live updates and visual indicators for cached vs. fresh data
 *   **Modern Charting Dashboard**: The `ChartPage` provides a comprehensive and visually appealing dashboard for analyzing cryptocurrencies. It integrates a powerful `TradingViewWidget` with a dedicated `TokenStats` sidebar, all within a responsive two-column grid layout.
 *   **Unified Exchange Views**: The list of supported exchanges for charting (e.g., Binance, MEXC, Bybit) is now centralized in `src/constants/cryptoConstants.ts` and used consistently across both the `ChartPage` and `TechnicalAnalysisPage` to prevent discrepancies and improve maintainability.
 *   **Animated Launch Screen**: An initial loading screen built with `framer-motion` that provides a polished startup experience before the main application UI is displayed.
