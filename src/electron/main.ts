@@ -601,7 +601,7 @@ function setupIpcHandlers() {
     }
   });
 
-  // Handle fetching news data from main process to avoid CSP issues
+  // Enhanced RSS Engine running in main process to avoid CSP issues
   ipcMain.handle('fetch-news-data', async (_event, sources) => {
     try {
       console.log('[MAIN_PROCESS] Fetching news data from RSS sources');
@@ -767,11 +767,42 @@ function setupIpcHandlers() {
           
           article.imageUrl = imageUrl;
           
-          // Clean HTML from summary
-          article.summary = article.summary.replace(/<[^>]*>/g, '').trim();
-          if (article.summary.length > 200) {
-            article.summary = article.summary.substring(0, 197) + '...';
+          // Enhanced summary generation with fallbacks
+          let summary = article.summary || '';
+          
+          // Try content:encoded if summary is empty or too short
+          if (!summary || summary.length < 50) {
+            const contentEncodedMatch = item.match(/<content:encoded[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/i);
+            if (contentEncodedMatch) {
+              summary = contentEncodedMatch[1];
+            }
           }
+          
+          // Clean HTML from summary
+          summary = summary.replace(/<[^>]*>/g, '').trim();
+          
+          // If still empty or too short, use title-based generation
+          if (!summary || summary.length < 20) {
+            const title = article.title || '';
+            if (title.length > 50) {
+              // For long titles, create a meaningful summary
+              const sentences = title.split(/[.!?]+/).filter(s => s.trim().length > 0);
+              if (sentences.length > 1) {
+                summary = sentences[0].trim() + '.';
+              } else {
+                summary = title.substring(0, 100) + (title.length > 100 ? '...' : '');
+              }
+            } else {
+              summary = title || 'Article summary not available.';
+            }
+          }
+          
+          // Ensure reasonable length
+          if (summary.length > 200) {
+            summary = summary.substring(0, 197) + '...';
+          }
+          
+          article.summary = summary;
           
           if (article.title && article.url) {
             articles.push(article);

@@ -46,9 +46,9 @@ class NewsService {
     }
 
     try {
-      console.log('[NEWS_SERVICE] Fetching fresh news data');
+      console.log('[NEWS_SERVICE] Fetching fresh news data via IPC');
       
-      // Use IPC to fetch news from main process
+      // Use IPC to fetch news from main process (avoids CSP issues)
       const response = await ipcRenderer.invoke('fetch-news-data', RSS_SOURCES);
       
       if (response && response.success) {
@@ -100,8 +100,6 @@ class NewsService {
       return await this.handleApiFailure();
     }
   }
-
-
 
   private extractSummary(htmlContent: string): string {
     // Remove HTML tags and get first 150 characters
