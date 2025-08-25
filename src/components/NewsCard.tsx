@@ -72,10 +72,6 @@ const ArticleSummary = styled.p`
   color: #a0a0a0;
   margin: 0 0 0.75rem 0;
   line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 `;
 
 const ArticleFooter = styled.div`

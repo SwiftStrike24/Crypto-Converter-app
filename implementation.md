@@ -208,6 +208,45 @@ The application primarily uses React Context API for managing global state:
     *   **Intelligent Caching Strategy**: Maintains the existing 10-minute fresh cache with 1-hour stale cache fallback while allowing immediate updates when needed.
     *   **UI Integration**: Connected to the refresh button in `NewsPage.tsx` for seamless user-triggered updates.
 
+### 4.6. RSS Parser Diagnostic Logging (Phase 1)
+
+*   **Diagnostic Logging Added**: Comprehensive logging has been implemented in the `parseRSSXML` function within `src/electron/main.ts` to diagnose issues with summary extraction and truncation.
+    *   **Raw XML Capture**: Logs the raw XML content of each `<item>` element (first 500 characters) to identify malformed or incomplete feed data.
+    *   **Description Extraction**: Captures the raw content extracted from the `<description>` tag before any processing, revealing if the issue is with initial extraction.
+    *   **Processing Steps**: Logs the summary after HTML cleaning and after truncation (if applied), allowing precise identification of where content is being lost.
+    *   **Truncation Details**: Records when summaries are truncated from their original length to 200 characters, including the exact character counts.
+    *   **Article-Level Tracking**: Each article's processing is tracked with clear separators, making it easy to correlate logs with specific articles.
+
+### 4.7. Market News Engine v2 - Backend Upgrade (Phase 2)
+
+*   **Technology Stack Upgrade**: Replaced the brittle regex-based parser with industry-standard libraries.
+    *   **feedparser**: Robust RSS/Atom feed parsing library that handles malformed XML, various feed formats, and namespace complexities.
+    *   **html-to-text**: Professional HTML-to-text conversion with intelligent formatting preservation and link handling.
+*   **New Parser Implementation** (`parseRSSWithFeedparser`):
+    *   **Stream-Based Processing**: Uses Node.js streams for efficient memory usage when parsing large feeds.
+    *   **Intelligent Lede Extraction**: Smart hierarchy prioritizes true article summaries over full content:
+        *   **Primary**: `description` and `summary` fields (typically contain article ledes)
+        *   **Secondary**: `content:encoded` with intelligent lede extraction from first paragraph/sentences
+        *   **Smart Detection**: Automatically distinguishes between summary text and full articles
+    *   **Complete Summary Preservation**: No backend truncation - all summaries are sent to the frontend in full.
+    *   **Enhanced Image Extraction**: Improved image URL detection from enclosures, media content, and embedded HTML.
+    *   **Complete Refresh Functionality**: The refresh button now performs a comprehensive cache clear and fresh data fetch:
+        *   **Cache Clearing**: Removes all localStorage entries related to news (`market-news`, `cryptovertx-cache-market-news`, etc.)
+        *   **State Reset**: Clears all component state (articles, timestamps, error states)
+        *   **Visual Feedback**: Button changes to green during complete refresh to indicate thorough processing
+        *   **Fresh Parsing**: Ensures the new lede extraction logic runs from scratch
+*   **Removed Backend Truncation**: The 200-character limit and "..." ellipsis logic have been completely removed from the main process.
+*   **Error Handling**: Robust error handling with graceful fallbacks when individual feed items fail to parse.
+
+### 4.8. Frontend UI Flexibility (Phase 3)
+
+*   **NewsCard Component Updates**:
+    *   **Removed CSS Clamping**: Eliminated `-webkit-line-clamp: 3` and `overflow: hidden` from `ArticleSummary` styled component.
+    *   **Dynamic Height Support**: Cards now expand naturally to accommodate full summary text without truncation.
+*   **NewsService Simplification**:
+    *   **Removed Redundant Processing**: Deleted the `extractSummary` method since the backend now provides complete, clean summaries.
+    *   **Streamlined Data Processing**: Frontend now trusts the backend to deliver properly formatted summaries.
+
 ## 5. UI and Styling
 
 *   **Component Library:** Material-UI (MUI v6.3.1 - noted as pre-release in `progress.md`).

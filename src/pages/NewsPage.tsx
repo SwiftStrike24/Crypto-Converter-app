@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { FiRefreshCw } from 'react-icons/fi';
 import { newsService, NewsArticle, NewsFetchResult } from '../services/newsService';
+import { removeCachedData } from '../services/crypto/cryptoCacheService';
 import NewsCard from '../components/NewsCard';
 import LiveTimeAgo from '../components/LiveTimeAgo';
 import WaveLoadingPlaceholder from '../components/WaveLoadingPlaceholder';
@@ -89,7 +90,7 @@ const HeaderInfoContainer = styled.div`
   color: #888;
 `;
 
-const RefreshButton = styled.button<{ $isLoading: boolean }>`
+const RefreshButton = styled.button<{ $isLoading: boolean; $isCompleteRefresh?: boolean }>`
   display: flex;
   align-items: center;
   justify-content: center;
@@ -97,16 +98,24 @@ const RefreshButton = styled.button<{ $isLoading: boolean }>`
   height: 40px;
   border: none;
   border-radius: 50%;
-  background: ${props => props.$isLoading 
-    ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(59, 130, 246, 0.3) 100%)'
-    : 'linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)'
-  };
+  background: ${props => {
+    if (props.$isCompleteRefresh) {
+      return 'linear-gradient(135deg, rgba(34, 197, 94, 0.3) 0%, rgba(22, 163, 74, 0.3) 100%)';
+    }
+    return props.$isLoading
+      ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(59, 130, 246, 0.3) 100%)'
+      : 'linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)';
+  }};
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: ${props => props.$isLoading
-    ? '0 8px 32px rgba(139, 92, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
-    : '0 4px 16px rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
-  };
+  box-shadow: ${props => {
+    if (props.$isCompleteRefresh) {
+      return '0 8px 32px rgba(34, 197, 94, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+    }
+    return props.$isLoading
+      ? '0 8px 32px rgba(139, 92, 246, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+      : '0 4px 16px rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+  }};
   color: #fff;
   cursor: ${props => props.$isLoading ? 'not-allowed' : 'pointer'};
   opacity: ${props => props.$isLoading ? 0.7 : 1};
@@ -121,7 +130,12 @@ const RefreshButton = styled.button<{ $isLoading: boolean }>`
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+    background: ${props => {
+      if (props.$isCompleteRefresh) {
+        return 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(22, 163, 74, 0.1) 100%)';
+      }
+      return 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%)';
+    }};
     opacity: 0;
     transition: opacity 0.3s ease;
     border-radius: 50%;
@@ -129,8 +143,13 @@ const RefreshButton = styled.button<{ $isLoading: boolean }>`
 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 6px 24px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    
+    box-shadow: ${props => {
+      if (props.$isCompleteRefresh) {
+        return '0 6px 24px rgba(34, 197, 94, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+      }
+      return '0 6px 24px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+    }};
+
     &:before {
       opacity: 1;
     }
@@ -138,7 +157,12 @@ const RefreshButton = styled.button<{ $isLoading: boolean }>`
 
   &:active:not(:disabled) {
     transform: translateY(0);
-    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    box-shadow: ${props => {
+      if (props.$isCompleteRefresh) {
+        return '0 2px 8px rgba(34, 197, 94, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+      }
+      return '0 2px 8px rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+    }};
   }
 
   &:disabled {
@@ -150,6 +174,7 @@ const RefreshButton = styled.button<{ $isLoading: boolean }>`
     height: 18px;
     animation: ${props => props.$isLoading ? 'spin 1s linear infinite' : 'none'};
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+    color: ${props => props.$isCompleteRefresh ? '#22c55e' : '#fff'};
   }
 
   @keyframes spin {
@@ -298,6 +323,7 @@ const NewsPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [usingStaleData, setUsingStaleData] = useState(false);
+  const [isCompleteRefresh, setIsCompleteRefresh] = useState(false);
 
   const fetchNews = async (forceRefresh: boolean = false) => {
     try {
@@ -342,12 +368,46 @@ const NewsPage: React.FC = () => {
       }
     } finally {
       setIsLoading(false);
+      setIsCompleteRefresh(false); // Reset complete refresh state
     }
   };
 
   const handleRefresh = () => {
     if (!isLoading) {
-      fetchNews(true); // Force refresh
+      console.log('[NEWS_PAGE] Performing complete refresh - clearing ALL cache and fetching fresh data');
+      setIsCompleteRefresh(true);
+
+      // Clear all possible news-related cache entries
+      removeCachedData('market-news');
+
+      // Clear any stale cache entries with various possible keys
+      const cacheKeys = [
+        'cryptovertx-cache-market-news',
+        'market-news',
+        'news-cache',
+        'crypto-news'
+      ];
+
+      cacheKeys.forEach(key => {
+        try {
+          localStorage.removeItem(key);
+          console.log(`[NEWS_PAGE] Cleared cache: ${key}`);
+        } catch (error) {
+          console.warn(`[NEWS_PAGE] Could not clear cache ${key}:`, error);
+        }
+      });
+
+      // Reset all state to ensure completely fresh display
+      setArticles([]);
+      setLastUpdated(null);
+      setUsingStaleData(false);
+      setError(null);
+
+      // Add a small delay to ensure cache is cleared before fetching
+      setTimeout(() => {
+        console.log('[NEWS_PAGE] Starting fresh news fetch after cache clear');
+        fetchNews(true); // Force refresh
+      }, 100);
     }
   };
 
@@ -388,7 +448,12 @@ const NewsPage: React.FC = () => {
                 </CacheIndicator>
               )}
             </div>
-            <RefreshButton $isLoading={isLoading} onClick={handleRefresh}>
+            <RefreshButton
+              $isLoading={isLoading}
+              $isCompleteRefresh={isCompleteRefresh}
+              onClick={handleRefresh}
+              title={isCompleteRefresh ? "Performing complete refresh..." : "Complete refresh (clears all cache)"}
+            >
               <FiRefreshCw />
             </RefreshButton>
           </HeaderInfoContainer>

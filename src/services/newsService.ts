@@ -62,7 +62,7 @@ class NewsService {
               title: item.title || 'Untitled',
               source: item.source,
               publishedAt: item.publishedAt || new Date().toISOString(),
-              summary: this.extractSummary(item.summary || ''),
+              summary: item.summary || '', // Backend now provides complete, clean summaries
               url: item.url || '',
               imageUrl: this.extractImageUrl(item.imageUrl || item.summary || '')
             }));
@@ -103,11 +103,7 @@ class NewsService {
 
 
 
-  private extractSummary(htmlContent: string): string {
-    // Remove HTML tags and get first 150 characters
-    const textContent = htmlContent.replace(/<[^>]*>/g, '').trim();
-    return textContent.length > 150 ? textContent.substring(0, 147) + '...' : textContent;
-  }
+
 
   private extractImageUrl(content: string): string | undefined {
     if (!content) return undefined;

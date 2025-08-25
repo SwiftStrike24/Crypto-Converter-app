@@ -1,8 +1,10 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, screen, shell } from 'electron';
-import path from 'path';
-import fs from 'fs';
 import { initUpdateHandlers } from './updateHandler';
-import dotenv from 'dotenv';
+const path = require('path');
+const fs = require('fs');
+const dotenv = require('dotenv');
+const FeedParser = require('feedparser');
+const { convert } = require('html-to-text');
 
 // Load environment variables
 dotenv.config({ path: path.join(process.cwd(), '.env') });
@@ -604,12 +606,12 @@ function setupIpcHandlers() {
   // Handle fetching news data from main process to avoid CSP issues
   ipcMain.handle('fetch-news-data', async (_event, sources) => {
     try {
-      console.log('[MAIN_PROCESS] Fetching news data from RSS sources');
-      
+      console.log('[MAIN_PROCESS] Fetching news data from RSS sources using feedparser');
+
       const fetchPromises = sources.map(async (source: { name: string; url: string }) => {
         try {
           console.log(`[MAIN_PROCESS] Fetching from ${source.name}: ${source.url}`);
-          
+
           // Fetch RSS XML directly
           const response = await fetch(source.url, {
             method: 'GET',
@@ -625,12 +627,12 @@ function setupIpcHandlers() {
 
           const xmlText = await response.text();
           console.log(`[MAIN_PROCESS] Downloaded RSS XML from ${source.name} (${xmlText.length} chars)`);
-          
-          // Parse RSS XML manually (simple parsing)
-          const articles = parseRSSXML(xmlText, source.name);
-          
+
+          // Parse RSS XML using feedparser
+          const articles = await parseRSSWithFeedparser(xmlText, source.name);
+
           console.log(`[MAIN_PROCESS] Successfully parsed ${articles.length} articles from ${source.name}`);
-          
+
           return {
             success: true,
             source: source.name,
@@ -647,160 +649,232 @@ function setupIpcHandlers() {
       });
 
       const results = await Promise.allSettled(fetchPromises);
-      const processedResults = results.map(result => 
+      const processedResults = results.map(result =>
         result.status === 'fulfilled' ? result.value : { success: false, error: 'Promise rejected' }
       );
 
       return { success: true, results: processedResults };
     } catch (error) {
       console.error('[MAIN_PROCESS] Critical error during news fetch:', error);
-      return { 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
       };
     }
   });
 
-  // Simple RSS XML parser function
-  function parseRSSXML(xmlText: string, sourceName: string) {
+    // New robust RSS parser using feedparser and html-to-text
+  async function parseRSSWithFeedparser(xmlText: string, sourceName: string): Promise<any[]> {
     const articles: any[] = [];
-    
+
     try {
-      // Extract items using regex (simple but effective for RSS)
-      const itemMatches = xmlText.match(/<item[^>]*>[\s\S]*?<\/item>/gi);
-      
-      if (itemMatches) {
-        itemMatches.slice(0, 20).forEach(item => { // Limit to 20 items
-          const article = {
-            title: extractXMLTag(item, 'title') || 'Untitled',
-            source: sourceName,
-            publishedAt: extractXMLTag(item, 'pubDate') || new Date().toISOString(),
-            summary: extractXMLTag(item, 'description') || '',
-            url: extractXMLTag(item, 'link') || extractXMLTag(item, 'guid') || '',
-            imageUrl: undefined as string | undefined
-          };
-          
-          // Try to extract image URL from multiple sources
-          let imageUrl: string | undefined = undefined;
-          
-          // Helper function to clean and validate URL
-          const cleanAndValidateUrl = (url: string): string | null => {
-            if (!url) return null;
-            
-            // Clean the URL
-            let cleanUrl = url.trim()
-              .replace(/&amp;/g, '&')
-              .replace(/&lt;/g, '<')
-              .replace(/&gt;/g, '>')
-              .replace(/&quot;/g, '"');
-            
-            // Remove any trailing characters that might be malformed
-            cleanUrl = cleanUrl.replace(/[^\w\-\.\/\:\?\=\&]+$/, '');
-            
-            // Additional check: try to construct URL to validate format
+      // Create a readable stream from the XML text
+      const stream = require('stream');
+      const readableStream = new stream.Readable();
+      readableStream.push(xmlText);
+      readableStream.push(null);
+
+      const feedparser = new FeedParser({});
+
+      return new Promise<any[]>((resolve, reject) => {
+        const parsedArticles: any[] = [];
+
+        feedparser.on('error', (error: Error) => {
+          console.error(`[FEEDPARSER] Error parsing feed from ${sourceName}:`, error);
+          reject(error);
+        });
+
+        feedparser.on('readable', function(this: any) {
+          let item;
+          while ((item = this.read())) {
             try {
-              const testUrl = new URL(cleanUrl);
-              // Check if the URL is actually reachable/valid format
-              if (!testUrl.hostname || testUrl.hostname.length < 3) {
-                return null;
+              // Extract the full lede/summary using intelligent parsing
+              const summary = extractFullLede(item);
+
+              // Extract image URL
+              const imageUrl = extractImageFromItem(item, sourceName);
+
+              const article = {
+                title: item.title || 'Untitled',
+                source: sourceName,
+                publishedAt: item.pubdate || item.date || new Date().toISOString(),
+                summary: summary,
+                url: item.link || item.guid || '',
+                imageUrl: imageUrl
+              };
+
+              if (article.title && article.url) {
+                parsedArticles.push(article);
+                console.log(`[FEEDPARSER] Successfully processed article: "${article.title?.substring(0, 50)}..."`);
               }
-            } catch {
-              return null;
+            } catch (itemError) {
+              console.error(`[FEEDPARSER] Error processing item from ${sourceName}:`, itemError);
             }
-            
-            return isValidImageUrl(cleanUrl) ? cleanUrl : null;
-          };
-          
-          // 1. Try enclosure first
-          const enclosureMatch = item.match(/<enclosure[^>]+url="([^"]+)"[^>]*>/i);
-          if (enclosureMatch) {
-            const cleanUrl = cleanAndValidateUrl(enclosureMatch[1]);
-            if (cleanUrl) imageUrl = cleanUrl;
-          }
-          
-          // 2. Try media:content or media:thumbnail (common in RSS feeds)
-          if (!imageUrl) {
-            const mediaContentMatch = item.match(/<media:content[^>]+url="([^"]+)"[^>]*>/i);
-            if (mediaContentMatch) {
-              const cleanUrl = cleanAndValidateUrl(mediaContentMatch[1]);
-              if (cleanUrl) imageUrl = cleanUrl;
-            }
-          }
-          
-          if (!imageUrl) {
-            const mediaThumbnailMatch = item.match(/<media:thumbnail[^>]+url="([^"]+)"[^>]*>/i);
-            if (mediaThumbnailMatch) {
-              const cleanUrl = cleanAndValidateUrl(mediaThumbnailMatch[1]);
-              if (cleanUrl) imageUrl = cleanUrl;
-            }
-          }
-          
-          // 3. Try to find image in description/content
-          if (!imageUrl) {
-            const imgMatch = article.summary.match(/<img[^>]+src="([^"]+)"/i);
-            if (imgMatch) {
-              const cleanUrl = cleanAndValidateUrl(imgMatch[1]);
-              if (cleanUrl) imageUrl = cleanUrl;
-            }
-          }
-          
-          // 4. For CoinDesk specifically, try to extract from content:encoded
-          if (!imageUrl && sourceName.includes('CoinDesk')) {
-            const contentEncodedMatch = item.match(/<content:encoded[^>]*><!\[CDATA\[([\s\S]*?)\]\]><\/content:encoded>/i);
-            if (contentEncodedMatch) {
-              const contentImgMatch = contentEncodedMatch[1].match(/<img[^>]+src="([^"]+)"/i);
-              if (contentImgMatch) {
-                const cleanUrl = cleanAndValidateUrl(contentImgMatch[1]);
-                if (cleanUrl) imageUrl = cleanUrl;
-              }
-            }
-          }
-          
-          // 5. Additional fallback: look for any URL that looks like an image in the entire item
-          if (!imageUrl) {
-            const allUrlMatches = item.match(/https?:\/\/[^\s"<>]+\.(jpg|jpeg|png|gif|webp|svg)/gi);
-            if (allUrlMatches && allUrlMatches.length > 0) {
-              const cleanUrl = cleanAndValidateUrl(allUrlMatches[0]);
-              if (cleanUrl) imageUrl = cleanUrl;
-            }
-          }
-          
-          article.imageUrl = imageUrl;
-          
-          // Clean HTML from summary
-          article.summary = article.summary.replace(/<[^>]*>/g, '').trim();
-          if (article.summary.length > 200) {
-            article.summary = article.summary.substring(0, 197) + '...';
-          }
-          
-          if (article.title && article.url) {
-            articles.push(article);
           }
         });
-      }
+
+        feedparser.on('end', () => {
+          console.log(`[FEEDPARSER] Completed parsing ${parsedArticles.length} articles from ${sourceName}`);
+          resolve(parsedArticles.slice(0, 20)); // Limit to 20 items
+        });
+
+        // Pipe the XML stream to feedparser
+        readableStream.pipe(feedparser);
+      });
+
     } catch (error) {
       console.error(`[MAIN_PROCESS] Error parsing RSS XML for ${sourceName}:`, error);
+      return articles;
     }
-    
-    return articles;
   }
 
-  // Helper function to extract content from XML tags
-  function extractXMLTag(xml: string, tagName: string): string | null {
-    const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\/${tagName}>`, 'i');
-    const match = xml.match(regex);
-    if (match && match[1]) {
-      // Decode HTML entities and clean up
-      return match[1]
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/<!\[CDATA\[(.*?)\]\]>/g, '$1')
-        .trim();
+  // Intelligent lede extraction function
+  function extractFullLede(item: any): string {
+    // Priority order for extracting the lede/summary:
+    // 1. description (usually the article summary/lede)
+    // 2. summary (Atom feeds)
+    // 3. content:encoded (full content, extract lede from first paragraph)
+    // 4. content (Atom feeds)
+
+    if (item.description) {
+      console.log(`[LEDE_EXTRACTION] Using description field (${item.description.length} chars)`);
+      return extractLedeFromContent(item.description);
     }
-    return null;
+    
+    if (item.summary) {
+      console.log(`[LEDE_EXTRACTION] Using summary field (${item.summary.length} chars)`);
+      return extractLedeFromContent(item.summary);
+    }
+
+    if (item['content:encoded']) {
+      console.log(`[LEDE_EXTRACTION] Extracting lede from content:encoded`);
+      return extractLedeFromContent(item['content:encoded']);
+    }
+    
+    if (item.content) {
+      console.log(`[LEDE_EXTRACTION] Using content field (${item.content.length} chars)`);
+      return extractLedeFromContent(item.content);
+    }
+
+    console.log(`[LEDE_EXTRACTION] No summary content found for item`);
+    return '';
+  }
+
+  // Extract lede paragraph from full article content
+  function extractLedeFromContent(content: string): string {
+    // Convert HTML to clean text using html-to-text
+    const plainText = convert(content, {
+      wordwrap: false,
+      preserveNewlines: false,
+      selectors: [
+        { selector: 'a', options: { ignoreHref: true } },
+        { selector: 'img', format: 'skip' },
+        // Let default BR handling create newlines
+        { selector: 'p', options: { leadingLineBreaks: 1, trailingLineBreaks: 1 } },
+        { selector: 'div', options: { leadingLineBreaks: 1, trailingLineBreaks: 1 } }
+      ]
+    }).trim();
+
+    // If the content is already short (under 400 chars), it's probably already a lede
+    if (plainText.length <= 400) {
+      return plainText;
+    }
+
+    // Try to find the first substantial paragraph
+    const paragraphs = plainText.split(/\n\s*\n/).filter((p: string) => p.trim().length > 20);
+
+    if (paragraphs.length > 0) {
+      const firstParagraph = paragraphs[0].trim();
+
+      // If first paragraph is reasonably short, use it
+      if (firstParagraph.length <= 400) {
+        return firstParagraph;
+      }
+
+      // Otherwise, take first 2-3 sentences from the long first paragraph
+      const sentences = firstParagraph.split(/[.!?]+/).filter((s: string) => s.trim().length > 10);
+      if (sentences.length > 0) {
+        const ledeSentences = sentences.slice(0, Math.min(2, sentences.length));
+        return ledeSentences.join('. ').trim() + '.';
+      }
+    }
+
+    // Fallback: take first 300 characters of the whole text and cut at sentence boundary
+    const first300 = plainText.substring(0, 300);
+    const lastSentenceEnd = Math.max(
+      first300.lastIndexOf('.'),
+      first300.lastIndexOf('!'),
+      first300.lastIndexOf('?')
+    );
+
+    if (lastSentenceEnd > 100) {
+      return plainText.substring(0, lastSentenceEnd + 1).trim();
+    }
+
+    // Final fallback: hard truncate with ellipsis
+    const lastSpace = first300.lastIndexOf(' ');
+    if (lastSpace > 0) {
+        return first300.substring(0, lastSpace).trim() + '...';
+    }
+    
+    return first300 + '...';
+  }
+
+  // Enhanced image extraction function
+  function extractImageFromItem(item: any, sourceName: string): string | undefined {
+    // Try multiple sources for image extraction
+
+    // 1. Check for enclosure (common in podcasts and media RSS)
+    if (item.enclosures && item.enclosures.length > 0) {
+      for (const enclosure of item.enclosures) {
+        if (enclosure.url && enclosure.type && enclosure.type.startsWith('image/')) {
+          if (isValidImageUrl(enclosure.url)) {
+            return enclosure.url;
+          }
+        }
+      }
+    }
+
+    // 2. Check for media:content or media:thumbnail
+    if (item['media:content'] && item['media:content'].url) {
+      if (isValidImageUrl(item['media:content'].url)) {
+        return item['media:content'].url;
+      }
+    }
+
+    if (item['media:thumbnail'] && item['media:thumbnail'].url) {
+      if (isValidImageUrl(item['media:thumbnail'].url)) {
+        return item['media:thumbnail'].url;
+      }
+    }
+
+    // 3. Extract from description or content using regex
+    const contentFields = [item.description, item['content:encoded'], item.content, item.summary].filter(Boolean);
+
+    for (const content of contentFields) {
+      const imgMatch = content.match(/<img[^>]+src="([^"]+)"/i);
+      if (imgMatch && isValidImageUrl(imgMatch[1])) {
+        return imgMatch[1];
+      }
+    }
+
+    // 4. For CoinDesk specifically, check content:encoded for images
+    if (sourceName.includes('CoinDesk') && item['content:encoded']) {
+      const contentMatch = item['content:encoded'].match(/<img[^>]+src="([^"]+)"/i);
+      if (contentMatch && isValidImageUrl(contentMatch[1])) {
+        return contentMatch[1];
+      }
+    }
+
+    // 5. Fallback: look for any image URLs in the content
+    for (const content of contentFields) {
+      const urlMatches = content.match(/https?:\/\/[^\s"<>]+\.(jpg|jpeg|png|gif|webp|svg)/gi);
+      if (urlMatches && urlMatches.length > 0 && isValidImageUrl(urlMatches[0])) {
+        return urlMatches[0];
+      }
+    }
+
+    return undefined;
   }
 
   // Helper function to validate image URLs
