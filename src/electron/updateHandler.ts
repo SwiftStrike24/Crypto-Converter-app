@@ -11,12 +11,22 @@ import { stat } from 'fs/promises';
  */
 export function initUpdateHandlers(mainWindow: BrowserWindow) {
   // Handle download update request
-  ipcMain.handle('download-update', async (_event, url: string) => {
+  ipcMain.handle('download-update', async (_event, url: string, fileName?: string) => {
     try {
       console.log(`Starting download from: ${url}`);
       
+      // Determine the file extension from the filename or default to .exe
+      let extension = '.exe'; // Default fallback
+      if (fileName) {
+        if (fileName.endsWith('.msi')) {
+          extension = '.msi';
+        } else if (fileName.endsWith('.exe')) {
+          extension = '.exe';
+        }
+      }
+
       // Create a temporary file path in the app's user data directory
-      const downloadPath = join(app.getPath('temp'), `CryptoVertX-Update-${Date.now()}.exe`);
+      const downloadPath = join(app.getPath('temp'), `CryptoVertX-Update-${Date.now()}${extension}`);
       console.log(`Downloading to: ${downloadPath}`);
       
       // Create a write stream for the file

@@ -366,6 +366,27 @@ Transformed the `TechnicalAnalysisPage` from a simple modal overlay into a full-
 ### Phase 6: Robust Stablecoin Verification (v1.8.1)
 Refactored the stablecoin detection logic to be more robust and prevent false positives. The system now uses a two-factor approach: it first checks for metadata signals (categories, symbol) that indicate a token is *supposed* to be a stablecoin, and then it performs a price verification check to ensure the token is *actually* trading near its peg (e.g., within a $0.98-$1.02 USD range). This prevents low-value non-stablecoins or de-pegged stablecoins from triggering the auto-switch logic.
 
+### Phase 7: MSI Installer Support for Auto-Updates (v2.2.0)
+Enhanced the update system to support both MSI and EXE installers for seamless auto-updates. The system now:
+
+**Update Discovery:**
+- Modified `updateService.ts` to search for both MSI and EXE installers in the R2 bucket
+- Supports `CryptoVertX-MSI-Installer-*.msi` and `CryptoVertX-Setup-*.exe` naming patterns
+- Prioritizes MSI files if both exist for a given version
+
+**Dynamic Download Handling:**
+- Updated `downloadUpdate()` function to accept an optional `fileName` parameter
+- Modified IPC communication to pass the filename from renderer to main process
+- Enhanced `updateHandler.ts` to dynamically determine file extension from filename
+- Creates temporary download paths with correct `.msi` or `.exe` extensions
+
+**Diagnostic Logging:**
+- Added comprehensive logging to validate file discovery and download processes
+- Logs all files found in the R2 bucket for troubleshooting
+- Tracks download URLs and temporary file paths for debugging
+
+This ensures that users with MSI-based installations can receive updates through the same seamless auto-update flow as EXE users.
+
 ### Phase 7: UI/UX Polish & Navigation Flow Enhancement (v1.9.4)
 Enhanced the overall user experience with strategic UI positioning improvements and intelligent navigation flow. Key improvements include repositioning the footer to the absolute bottom of the application window for consistent placement, optimizing the CoinGecko link spacing in the converter for better visual hierarchy, and implementing context-aware navigation that preserves user journey flow. The TrendingTokensPage received significant polish with the addition of a prominent "🔥 Trending Tokens" title and custom scrollbar styling that matches the application's "Liquid Glass" theme. Navigation intelligence was enhanced so that when users navigate from trending tokens to chart or analysis pages, the back button appropriately returns them to the trending page rather than the converter, maintaining proper navigation context throughout the user journey.
 
@@ -555,4 +576,25 @@ Completely redesigned the `ChartPage` to improve information hierarchy and visua
 Transformed the `TechnicalAnalysisPage` from a simple modal overlay into a full-featured dashboard. The new design mirrors the `ChartPage`'s modern, two-column layout, integrating the `TechnicalAnalysisWidget` with the `TokenStats` sidebar. This creates a unified, aesthetically consistent, and more functional analysis environment for the user, moving away from a jarring popup to a seamless, integrated page experience. 
 
 ### Phase 6: Robust Stablecoin Verification (v1.8.1)
-Refactored the stablecoin detection logic to be more robust and prevent false positives. The system now uses a two-factor approach: it first checks for metadata signals (categories, symbol) that indicate a token is *supposed* to be a stablecoin, and then it performs a price verification check to ensure the token is *actually* trading near its peg (e.g., within a $0.98-$1.02 USD range). This prevents low-value non-stablecoins or de-pegged stablecoins from triggering the auto-switch logic. 
+Refactored the stablecoin detection logic to be more robust and prevent false positives. The system now uses a two-factor approach: it first checks for metadata signals (categories, symbol) that indicate a token is *supposed* to be a stablecoin, and then it performs a price verification check to ensure the token is *actually* trading near its peg (e.g., within a $0.98-$1.02 USD range). This prevents low-value non-stablecoins or de-pegged stablecoins from triggering the auto-switch logic.
+
+### Phase 7: MSI Installer Support for Auto-Updates (v2.2.0)
+Enhanced the update system to support both MSI and EXE installers for seamless auto-updates. The system now:
+
+**Update Discovery:**
+- Modified `updateService.ts` to search for both MSI and EXE installers in the R2 bucket
+- Supports `CryptoVertX-MSI-Installer-*.msi` and `CryptoVertX-Setup-*.exe` naming patterns
+- Prioritizes MSI files if both exist for a given version
+
+**Dynamic Download Handling:**
+- Updated `downloadUpdate()` function to accept an optional `fileName` parameter
+- Modified IPC communication to pass the filename from renderer to main process
+- Enhanced `updateHandler.ts` to dynamically determine file extension from filename
+- Creates temporary download paths with correct `.msi` or `.exe` extensions
+
+**Diagnostic Logging:**
+- Added comprehensive logging to validate file discovery and download processes
+- Logs all files found in the R2 bucket for troubleshooting
+- Tracks download URLs and temporary file paths for debugging
+
+This ensures that users with MSI-based installations can receive updates through the same seamless auto-update flow as EXE users. 

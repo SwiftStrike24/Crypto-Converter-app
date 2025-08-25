@@ -410,7 +410,7 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
           setDownloadProgress(progressInfo.progress);
           setProgressData(progressInfo);
         }
-      });
+      }, updateInfo.fileName);
       setDownloadedFilePath(filePath);
       setUpdateState('downloaded');
     } catch (err) {

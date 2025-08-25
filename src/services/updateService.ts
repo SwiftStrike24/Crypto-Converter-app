@@ -413,12 +413,13 @@ export async function checkForUpdates() {
       }
     }
     
-    // Get the latest version from R2
+        // Get the latest version from R2
     const files = await getFileMetadata('latest/');
-    
-    // Find the Windows installer
-    const windowsInstaller = files.find(file => 
-      file.Key?.includes('CryptoVertX-Setup') && file.Key?.endsWith('.exe')
+
+    // Find the Windows installer (support both MSI and EXE)
+    const windowsInstaller = files.find(file =>
+      (file.Key?.includes('CryptoVertX-MSI-Installer') && file.Key?.endsWith('.msi')) ||
+      (file.Key?.includes('CryptoVertX-Setup') && file.Key?.endsWith('.exe'))
     );
     
     if (!windowsInstaller || !windowsInstaller.Key) {
@@ -474,7 +475,7 @@ export async function checkForUpdates() {
  * @param onProgress Progress callback
  * @returns Promise that resolves when download is complete
  */
-export async function downloadUpdate(url: string, onProgress: (progress: number | any) => void) {
+export async function downloadUpdate(url: string, onProgress: (progress: number | any) => void, fileName?: string) {
   log.info(`Starting update download from URL: ${url}`);
 
   // This function should ONLY be called in an Electron environment.
@@ -510,7 +511,7 @@ export async function downloadUpdate(url: string, onProgress: (progress: number 
     ipcRenderer.send('download-progress-subscribe');
     
     // Start the download using Electron's download manager in the main process
-    const filePath = await ipcRenderer.invoke('download-update', url);
+    const filePath = await ipcRenderer.invoke('download-update', url, fileName);
     
     log.success(`Download complete. File saved at: ${filePath}`);
     return filePath;
