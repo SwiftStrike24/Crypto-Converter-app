@@ -660,7 +660,8 @@ const Converter: React.FC<ConverterProps> = ({
     setTokenMetadata,
     isCoinGeckoRateLimitedGlobal,
     getCoinGeckoRetryAfterSeconds,
-    getCoinDetails
+    getCoinDetails,
+    refreshPricesForSymbols
   } = useCrypto();
   const navigate = useNavigate();
   
@@ -874,13 +875,13 @@ const Converter: React.FC<ConverterProps> = ({
     };
   }, [availableCryptos, checkAndUpdateMissingIcons, onCryptoChange, selectedCrypto]);
 
-  // Show loading states when rate limited
+  // Show loading states when rate limited, but only if no cached price exists
   useEffect(() => {
-    // When we hit the rate limit, make sure we're showing the wave for the current selection
-    if (isCoinGeckoRateLimitedGlobal && !showWaveInResultBox) {
-      console.log(`[CONVERTER_WAVE] API rate limited. Setting showWaveInResultBox = true for ${selectedCrypto}/${selectedFiat}.`);
+    if (!isCoinGeckoRateLimitedGlobal) return;
+    const hasPrice = hasUsablePrice(selectedCrypto, selectedFiat);
+    if (!hasPrice && !showWaveInResultBox) {
+      console.log(`[CONVERTER_WAVE] API rate limited. No cached price; showing wave for ${selectedCrypto}/${selectedFiat}.`);
       setShowWaveInResultBox(true);
-      // Start time tracking for debug purposes
       converterWaveStartTimeRef.current = Date.now();
     }
   }, [isCoinGeckoRateLimitedGlobal, selectedCrypto, selectedFiat, showWaveInResultBox]);
@@ -936,36 +937,29 @@ const Converter: React.FC<ConverterProps> = ({
     checkStablecoinAndSwitch();
   }, [selectedCrypto, getCryptoId, getCoinDetails, selectedFiat, userManuallySetFiat, onFiatChange]);
   
+  // Helper to determine if we have a usable price for current selection
+  const hasUsablePrice = (crypto: string, fiat: string): boolean => {
+    const fiatKey = fiat.toLowerCase();
+    const priceObj = prices[crypto]?.[fiatKey];
+    return !!priceObj && priceObj.price !== null && priceObj.price !== undefined;
+  };
+  
   const getRate = (crypto: string, fiat: string): number => {
     try {
-      if (isPending(crypto) || isCoinGeckoRateLimitedGlobal) {
-        if (!showWaveInResultBox) {
-          const ratePendingReason = isCoinGeckoRateLimitedGlobal 
-            ? "API rate limit reached" 
-            : "Rate pending (loading)";
-          console.log(`[CONVERTER_WAVE] Rate pending for: ${crypto}/${fiat}. Reason: ${ratePendingReason}. Showing wave. Current showWaveInResultBox: ${showWaveInResultBox}`); // Logging
-          converterWaveStartTimeRef.current = Date.now();
-          setShowWaveInResultBox(true); // Show wave when rate is pending
-        }
-        return 0; // Return 0 to signal that rate is not available
-      }
-      
-      if (showWaveInResultBox) {
-        const waveStartTime = converterWaveStartTimeRef.current;
-        const waveDuration = waveStartTime ? Date.now() - waveStartTime : 0;
-        // The showWaveInResultBox state should correspond to an active timer.
-        if (waveStartTime) {
-          console.log(`[CONVERTER_WAVE] Rate loaded for ${crypto}/${fiat} after ${waveDuration}ms. Hiding wave.`);
-          converterWaveStartTimeRef.current = null;
-        }
-        setShowWaveInResultBox(false); // Hide wave once rate is loaded
+      // Prefer cached price even when pending (stale-while-revalidate)
+      const fiatKey = fiat.toLowerCase();
+      const priceObj = prices[crypto]?.[fiatKey];
+      if (priceObj && priceObj.price !== null && priceObj.price !== undefined) {
+        return priceObj.price;
       }
 
-      const cryptoPrice = prices[crypto]?.[fiat.toLowerCase()];
-      if (!cryptoPrice || cryptoPrice.price === null) {
-        throw new Error(`Price not found for ${crypto}/${fiat}`);
+      // No price available: show placeholder if pending/rate-limited and return 0
+      if (isPending(crypto) || isCoinGeckoRateLimitedGlobal) {
+        return 0;
       }
-      return cryptoPrice.price;
+
+      // Fallback explicit error if truly unavailable
+      throw new Error(`Price not found for ${crypto}/${fiat}`);
     } catch (err) {
       console.error(`Error in getRate for ${crypto}/${fiat}:`, err);
       setError(`Could not get rate for ${crypto}/${fiat}`);
@@ -1020,15 +1014,9 @@ const Converter: React.FC<ConverterProps> = ({
 
     const rate = getRate(selectedCrypto, selectedFiat);
     if (rate === 0) {
-      setError('Price data unavailable');
-      if (showWaveInResultBox) { // End timer if it was active due to error
-        const waveTimerLabel = `converter_wave_${selectedCrypto}_${selectedFiat}`;
-        console.timeEnd(waveTimerLabel);
-        if (converterWaveStartTimeRef.current) {
-          const duration = performance.now() - converterWaveStartTimeRef.current;
-          console.log(`⏱️ ${waveTimerLabel} (in seconds): ${(duration / 1000).toFixed(3)} s`);
-          converterWaveStartTimeRef.current = null;
-        }
+      // Pending or missing price; avoid hard error during background refresh
+      if (!(isPending(selectedCrypto) || isCoinGeckoRateLimitedGlobal)) {
+        setError('Price data unavailable');
       }
       return;
     }
@@ -1068,15 +1056,9 @@ const Converter: React.FC<ConverterProps> = ({
 
     const rate = getRate(selectedCrypto, selectedFiat);
     if (rate === 0) {
-      setError('Price data unavailable');
-      if (showWaveInResultBox) { // End timer if it was active due to error
-        const waveTimerLabel = `converter_wave_${selectedCrypto}_${selectedFiat}`;
-        console.timeEnd(waveTimerLabel);
-        if (converterWaveStartTimeRef.current) {
-          const duration = performance.now() - converterWaveStartTimeRef.current;
-          console.log(`⏱️ ${waveTimerLabel} (in seconds): ${(duration / 1000).toFixed(3)} s`);
-          converterWaveStartTimeRef.current = null;
-        }
+      // Pending or missing price; avoid hard error during background refresh
+      if (!(isPending(selectedCrypto) || isCoinGeckoRateLimitedGlobal)) {
+        setError('Price data unavailable');
       }
       return;
     }
@@ -1158,14 +1140,14 @@ const Converter: React.FC<ConverterProps> = ({
       console.log(`🌊 [Converter] handleCryptoChange: Starting wave for ${crypto} / ${selectedFiat}`);
       console.log(`[CONVERTER_WAVE] Setting showWaveInResultBox = true in handleCryptoChange for: ${crypto}/${selectedFiat} because selectedCrypto isPending.`); // Logging
       converterWaveStartTimeRef.current = Date.now(); // Capture start time
-      setShowWaveInResultBox(true);
+      setShowWaveInResultBox(!hasUsablePrice(crypto, selectedFiat));
     } else {
       console.log(`[CONVERTER_WAVE] Setting showWaveInResultBox = false in handleCryptoChange for: ${crypto}/${selectedFiat} because selectedCrypto is NOT pending.`); // Logging
       setShowWaveInResultBox(false); // Ensure wave is off if new crypto is not pending
     }
     
-    // Force immediate price update for the new selection
-    updatePrices(true);
+    // Non-blocking targeted refresh instead of force global update
+    refreshPricesForSymbols([crypto], true);
     
     // Try to fetch cached data if available
     const id = getCryptoId(crypto);
@@ -1218,7 +1200,7 @@ const Converter: React.FC<ConverterProps> = ({
       console.log(`🌊 [Converter] handleFiatChange: Starting wave for ${selectedCrypto} / ${fiat}`);
       console.log(`[CONVERTER_WAVE] Setting showWaveInResultBox = true in handleFiatChange for: ${selectedCrypto}/${fiat} because selectedCrypto isPending.`); // Logging
       converterWaveStartTimeRef.current = Date.now(); // Capture start time
-      setShowWaveInResultBox(true);
+      setShowWaveInResultBox(!hasUsablePrice(selectedCrypto, fiat));
     } else {
       console.log(`[CONVERTER_WAVE] Setting showWaveInResultBox = false in handleFiatChange for: ${selectedCrypto}/${fiat} because selectedCrypto is NOT pending.`); // Logging
       setShowWaveInResultBox(false); // Ensure wave is off if crypto is not pending

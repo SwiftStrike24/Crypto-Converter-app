@@ -95,7 +95,7 @@ pnpm build-app
 ```
 
 This will present you with a menu to choose between:
-- 🚀 Default (EXE Setup + Portable) - Builds the standard EXE installer and the portable version.
+- 🚀 Default (MSI Setup + Portable) - Builds the standard MSI installer and the portable version.
 - 💿 MSI Installer - Build only the Windows installer (.msi)
 - 📦 Portable Executable - Build only the standalone .exe file
 - ✨ EXE Setup Wizard - Build only the .exe setup wizard
@@ -118,7 +118,7 @@ When selecting the "Both" option, you'll get a cool build summary with performan
 You can also use these direct commands to skip the interactive menu:
 
 ```bash
-# Build the default packages (EXE Setup + Portable)
+# Build the default packages (MSI Setup + Portable)
 pnpm build-app --default
 
 # Build portable executable only

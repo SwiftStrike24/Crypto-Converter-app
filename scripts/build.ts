@@ -144,7 +144,7 @@ async function getBuildType(): Promise<BuildType> {
     name: 'buildType',
     message: 'What would you like to build?',
     choices: [
-      { title: '🚀 Default (EXE Setup + Portable)', description: 'Builds the standard EXE installer and the portable version.', value: 'default' },
+      { title: '💿 Default (MSI Setup + Portable)', description: 'Builds the standard MSI installer and the portable version.', value: 'default' },
       { title: '💿 MSI Installer', description: 'Build only the Windows installer (.msi)', value: 'msi' },
       { title: '📦 Portable Executable', description: 'Build only the standalone .exe file', value: 'portable' },
       { title: '✨ EXE Setup Wizard', description: 'Build only the .exe setup wizard', value: 'exe' },
@@ -510,7 +510,7 @@ async function runBuild() {
 
     // Build based on selection
     if (buildType === 'default') {
-      await buildExe();
+      await buildMsi();
       await buildPortable();
     } else if (buildType === 'all') {
       await buildMsi();

@@ -153,7 +153,7 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     
     let buildTypeText = '';
     if (buildType === 'default') {
-      buildTypeText = 'Default (EXE + Portable)';
+      buildTypeText = 'Default (MSI + Portable)';
       this.totalBuildSteps = 7;
     } else if (buildType === 'portable') {
       buildTypeText = 'Portable';
@@ -407,7 +407,7 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     if (buildType === 'all') {
       console.log(chalk.cyan(`${this.emojis.sparkles} All packages are ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     } else if (buildType === 'default') {
-      console.log(chalk.cyan(`${this.emojis.sparkles} Your default packages (EXE Setup + Portable) are ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
+      console.log(chalk.cyan(`${this.emojis.sparkles} Your default packages (MSI Setup + Portable) are ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     } else if (buildType === 'msi') {
       console.log(chalk.cyan(`${this.emojis.sparkles} Your MSI installer is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     } else if (buildType === 'exe') {

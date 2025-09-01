@@ -59,10 +59,16 @@ The application primarily uses React Context API for managing global state:
                 *   Its price is successfully fetched and confirmed from an API (e.g., in `addCrypto`'s immediate fetch, or in `processBatchRequests`).
                 *   Complete pre-loaded data (price and metadata) is utilized upon adding the token via `addCryptos`.
                 *   A valid cached price is used in `processBatchRequests` after an API failure.
+        *   **Targeted Refresh API (NEW):**
+            *   `refreshPricesForSymbols(symbols: string[], highPriority = true)`: Public wrapper around the internal queue to request non-blocking, targeted price refreshes. Schedules a background update without toggling global `loading` or blocking input, ideal for rapid token switching.
     *   **Key Functions & Logic:**
         *   **`getEstimatedPrice(symbol)`:**
             *   If the provided `symbol` is not found in the `CONVERSION_RATES` constant, this function now returns a `CryptoPriceData` object where the `price` field for USD, EUR, and CAD is explicitly `null`.
             *   This prevents a default placeholder value (like $1) from being generated for unknown tokens, ensuring that the UI relies on the `isPending` state and the absence of a valid numerical price to display loading animations.
+        *   **Stale-While-Revalidate (SWR) Behavior (NEW):**
+            *   When a user switches tokens or fiat, the app will immediately use the last known cached price (if present) for conversions, even if the token is pending a refresh.
+            *   A background refresh is scheduled via `refreshPricesForSymbols([symbol])` to revalidate. When fresh data arrives, the value updates in place without blocking input.
+            *   The loading wave is shown only when there is no cached price available for the selected `symbol/fiat` pair.
         *   **`addCrypto(symbol, id)` & `addCryptos(tokens)`:**
             *   Immediately updates `cryptoIds` and `availableCryptos`.
             *   Adds the token(s) to `pendingPriceUpdates`.
@@ -131,6 +137,10 @@ The application primarily uses React Context API for managing global state:
         *   **`Header.tsx` & `Converter.tsx`:**
             *   Use `useCrypto()` to get prices, loading states, the `isPending(symbol)` function, and the global rate limit state `isCoinGeckoRateLimitedGlobal`.
             *   Display the `WaveLoadingPlaceholder` component when `isPending(selectedCrypto)` is true or when `isCoinGeckoRateLimitedGlobal` is true. This ensures that even if an internal estimated price is set (e.g., due to API failure without cache), the UI correctly shows a loading animation because the `CryptoContext` keeps the symbol in a pending state.
+            *   Display a visual rate limit indicator that appears when `isCoinGeckoRateLimitedGlobal` is true, with a subtle animation to alert users that the API is currently rate-limited.
+                *   In `Header.tsx`, this appears as an animated bar at the bottom of the header with a tooltip displaying the `RATE_LIMIT_UI_MESSAGE` constant.
+                *   In `Converter.tsx`, this appears as a notice with the `RATE_LIMIT_UI_MESSAGE` and a clickable refresh icon that attempts to use cached data when available.
+            *   **SWR UX (NEW):** `Converter.tsx` now prefers cached prices even while pending. Background refreshes are triggered via `refreshPricesForSymbols([selectedCrypto])` on crypto/fiat changes. The result box shows the loading wave only when no cached price exists for the selected pair.
             *   Display a visual rate limit indicator that appears when `isCoinGeckoRateLimitedGlobal` is true, with a subtle animation to alert users that the API is currently rate-limited.
                 *   In `Header.tsx`, this appears as an animated bar at the bottom of the header with a tooltip displaying the `RATE_LIMIT_UI_MESSAGE` constant.
                 *   In `Converter.tsx`, this appears as a notice with the `RATE_LIMIT_UI_MESSAGE` and a clickable refresh icon that attempts to use cached data when available.
@@ -390,211 +400,8 @@ This ensures that users with MSI-based installations can receive updates through
 ### Phase 7: UI/UX Polish & Navigation Flow Enhancement (v1.9.4)
 Enhanced the overall user experience with strategic UI positioning improvements and intelligent navigation flow. Key improvements include repositioning the footer to the absolute bottom of the application window for consistent placement, optimizing the CoinGecko link spacing in the converter for better visual hierarchy, and implementing context-aware navigation that preserves user journey flow. The TrendingTokensPage received significant polish with the addition of a prominent "🔥 Trending Tokens" title and custom scrollbar styling that matches the application's "Liquid Glass" theme. Navigation intelligence was enhanced so that when users navigate from trending tokens to chart or analysis pages, the back button appropriately returns them to the trending page rather than the converter, maintaining proper navigation context throughout the user journey.
 
-## 7. Build and Development Process
-
-*   **Package Manager:** `pnpm` (preferred for its speed and efficiency).
-*   **Build Tool (Frontend):** Vite for development server and building React assets.
-*   **Packaging (Desktop App):** Electron Builder.
-    *   Configured in `package.json` under the `build` section.
-    *   Outputs to `release/${version}` directory.
-    *   Targets Windows with three package types:
-        1.  **Portable:** A standalone `.exe` file that requires no installation.
-        2.  **MSI Installer:** A standard Windows Installer package (`.msi`) with a setup wizard.
-        3.  **NSIS Installer:** An alternative setup wizard (`.exe`), offering a different installation experience.
-    *   Uses `asar` packaging for efficiency.
-*   **Build Scripts (`package.json`):**
-    *   `pnpm dev`: Starts the Vite development server for the React frontend.
-    *   `pnpm build`: Transpiles TypeScript and builds the React frontend assets using Vite.
-    *   `pnpm electron:dev`: Runs the Electron app in development mode, usually with Vite serving the frontend.
-    *   `pnpm build-app [--default | --portable | --msi | --exe | --all]`: Interactive build script (driven by `tsx scripts/build.ts`) for creating distributable Electron application packages. Handles versioning and allows choosing build types.
-    *   `pnpm update-top-tokens`: Executes `tsx scripts/fetchTop100CoinGeckoIds.ts` to refresh the `POPULAR_TOKEN_IDS_TO_PRELOAD` list in `src/constants/cryptoConstants.ts` with the current top 100 tokens from CoinGecko. This script uses `axios` for the API call.
-    *   `pnpm lint`: Runs ESLint for code quality checks.
-*   **Interactive Build System (`scripts/build.ts`):**
-    *   Provides a menu to choose build types. The default option builds the EXE Setup Wizard and the Portable version. Other options include MSI only, Portable only, EXE only, and All packages.
-    *   Handles version management (reads from `package.json`, updates `versionManager.ts`, prompts for new version/overwrite).
-    *   Creates versioned output directories.
-    *   Provides a build summary with performance metrics when building multiple artifacts.
-
-### 7.1. Utility Scripts
-
-*   **`scripts/fetchTop100CoinGeckoIds.ts`**
-    *   **Purpose:** Automatically fetches the top 100 cryptocurrencies by market capitalization from the CoinGecko API (using `axios`) and updates the `POPULAR_TOKEN_IDS_TO_PRELOAD` array in `src/constants/cryptoConstants.ts`.
-    *   **Execution:** Can be run manually using `pnpm update-top-tokens`.
-    *   **Dependencies:** Uses `axios` (already a project dependency).
-    *   **Output:** Modifies `src/constants/cryptoConstants.ts` in place with the new list of token IDs and includes an auto-generation date comment.
-    *   **Note:** The script makes a direct HTTP GET request to the CoinGecko `/coins/markets` endpoint.
-
-## 8. Electron-Specific Implementation Details
-
-### 8.1. Instance Management (`src/electron/main.ts`)
-
-*   Uses `app.requestSingleInstanceLock()` to ensure only one instance runs.
-*   If a second instance is attempted, it focuses the primary instance and can show a custom dialog (`InstanceDialog.tsx`).
-*   Handles smart relaunch, especially useful during updates.
-*   Ensures graceful cleanup on exit.
-
-### 8.2. Window Management (`src/electron/main.ts`)
-
-*   **Global Hotkey:** Registered using `globalShortcut` to toggle the main window's visibility.
-*   **Minimize to Tray:**
-    *   Creates a `Tray` icon.
-    *   Handles window minimize events to hide the window and show it from the tray.
-    *   Provides a context menu for the tray icon (e.g., Show/Hide, Quit).
-*   **Window Position Memory:** Likely uses `electron-store` or a similar mechanism (or custom `localStorage` access from main) to save and restore window bounds.
-*   **Focus/Blur Handling:** Manages window appearance based on focus state.
-
-### 8.3. Auto-Updates (`src/electron/updateHandler.ts`, `src/services/updateService.ts`)
-
-*   Integrates with Cloudflare R2 for update distribution.
-*   Checks for new versions by comparing the current app version with the latest version available on R2.
-*   Uses semantic versioning for comparison.
-*   Handles the download of the update package and launches the graphical installer.
-*   Supports both direct in-app updates and fallback browser-based downloads.
-*   **File Integrity Verification:** Implements adaptive verification logic:
-    *   If the server provides a `Content-Length` header, performs strict size verification against the downloaded file.
-    *   If the header is missing (common with chunked encoding), performs basic verification ensuring the file is not empty and has a reasonable minimum size for an installer (>1KB).
-    *   This approach maintains security while accommodating different server configurations and streaming methods.
-*   **Enhanced Progress Feedback:** Provides smooth, engaging progress visualization during updates:
-    *   **Real-Time Streaming Progress:** Uses actual download bytes to calculate precise progress percentage based on estimated file size (101MB from historical data).
-    *   **Rich Progress Metrics:** Displays download speed (MB/s), estimated time remaining (ETA), and transferred data (downloaded/total bytes).
-    *   **Intelligent Speed Calculation:** Implements smoothed download speed calculation using a rolling average of the last 10 speed samples to prevent UI jitter.
-    *   **Ultra-Smooth Animation:** Updates progress every 100ms for fluid visual feedback, with immediate responsiveness to data chunks.
-    *   **Enhanced UI Elements:** Features animated progress bars with shimmer effects, gradient fills, color-coded metrics (speed in green, ETA in orange, data in purple), and smooth spring animations.
-    *   **Adaptive Display:** Shows detailed metrics only when available, gracefully handling both legacy and enhanced progress data formats.
-
-## 9. Configuration
-
-*   **Environment Variables:** Managed via a `.env` file in the root directory.
-    *   `.env.example` provides a template for required variables.
-    *   Key variables:
-        *   `VITE_COINGECKO_API_KEY`
-        *   `VITE_CRYPTOCOMPARE_API_KEY`
-        *   `VITE_OPEN_EXCHANGE_RATES_APP_ID`
-        *   `CLOUDFLARE_ACCOUNT_ID`
-        *   `R2_ACCESS_KEY_ID`
-        *   `R2_SECRET_ACCESS_KEY`
-*   **Build Configuration:** `electron-builder` settings in `package.json`.
-*   **Vite Configuration:** `vite.config.ts`.
-*   **TypeScript Configuration:** `tsconfig.json`, `tsconfig.node.json`.
-
-## 10. Key Dependencies
-
-Referenced from `package.json` and `progress.md`.
-
-### 10.1. Core Dependencies
-
-*   `@aws-sdk/client-s3`: For Cloudflare R2 interaction.
-*   `@emotion/react`, `@emotion/styled`: Likely pulled in by MUI.
-*   `@mui/material`, `@mui/styles`: UI component library.
-*   `axios`: For making HTTP requests to APIs. Used by various parts of the application, including the `scripts/fetchTop100CoinGeckoIds.ts` script.
-*   `date-fns`: Utility for date formatting/manipulation.
-*   `dotenv`: For loading environment variables.
-*   `focus-trap-react`: For managing focus within modals/dialogs.
-*   `framer-motion`: For animations.
-*   `lightweight-charts`: (Presence noted in `package.json`, `progress.md` suggests `recharts` is primary - verification needed).
-*   `lodash`: Utility library.
-*   `react`, `react-dom`: Core React library.
-*   `react-error-boundary`: For graceful error handling in React components.
-*   `react-icons`: Icon library.
-*   `react-router-dom`: For client-side routing.
-*   `recharts`: Charting library.
-*   `styled-components`: CSS-in-JS library.
-*   `systeminformation`: To get system related information.
-
-### 10.2. Development Dependencies
-
-*   `electron`: Core Electron framework.
-*   `electron-builder`: For packaging the Electron app.
-*   `vite`: Build tool and dev server for the React frontend.
-*   `typescript`: TypeScript language support.
-*   `eslint`, `@typescript-eslint/eslint-plugin`, `@typescript-eslint/parser`: Linting tools.
-*   Various `@types/*` packages for type definitions.
-*   `tsx`: For running TypeScript files directly (used in build scripts).
-*   `cross-env`: For setting environment variables across platforms.
-*   `chalk`, `ora`, `prompts`: For enhancing CLI output in build scripts.
-
-## 11. Coding Conventions and Practices
-
-*   **File Structure:**
-    *   Organized by process: `src/electron` (main), `src` (renderer/shared).
-    *   Feature-based directories: `components`, `context`, `hooks`, `pages`, `services`, `utils`, `types`.
-*   **TypeScript Usage:**
-    *   Strict mode enabled (`tsconfig.json`).
-    *   Extensive use of Interfaces (often prefixed with `I`) and Types (often suffixed with `Type`).
-    *   `env.d.ts` for typing environment variables.
-*   **Naming Conventions:**
-    *   Components, Interfaces, Types: `PascalCase`.
-    *   Functions, Variables: `camelCase`.
-    *   Component Prop Interfaces: Often `Props` suffix (e.g., `MyComponentProps`).
-    *   Directories: `lowercase-with-dashes`.
-*   **Constants:** Defined in relevant files for API details, caching parameters, rate limits, etc. (Consider centralizing common constants).
-*   **Error Handling:**
-    *   `try/catch` blocks for asynchronous operations and API calls.
-    *   State variables (e.g., `error`, `loading`) in components and contexts to reflect API status.
-    *   Specific handling for API errors (e.g., HTTP 429 for rate limits).
-    *   `react-error-boundary` for catching rendering errors in components.
-*   **React Practices:**
-    *   Functional components and Hooks are standard.
-    *   React Context API for global state management.
-*   **Environment Variables:** Securely loaded from `.env` and not committed to version control.
-*   **Clean Code Principles:**
-    *   Adherence to DRY (Don't Repeat Yourself).
-    *   Single Responsibility Principle for functions and components.
-    *   Use of meaningful names for variables, functions, and components.
-    *   Comments primarily for explaining *why* something is done, not *what* it does.
-
-## 12. Security Considerations
-
-*   **API Keys:** Loaded from environment variables and not hardcoded. Passed securely to the renderer process where needed.
-*   **IPC Communication:** Context isolation is enabled and `nodeIntegration` is false. `contextBridge` is used to expose functionalities securely.
-*   **Content Security Policy (CSP):** A strict CSP should be implemented.
-*   **External Content:** Open external links in the default browser using `shell.openExternal`.
-*   **Dependencies:** Regularly audit dependencies for vulnerabilities.
-*   **Build Environment:** Securely manage sensitive credentials in the build environment.
-
-## 13. CORS Handling (Development)
-
-*   Vite development server (`vite.config.ts`) is configured with a proxy for API requests to bypass CORS issues during local development. This is not relevant for production builds.
-
-## 14. Refactoring History
-
-This section documents major refactoring efforts to serve as a historical reference.
-
-### Phase 1: `CryptoContext.tsx` Refactor (v1.5.4)
-Decomposed the monolithic `CryptoContext` into specialized custom hooks (`useCryptoPricing`, `useTokenManagement`, etc.) and services (`cryptoApiService`, `cryptoCacheService`) to improve modularity and maintainability.
-
-### Phase 2: Enhanced Rate Limiting & Cache-First Strategy (v1.5.5)
-Implemented an advanced, cache-first data fetching strategy to eliminate UI delays caused by API rate limiting. This involved intelligent rate limit detection, global request throttling, and serving cached data immediately while fetching fresh data in the background.
-
-### Phase 3: Intelligent Stablecoin Detection & Auto-Switching (v1.6.0)
-Introduced a multi-layer stablecoin detection system that automatically switches the target fiat currency based on the type of stablecoin selected by the user, enhancing the user experience for stablecoin conversions. 
-
-### Phase 4: Chart Page UI/UX Overhaul (v1.7.3)
-Completely redesigned the `ChartPage` to improve information hierarchy and visual appeal. This involved moving from a simple stacked layout to a modern two-column dashboard, redesigning the header for unified controls, and transforming `TokenStats` into a detailed sidebar panel with improved data visualization, including a horizontal progress bar for circulating supply. This phase also included significant bug fixes related to data fetching and currency formatting to ensure a stable and intuitive user experience. 
-
-### Phase 5: Technical Analysis Page UI/UX Overhaul (v1.7.6)
-Transformed the `TechnicalAnalysisPage` from a simple modal overlay into a full-featured dashboard. The new design mirrors the `ChartPage`'s modern, two-column layout, integrating the `TechnicalAnalysisWidget` with the `TokenStats` sidebar. This creates a unified, aesthetically consistent, and more functional analysis environment for the user, moving away from a jarring popup to a seamless, integrated page experience. 
-
-### Phase 6: Robust Stablecoin Verification (v1.8.1)
-Refactored the stablecoin detection logic to be more robust and prevent false positives. The system now uses a two-factor approach: it first checks for metadata signals (categories, symbol) that indicate a token is *supposed* to be a stablecoin, and then it performs a price verification check to ensure the token is *actually* trading near its peg (e.g., within a $0.98-$1.02 USD range). This prevents low-value non-stablecoins or de-pegged stablecoins from triggering the auto-switch logic.
-
-### Phase 7: MSI Installer Support for Auto-Updates (v2.2.0)
-Enhanced the update system to support both MSI and EXE installers for seamless auto-updates. The system now:
-
-**Update Discovery:**
-- Modified `updateService.ts` to search for both MSI and EXE installers in the R2 bucket
-- Supports `CryptoVertX-MSI-Installer-*.msi` and `CryptoVertX-Setup-*.exe` naming patterns
-- Prioritizes MSI files if both exist for a given version
-
-**Dynamic Download Handling:**
-- Updated `downloadUpdate()` function to accept an optional `fileName` parameter
-- Modified IPC communication to pass the filename from renderer to main process
-- Enhanced `updateHandler.ts` to dynamically determine file extension from filename
-- Creates temporary download paths with correct `.msi` or `.exe` extensions
-
-**Diagnostic Logging:**
-- Added comprehensive logging to validate file discovery and download processes
-- Logs all files found in the R2 bucket for troubleshooting
-- Tracks download URLs and temporary file paths for debugging
-
-This ensures that users with MSI-based installations can receive updates through the same seamless auto-update flow as EXE users. 
+### Phase 8: Non-Blocking Conversions with SWR (v2.2.2)
+- Added `refreshPricesForSymbols()` public API to schedule targeted, high-priority background refreshes without toggling global loading states.
+- Updated `Converter.tsx` to use cached prices during pending states (stale-while-revalidate). Conversions are instant on token switches; values update seamlessly once fresh data arrives.
+- Wave loading indicator now appears only when there is no cached price for the selected pair; otherwise, a background refresh occurs silently.
+- Added lightweight diagnostics in `Converter.tsx` to trace wave toggling and refresh triggers for rapid switching scenarios. 

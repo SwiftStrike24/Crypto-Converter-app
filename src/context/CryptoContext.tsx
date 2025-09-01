@@ -92,6 +92,7 @@ interface CryptoContextType {
   getApiMetrics: () => any; // Add API performance metrics
   getCoinDetails: (coinId: string) => Promise<CoinDetailedMetadata | null>; // Add detailed coin metadata fetching
   coinDetailsCache: Record<string, CoinDetailedMetadata>; // Add cache for detailed coin metadata
+  refreshPricesForSymbols: (symbols: string[], highPriority?: boolean) => void; // NEW: targeted non-blocking refresh
 }
 
 const CryptoContext = createContext<CryptoContextType | undefined>(undefined);
@@ -1075,6 +1076,19 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     
   }, [processBatchRequests]);
 
+  // NEW: Public wrapper for requesting non-blocking, targeted price refreshes
+  const refreshPricesForSymbols = useCallback((symbols: string[], highPriority: boolean = true) => {
+    try {
+      if (!Array.isArray(symbols) || symbols.length === 0) {
+        return;
+      }
+      // Do not mark as loading or block UI; just schedule an update
+      queuePriceUpdate(symbols, highPriority);
+    } catch (e) {
+      console.error('[refreshPricesForSymbols] Failed to queue symbols for price refresh:', symbols, e);
+    }
+  }, [queuePriceUpdate]);
+
   // Modified updatePrices to use the queue system with proper debouncing
   const updatePrices = useCallback(async (force: boolean = false) => {
     clearUpdateTimeout();
@@ -1602,6 +1616,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         getApiMetrics: getApiPerformanceMetrics, // Add API performance metrics
         getCoinDetails, // Add detailed coin metadata fetching
         coinDetailsCache, // Add cache for detailed coin metadata
+        refreshPricesForSymbols, // NEW
       }}
     >
       {children}
