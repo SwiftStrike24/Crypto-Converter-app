@@ -4,10 +4,36 @@ const path = require('path');
 const fs = require('fs');
 const dotenv = require('dotenv');
 const FeedParser = require('feedparser');
-const { convert } = require('html-to-text');
+const htmlToTextModule = require('html-to-text');
+const htmlToText = htmlToTextModule.htmlToText || htmlToTextModule.convert;
+import {
+  FUNDRAISING_SOURCES,
+  FUNDRAISING_KEYWORDS,
+  NEGATIVE_KEYWORDS,
+  normalizeText,
+  containsAny,
+  tagChains,
+  detectFundingStage,
+  extractFundingAmount,
+  findInvestors,
+} from './fundraisingConfig';
 
 // Load environment variables
 dotenv.config({ path: path.join(process.cwd(), '.env') });
+
+// Add diagnostics to verify html-to-text and entities at runtime
+try {
+  const h2tPkg = require('html-to-text/package.json');
+  console.log(`[HTML_TO_TEXT] Using html-to-text v${h2tPkg.version}. Exported keys:`, Object.keys(htmlToTextModule));
+} catch (e) {
+  console.warn('[HTML_TO_TEXT] Failed to resolve html-to-text package.json', e);
+}
+try {
+  const entitiesPkg = require('entities/package.json');
+  console.log(`[ENTITIES] Using entities v${entitiesPkg.version}`);
+} catch (e) {
+  console.warn('[ENTITIES] Failed to resolve entities package.json', e);
+}
 
 // Disable GPU acceleration to prevent crashes
 app.disableHardwareAcceleration();
@@ -198,6 +224,7 @@ function createDialogWindow() {
     height: 250,
     frame: false,
     transparent: false,
+    backgroundColor: '#121212',
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -214,7 +241,7 @@ function createDialogWindow() {
 
   const url = VITE_DEV_SERVER_URL 
     ? `${VITE_DEV_SERVER_URL}#/instance-dialog`
-    : `file://${path.join(DIST_PATH, 'index.html#/instance-dialog')}`;
+    : `file://${path.join(DIST_PATH, 'index.html')}`;
     
   dialogWindow.loadURL(url);
 
@@ -223,6 +250,17 @@ function createDialogWindow() {
       dialogWindow?.webContents.send('navigate-to', '/instance-dialog');
     });
   }
+
+  // Robust fallback if initial load fails (e.g., incorrect URL hashing)
+  dialogWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[INSTANCE_DIALOG] Failed to load URL: ${validatedURL} code=${errorCode} desc=${errorDescription}`);
+    const indexPath = path.join(DIST_PATH, 'index.html');
+    dialogWindow?.loadFile(indexPath).then(() => {
+      dialogWindow?.webContents.send('navigate-to', '/instance-dialog');
+    }).catch((e) => {
+      console.error('[INSTANCE_DIALOG] Fallback loadFile failed:', e);
+    });
+  });
 
   dialogWindow.once('ready-to-show', () => {
     dialogWindow?.show();
@@ -663,6 +701,125 @@ function setupIpcHandlers() {
     }
   });
 
+  // Fetch fundraising-focused news with chain tagging and tokenless detection
+  ipcMain.handle('fetch-fundraising-news', async (_event, payload: { chains?: string[] }) => {
+    const selectedChains: string[] = Array.isArray(payload?.chains) ? payload!.chains : [];
+    console.log('[FUNDRAISING] Start fetch. Selected chains:', selectedChains);
+
+    try {
+      const fetches = FUNDRAISING_SOURCES.map(async (source) => {
+        try {
+          console.log(`[FUNDRAISING] Fetching ${source.type || 'rss'} from ${source.name}: ${source.url}`);
+          const response = await fetch(source.url, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/rss+xml, application/xml, text/xml',
+              'User-Agent': 'CryptoVertX/1.0 (Fundraising Aggregator)'
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          const xmlText = await response.text();
+          const items = await parseRSSWithFeedparser(xmlText, source.name);
+          console.log(`[FUNDRAISING] Parsed ${items.length} items from ${source.name}`);
+          return { ok: true as const, source: source.name, items };
+        } catch (err) {
+          console.warn(`[FUNDRAISING] Source failed ${source.name}:`, err);
+          return { ok: false as const, source: source.name, error: err instanceof Error ? err.message : 'Unknown error' };
+        }
+      });
+
+      const settled = await Promise.allSettled(fetches);
+      const results = settled.map((r) => (r.status === 'fulfilled' ? r.value : { ok: false, source: 'unknown', error: 'rejected' }));
+
+      // Flatten items, apply fundraising filter, chain tagging, and selection filter
+      const allArticles = results
+        .filter((r: any) => r.ok && Array.isArray(r.items))
+        .flatMap((r: any) => r.items.map((item: any) => ({ ...item, _source: r.source })));
+
+      console.log(`[FUNDRAISING] Total raw items: ${allArticles.length}`);
+
+      const filtered = allArticles
+        .map((article: any) => enhanceFundraisingArticle(article))
+        .filter((a) => a !== null) as any[];
+
+      console.log(`[FUNDRAISING] After fundraising keyword filter: ${filtered.length}`);
+
+      const filteredByChain = selectedChains.length
+        ? filtered.filter((a) => (a.chains || []).some((c: string) => selectedChains.includes(c)))
+        : filtered;
+
+      console.log(`[FUNDRAISING] After chain selection filter: ${filteredByChain.length}`);
+
+      // Sort newest first
+      filteredByChain.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+
+      // Cap to 60 to keep UI snappy
+      const limited = filteredByChain.slice(0, 60);
+      console.log(`[FUNDRAISING] Returning ${limited.length} articles`);
+
+      return { success: true, data: limited };
+    } catch (error) {
+      console.error('[FUNDRAISING] Critical error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  function isLikelyFundraisingText(text: string): boolean {
+    const t = text.toLowerCase();
+    if (!containsAny(t, FUNDRAISING_KEYWORDS)) return false;
+    if (containsAny(t, NEGATIVE_KEYWORDS)) return false;
+    return true;
+  }
+
+  function enhanceFundraisingArticle(item: any): any | null {
+    const title: string = normalizeText(item.title);
+    const summary: string = normalizeText(item.summary || item.description || '');
+    const combined = `${title} — ${summary}`;
+
+    if (!isLikelyFundraisingText(combined)) {
+      return null;
+    }
+
+    const chainInfo = tagChains(combined);
+    const fundingStage = detectFundingStage(combined);
+    const fundingAmount = extractFundingAmount(combined);
+    const investors = findInvestors(combined);
+
+    const result = {
+      title: title || 'Untitled',
+      source: item.source || item._source || 'Unknown',
+      publishedAt: item.publishedAt || item.pubdate || item.date || new Date().toISOString(),
+      summary,
+      url: item.url || item.link || item.guid || '',
+      imageUrl: item.imageUrl,
+      chains: chainInfo.chains,
+      tokenless: chainInfo.tokenless,
+      fundingStage,
+      fundingAmount,
+      investors,
+      // simple relevance score
+      _score: (
+        (chainInfo.chains.length ? 2 : 0) +
+        (chainInfo.tokenless ? 2 : 0) +
+        (fundingStage ? 1 : 0) +
+        (fundingAmount ? 2 : 0) +
+        (investors.length ? Math.min(2, investors.length) : 0)
+      )
+    };
+
+    console.log(`[FUNDRAISING] Tagged: "${result.title.substring(0, 80)}"`, {
+      chains: result.chains,
+      tokenless: result.tokenless,
+      stage: result.fundingStage,
+      amount: result.fundingAmount,
+      investors: result.investors,
+    });
+
+    return result;
+  }
+
     // New robust RSS parser using feedparser and html-to-text
   async function parseRSSWithFeedparser(xmlText: string, sourceName: string): Promise<any[]> {
     const articles: any[] = [];
@@ -763,7 +920,7 @@ function setupIpcHandlers() {
   // Extract lede paragraph from full article content
   function extractLedeFromContent(content: string): string {
     // Convert HTML to clean text using html-to-text
-    const plainText = convert(content, {
+    const plainText = htmlToText(content, {
       wordwrap: false,
       preserveNewlines: false,
       selectors: [

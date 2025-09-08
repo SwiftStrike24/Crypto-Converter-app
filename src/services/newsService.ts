@@ -8,6 +8,11 @@ export interface NewsArticle {
   summary: string;
   url: string;
   imageUrl?: string;
+  // Optional metadata (used by fundraising view)
+  chains?: string[];
+  tokenless?: boolean;
+  fundingStage?: string;
+  investors?: string[];
 }
 
 export interface NewsFetchResult {

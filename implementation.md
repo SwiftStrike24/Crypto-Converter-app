@@ -248,6 +248,8 @@ The application primarily uses React Context API for managing global state:
 *   **Removed Backend Truncation**: The 200-character limit and "..." ellipsis logic have been completely removed from the main process.
 *   **Error Handling**: Robust error handling with graceful fallbacks when individual feed items fail to parse.
 
+- Dependency Pinning (Sep 2025): To prevent a runtime crash after MSI updates (Electron main process error `ERR_PACKAGE_PATH_NOT_EXPORTED` for `entities` subpath `./decode`), the `html-to-text` dependency is pinned to version `8.2.1`. Newer versions pull `entities` with strict ESM export maps that break CJS resolution inside packaged Electron apps. The main process now includes diagnostics to log the resolved versions of `html-to-text` and `entities` at startup for faster troubleshooting.
+
 ### 4.8. Frontend UI Flexibility (Phase 3)
 
 *   **NewsCard Component Updates**:
@@ -256,6 +258,26 @@ The application primarily uses React Context API for managing global state:
 *   **NewsService Simplification**:
     *   **Removed Redundant Processing**: Deleted the `extractSummary` method since the backend now provides complete, clean summaries.
     *   **Streamlined Data Processing**: Frontend now trusts the backend to deliver properly formatted summaries.
+
+### 4.9. Fundraising Intelligence Engine (v3)
+
+- New dedicated backend pipeline and UI tab focused on venture funding, grants, and ecosystem investments.
+- Main process IPC: `fetch-fundraising-news` aggregates articles from curated fundraising-oriented sources (RSS + X via Nitter), filters for funding-related content, tags chains accurately, and flags tokenless L2s.
+- Sources (free-only):
+  - CoinDesk, Decrypt, CryptoSlate, Bitcoin.com, The Defiant (RSS)
+  - Airdrops.io (RSS) to correlate incentives appearing post-funding
+  - VC/Investor accounts via Nitter RSS bridge (availability may vary): a16z crypto, Paradigm, Binance Labs, Electric Capital, CoinFund, Multicoin
+- Tagging & Detection:
+  - Multi-stage filter: positive fundraising keywords and negative keyword suppression to reduce false positives
+  - Chain attribution using a hybrid approach:
+    - Direct chain keywords atlas for `SOL`, `ETH`, `SUI`, `ETH_L2s`
+    - Project-to-chain map for improved attribution (e.g., Jupiter → SOL, Uniswap → ETH, Linea → ETH_L2s)
+  - Tokenless inference: names like `base`, `linea`, `scroll`, `taiko` flag `tokenless = true`
+  - Funding stage extraction: detects Pre-Seed/Seed/Series A/B/C/Grant/Private/Public
+- Config module: `src/electron/fundraisingConfig.ts` contains source list, keyword sets, chain keywords, project map, tokenless set, and helpers.
+- Parser: Reuses `parseRSSWithFeedparser` + `html-to-text` pipeline for robust feed parsing and summary extraction.
+- Caching: 10-minute cache key `fundraising-news` via `cryptoCacheService` with manual full refresh support from the UI.
+- Logging: Prefixed `[FUNDRAISING]` logs for fetch, parsing counts, tagging results, and chain-filter impact.
 
 ## 5. UI and Styling
 
@@ -332,7 +354,7 @@ The application primarily uses React Context API for managing global state:
 *   **Detailed Token Statistics:** Display of market cap, trading volume, circulating/total supply, and All-Time High/Low data. Features a horizontal progress bar for visualizing circulating supply. Includes "From ATH" and "From ATL" metrics to show percentage changes from peak and bottom prices, as well as 7-day volatility for risk analysis.
 *   **Price Chart Visualization:** Historical price charts using `recharts` and `TradingViewWidget`.
 *   **Robust API Handling:** Includes rate limiting, caching, batching, and retry mechanisms.
-*   **Single Instance Management:** Ensures only one instance of the app runs, with a custom dialog and smart relaunch capabilities.
+*   **Single Instance Management:** Ensures only one instance of the app runs, with a custom dialog and smart relaunch capabilities. The second instance dialog window skips the loading animation for improved user experience. In production, the instance dialog loads `index.html` (without appending a hash to the file URL) and navigates via IPC to `#/instance-dialog` to avoid FILE_NOT_FOUND errors and white-flash during creation. A robust `did-fail-load` fallback ensures the dialog always displays correctly.
 *   **Minimize to Tray:** Allows the application to be minimized to the system tray.
 *   **Global Hotkey:** Toggle window visibility using a global hotkey (configurable, defaults to `` ` `` or `~`).
 *   **Page Navigation:** Utilizes `react-router-dom` for navigating between different views/pages.
@@ -404,4 +426,26 @@ Enhanced the overall user experience with strategic UI positioning improvements 
 - Added `refreshPricesForSymbols()` public API to schedule targeted, high-priority background refreshes without toggling global loading states.
 - Updated `Converter.tsx` to use cached prices during pending states (stale-while-revalidate). Conversions are instant on token switches; values update seamlessly once fresh data arrives.
 - Wave loading indicator now appears only when there is no cached price for the selected pair; otherwise, a background refresh occurs silently.
-- Added lightweight diagnostics in `Converter.tsx` to trace wave toggling and refresh triggers for rapid switching scenarios. 
+- Added lightweight diagnostics in `Converter.tsx` to trace wave toggling and refresh triggers for rapid switching scenarios.
+
+### Phase 9: Background News Preloading & Global State Management (v2.3.0)
+- **NewsContext** (`src/context/NewsContext.tsx`): Global state management for both market and fundraising news using React Context pattern.
+- **Background Initialization**: News data starts loading immediately when app launches using parallel fetching with `Promise.allSettled`.
+- **Instant Page Loads**: Market News page loads instantly with preloaded data, eliminating wait times for API calls.
+- **Parallel Data Fetching**: Both market news and fundraising news fetch simultaneously in background using modern async patterns.
+- **Automatic Background Refresh**: Periodic refresh every 10 minutes keeps data fresh without user interaction.
+- **Graceful Error Handling**: Fallback to cached data if fresh fetch fails, preventing empty states.
+- **Modern React Patterns**: Uses React Context with proper state management, TypeScript interfaces, and separation of concerns.
+- **Performance Optimization**: Non-blocking background operations, smart caching strategy, and efficient state updates.
+- **Enhanced UX**: Added `isInitializing` state to show background loading progress vs. specific tab loading states. 
+
+### 5. UI and Styling (Addendum)
+
+- NewsPage now features a tabbed interface:
+  - Tabs: "Market" (existing) and "Fundraising" (new)
+  - Fundraising tab provides a chain filter bar with `SOL`, `ETH`, `SUI`, `ETH L2s` toggles
+  - Selecting chains re-fetches data from main process with server-side filtering
+- NewsCard enhancements:
+  - Optional tag row at top of card showing chain badges and a green "Tokenless" badge when applicable
+- Service layer:
+  - `src/services/fundraisingService.ts` exposes `fetchFundraising(force?, { chains })` returning enriched articles 

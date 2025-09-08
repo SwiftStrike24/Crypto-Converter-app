@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { FiRefreshCw } from 'react-icons/fi';
-import { newsService, NewsArticle, NewsFetchResult } from '../services/newsService';
-import { removeCachedData } from '../services/crypto/cryptoCacheService';
 import NewsCard from '../components/NewsCard';
 import LiveTimeAgo from '../components/LiveTimeAgo';
 import WaveLoadingPlaceholder from '../components/WaveLoadingPlaceholder';
+import { useNews } from '../context/NewsContext';
 
 const PageContainer = styled.div`
   height: 100vh;
@@ -192,12 +191,6 @@ const StatusText = styled.span<{ $isStale?: boolean }>`
   font-weight: ${props => props.$isStale ? '500' : '400'};
 `;
 
-const CacheIndicator = styled.div`
-  font-size: 0.75rem;
-  color: #fbbf24;
-  margin-top: 2px;
-`;
-
 const RetryButton = styled.button`
   margin-top: 10px;
   padding: 8px 16px;
@@ -316,115 +309,72 @@ const EmptyDescription = styled.div`
   line-height: 1.4;
 `;
 
+const Tabs = styled.div`
+  display: flex;
+  gap: 10px;
+`;
+
+const TabButton = styled.button<{ $active?: boolean }>`
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid ${p => (p.$active ? 'rgba(139, 92, 246, 0.5)' : 'rgba(139, 92, 246, 0.25)')};
+  background: ${p => (p.$active ? 'rgba(139, 92, 246, 0.2)' : 'rgba(139, 92, 246, 0.1)')};
+  color: #c4b5fd;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    border-color: rgba(139, 92, 246, 0.4);
+  }
+`;
+
 const NewsPage: React.FC = () => {
   const navigate = useNavigate();
-  const [articles, setArticles] = useState<NewsArticle[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [usingStaleData, setUsingStaleData] = useState(false);
-  const [isCompleteRefresh, setIsCompleteRefresh] = useState(false);
+  const [activeTab, setActiveTab] = useState<'market' | 'fundraising'>('market');
 
-  const fetchNews = async (forceRefresh: boolean = false) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      
-      console.log('[NEWS_PAGE] Starting news fetch...');
-      const result: NewsFetchResult = await newsService.fetchNews(forceRefresh);
-      
-      if (result.data && result.data.length > 0) {
-        setArticles(result.data);
-        setLastUpdated(new Date());
-        setUsingStaleData(result.fromCache && result.cacheAge ? result.cacheAge > 10 * 60 * 1000 : false);
-        
-        console.log(`[NEWS_PAGE] Successfully loaded ${result.data.length} articles`, {
-          fromCache: result.fromCache,
-          cacheAge: result.cacheAge
-        });
-      } else {
-        console.warn('[NEWS_PAGE] No articles received');
-        setError('No articles available');
-      }
-    } catch (err) {
-      console.error('[NEWS_PAGE] Error during news fetch:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error occurred');
-      
-      // Try to get any cached data as fallback
+  // Use preloaded news data from context
+  const {
+    marketNews,
+    isLoadingMarket,
+    marketError,
+    marketLastUpdated,
+    fundraisingNews,
+    isLoadingFundraising,
+    fundraisingError,
+    fundraisingLastUpdated,
+    isInitializing,
+    refreshMarketNews,
+    refreshFundraisingNews,
+  } = useNews();
+
+
+  const handleRefresh = async () => {
+    const loading = activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket;
+    if (!loading) {
+      console.log('[NEWS_PAGE] Performing complete refresh...');
       try {
-        const fallbackResult = await newsService.fetchNews();
-        if (fallbackResult.data && fallbackResult.data.length > 0) {
-          setArticles(fallbackResult.data);
-          setLastUpdated(new Date());
-          setUsingStaleData(true);
-          console.log('[NEWS_PAGE] Using cached fallback data');
+        if (activeTab === 'fundraising') {
+          await refreshFundraisingNews();
         } else {
-          setError('Unable to fetch news and no cached data available');
-          console.error('[NEWS_PAGE] Complete failure - no API and no cache:', err);
+          await refreshMarketNews();
         }
-      } catch (cacheErr) {
-        setError('Unable to fetch news and no cached data available');
-        console.error('[NEWS_PAGE] Complete failure - no API and no cache:', err);
+        console.log('[NEWS_PAGE] Refresh completed');
+      } catch (error) {
+        console.error('[NEWS_PAGE] Refresh failed:', error);
       }
-    } finally {
-      setIsLoading(false);
-      setIsCompleteRefresh(false); // Reset complete refresh state
     }
   };
 
-  const handleRefresh = () => {
-    if (!isLoading) {
-      console.log('[NEWS_PAGE] Performing complete refresh - clearing ALL cache and fetching fresh data');
-      setIsCompleteRefresh(true);
-
-      // Clear all possible news-related cache entries
-      removeCachedData('market-news');
-
-      // Clear any stale cache entries with various possible keys
-      const cacheKeys = [
-        'cryptovertx-cache-market-news',
-        'market-news',
-        'news-cache',
-        'crypto-news'
-      ];
-
-      cacheKeys.forEach(key => {
-        try {
-          localStorage.removeItem(key);
-          console.log(`[NEWS_PAGE] Cleared cache: ${key}`);
-        } catch (error) {
-          console.warn(`[NEWS_PAGE] Could not clear cache ${key}:`, error);
-        }
-      });
-
-      // Reset all state to ensure completely fresh display
-      setArticles([]);
-      setLastUpdated(null);
-      setUsingStaleData(false);
-      setError(null);
-
-      // Add a small delay to ensure cache is cleared before fetching
-      setTimeout(() => {
-        console.log('[NEWS_PAGE] Starting fresh news fetch after cache clear');
-        fetchNews(true); // Force refresh
-      }, 100);
+  const handleRetry = async () => {
+    if (activeTab === 'fundraising') {
+      await refreshFundraisingNews();
+    } else {
+      await refreshMarketNews();
     }
   };
 
-  const handleRetry = () => {
-    fetchNews(false); // Normal fetch for retry
-  };
-
-  useEffect(() => {
-    fetchNews(false);
-
-    // Set up interval for automatic refresh every 10 minutes
-    const interval = setInterval(() => {
-      fetchNews(false);
-    }, 10 * 60 * 1000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <PageContainer>
@@ -436,23 +386,18 @@ const NewsPage: React.FC = () => {
         <Title>
           📰 Market News
         </Title>
-        {lastUpdated && !isLoading && (
+        {(activeTab === 'fundraising' ? fundraisingLastUpdated : marketLastUpdated) && !(activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) && (
           <HeaderInfoContainer>
             <div>
-              <StatusText $isStale={usingStaleData}>
-                Last updated: <LiveTimeAgo date={lastUpdated} />
+              <StatusText $isStale={false}>
+                Last updated: <LiveTimeAgo date={(activeTab === 'fundraising' ? fundraisingLastUpdated : marketLastUpdated)!} />
               </StatusText>
-              {usingStaleData && (
-                <CacheIndicator>
-                  📱 Cached Data
-                </CacheIndicator>
-              )}
             </div>
             <RefreshButton
-              $isLoading={isLoading}
-              $isCompleteRefresh={isCompleteRefresh}
+              $isLoading={activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket}
+              $isCompleteRefresh={false}
               onClick={handleRefresh}
-              title={isCompleteRefresh ? "Performing complete refresh..." : "Complete refresh (clears all cache)"}
+              title="Refresh news data"
             >
               <FiRefreshCw />
             </RefreshButton>
@@ -460,27 +405,40 @@ const NewsPage: React.FC = () => {
         )}
       </Header>
 
+      {/* Tabs */}
+      <Tabs>
+        <TabButton $active={activeTab === 'market'} onClick={() => setActiveTab('market')}>Market</TabButton>
+        <TabButton $active={activeTab === 'fundraising'} onClick={() => setActiveTab('fundraising')}>Fundraising</TabButton>
+      </Tabs>
+
       <ContentContainer>
         <ScrollContainer>
-          {isLoading ? (
+          {(activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) || isInitializing ? (
             <LoadingContainer>
               <WaveLoadingPlaceholder />
-              <LoadingText>Loading latest crypto news...</LoadingText>
+              <LoadingText>
+                {isInitializing
+                  ? 'Initializing news data...'
+                  : activeTab === 'fundraising'
+                    ? 'Loading latest fundraising news...'
+                    : 'Loading latest crypto news...'
+                }
+              </LoadingText>
             </LoadingContainer>
-          ) : error ? (
+          ) : (activeTab === 'fundraising' ? fundraisingError : marketError) ? (
             <ErrorContainer>
               <ErrorMessage>Failed to Load News</ErrorMessage>
-              <ErrorDescription>{error}</ErrorDescription>
+              <ErrorDescription>{activeTab === 'fundraising' ? fundraisingError : marketError}</ErrorDescription>
               <RetryButton onClick={handleRetry}>
                 Try Again
               </RetryButton>
             </ErrorContainer>
-          ) : articles.length === 0 ? (
+          ) : (activeTab === 'fundraising' ? fundraisingNews.length === 0 : marketNews.length === 0) ? (
             <EmptyContainer>
               <EmptyMessage>📰</EmptyMessage>
-              <EmptyMessage>No News Available</EmptyMessage>
+              <EmptyMessage>No {activeTab === 'fundraising' ? 'Fundraising' : 'News'} Available</EmptyMessage>
               <EmptyDescription>
-                No cryptocurrency news articles are currently available.
+                No {activeTab === 'fundraising' ? 'fundraising' : 'cryptocurrency'} news articles are currently available.
                 <br />
                 Please try again later.
               </EmptyDescription>
@@ -491,10 +449,10 @@ const NewsPage: React.FC = () => {
           ) : (
             <NewsGrid>
               <AnimatePresence>
-                {articles.map((article, index) => (
+                {(activeTab === 'fundraising' ? fundraisingNews : marketNews).map((article, index) => (
                   <NewsCard
                     key={`${article.url}-${article.publishedAt}`}
-                    article={article}
+                    article={article as any}
                     index={index}
                   />
                 ))}

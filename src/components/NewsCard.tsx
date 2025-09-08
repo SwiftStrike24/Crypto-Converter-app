@@ -16,9 +16,41 @@ const CardWrapper = styled(motion.div)`
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  
+
   will-change: transform, box-shadow, border-color;
+
+  &:hover {
+    background: rgba(50, 52, 68, 0.85);
+    border-color: rgba(139, 92, 246, 0.45);
+    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.25);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 `;
+
+const TagRow = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+`;
+
+const Tag = styled.span<{ $variant?: 'chain' | 'tokenless' }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 92, 246, 0.45);
+  color: ${p => (p.$variant === 'tokenless' ? '#4ade80' : '#ddd6fe')};
+  background: ${p => (p.$variant === 'tokenless'
+    ? 'linear-gradient(145deg, rgba(34,197,94,0.25), rgba(34,197,94,0.15))'
+    : 'linear-gradient(145deg, rgba(139,92,246,0.25), rgba(139,92,246,0.15))')};
+  text-shadow: 0 0 6px rgba(0,0,0,0.15);
+`;
+
 
 const ArticleHeader = styled.div`
   display: flex;
@@ -64,7 +96,12 @@ const ArticleTitle = styled.h3`
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  transition: color 0.2s ease;
+  transition: color 0.2s ease, font-weight 0.2s ease;
+
+  ${CardWrapper}:hover & {
+    font-weight: 700;
+    color: #ffffff;
+  }
 `;
 
 const ArticleSummary = styled.p`
@@ -72,6 +109,11 @@ const ArticleSummary = styled.p`
   color: #a0a0a0;
   margin: 0 0 0.75rem 0;
   line-height: 1.4;
+  transition: color 0.2s ease;
+
+  ${CardWrapper}:hover & {
+    color: #c0c0c0;
+  }
 `;
 
 const ArticleFooter = styled.div`
@@ -224,6 +266,14 @@ const NewsCard: React.FC<NewsCardProps> = ({ article, index }) => {
       whileTap={{ scale: 0.98 }}
       onClick={handleCardClick}
     >
+      {(article.chains?.length || article.tokenless) && (
+        <TagRow>
+          {article.chains?.map((c) => (
+            <Tag key={c} $variant="chain">{c}</Tag>
+          ))}
+          {article.tokenless && <Tag $variant="tokenless">Tokenless</Tag>}
+        </TagRow>
+      )}
       <ArticleHeader>
         {article.imageUrl && isValidImageUrl(article.imageUrl) ? (
           <ArticleImage 

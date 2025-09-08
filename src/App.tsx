@@ -14,6 +14,7 @@ import NewsPage from './pages/NewsPage';
 import { CryptoProvider } from './context/CryptoContext';
 import { CryptoCompareProvider } from './context/CryptoCompareContext';
 import { ExchangeRatesProvider } from './context/ExchangeRatesContext';
+import { NewsProvider } from './context/NewsContext';
 import { BorderBeam } from './components/BorderBeam';
 import InstanceDialog from './pages/InstanceDialog';
 import LoadingScreen from './components/LoadingScreen';
@@ -112,7 +113,9 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(true);
+  // Check if this is an instance dialog window - if so, skip loading animation
+  const isInstanceDialog = window.location.hash === '#/instance-dialog';
+  const [isLoading, setIsLoading] = useState(!isInstanceDialog);
 
   useEffect(() => {
     const handleUpdateSuccess = () => {
@@ -139,23 +142,25 @@ const App: React.FC = () => {
     <ExchangeRatesProvider>
       <CryptoProvider>
         <CryptoCompareProvider>
-          <Router>
-            <AnimatePresence mode="wait">
-              {isLoading ? (
-                <LoadingScreen key="loading" onFinish={() => setIsLoading(false)} />
-              ) : (
-                <motion.div
-                  key="content"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.3 }}
-                  style={{ width: '100%', height: '100%' }}
-                >
-                  <AppContent />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </Router>
+          <NewsProvider>
+            <Router>
+              <AnimatePresence mode="wait">
+                {isLoading ? (
+                  <LoadingScreen key="loading" onFinish={() => setIsLoading(false)} />
+                ) : (
+                  <motion.div
+                    key="content"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                    style={{ width: '100%', height: '100%' }}
+                  >
+                    <AppContent />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </Router>
+          </NewsProvider>
         </CryptoCompareProvider>
       </CryptoProvider>
     </ExchangeRatesProvider>

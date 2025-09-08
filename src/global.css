@@ -4,4 +4,5 @@ html, body, #root {
   margin: 0;
   padding: 0;
   overflow: hidden; /* To prevent scrollbars from appearing */
+  background: #121212; /* Dark background to prevent white flash */
 } 
