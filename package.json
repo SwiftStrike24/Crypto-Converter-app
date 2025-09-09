@@ -139,5 +139,11 @@
     "buildDependenciesFromSource": false,
     "nodeGypRebuild": false,
     "forceCodeSigning": false
+  },
+  "pnpm": {
+    "overrides": {
+      "chalk": "5.6.0",
+      "debug": "4.4.1"
+    }
   }
 }

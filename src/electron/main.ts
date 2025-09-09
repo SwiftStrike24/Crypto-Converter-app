@@ -530,6 +530,19 @@ function createWindow() {
       return { action: 'deny' };
     }
 
+    // Force dark mode for TradingView links by rewriting the URL and opening controlled window
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+      if (host.endsWith('tradingview.com')) {
+        const rewritten = enforceDarkParamsForKnownSites(url);
+        createInternalBrowserWindow(rewritten);
+        return { action: 'deny' };
+      }
+    } catch (e) {
+      // fall through to default allow
+    }
+
     // Return window configuration
     return {
       action: 'allow',
@@ -1145,6 +1158,22 @@ function setupIpcHandlers() {
   });
 }
 
+// Ensure external links use dark theme where supported (e.g., TradingView)
+function enforceDarkParamsForKnownSites(inputUrl: string): string {
+  try {
+    const u = new URL(inputUrl);
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+    if (host.endsWith('tradingview.com')) {
+      u.searchParams.set('theme', 'dark');
+      u.searchParams.set('colorTheme', 'dark');
+      return u.toString();
+    }
+    return inputUrl;
+  } catch {
+    return inputUrl;
+  }
+}
+
 function createInternalBrowserWindow(url: string) {
   if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
     console.error('Attempted to open invalid internal URL:', url);
@@ -1176,7 +1205,8 @@ function createInternalBrowserWindow(url: string) {
   });
 
   console.log(`Loading URL in internal browser window: ${url}`);
-  newWindow.loadURL(url);
+  const finalUrl = enforceDarkParamsForKnownSites(url);
+  newWindow.loadURL(finalUrl);
 
   newWindow.webContents.on('did-finish-load', () => {
     const newTitle = newWindow.webContents.getTitle();

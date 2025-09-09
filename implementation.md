@@ -313,7 +313,11 @@ The application primarily uses React Context API for managing global state:
     *   `BorderBeam.tsx`: A purely decorative component that creates a soft, animated gradient beam around the main application window, enhancing the "Liquid Glass" theme. It is implemented using performant, hardware-accelerated CSS animations.
     *   `TrendingTokensPage.tsx`: Full-page component that displays a grid of the top trending tokens based on 24-hour percentage change. Features a centered "🔥 Trending Tokens" title, custom scrollbar styling matching the ManageTokens page design, and smart navigation flow that preserves user context when navigating to/from chart pages.
     *   `TrendingTokenCard.tsx`: A reusable UI card for displaying a single token in the trending list, styled with the "Liquid Glass" theme. Includes navigation state management to enable proper back navigation flow.
-    *   `NewsPage.tsx`: Full-page component that displays the latest cryptocurrency news articles aggregated from multiple RSS feeds (Cointelegraph, Decrypt, U.Today). Features automatic refresh every 10 minutes, cached fallback data, and visual indicators for cache status. Matches the "Liquid Glass" design theme with custom scrollbar styling.
+    *   `NewsPage.tsx`: Full-page component that displays the latest cryptocurrency and stock market news articles aggregated from multiple RSS feeds (Cointelegraph, Decrypt, U.Today) and TradingView news widgets. Features automatic refresh every 10 minutes, cached fallback data, and visual indicators for cache status. Matches the "Liquid Glass" design theme with custom scrollbar styling. Includes tabbed interface with:
+        *   **Market Tab**: Traditional RSS-aggregated cryptocurrency news
+        *   **Fundraising Tab**: Venture funding and ecosystem investment news
+        *   **Crypto Stories Tab**: TradingView's crypto market news briefs (renamed from "Top Stories" for clarity)
+        *   **Stock Market Tab**: TradingView's stock market news briefs
         *   **Manual Refresh Button**: Features a modern, circular refresh button in the header with "Liquid Glass" styling that allows users to force immediate news updates. Includes smooth spin animations during loading, disabled states, and hover effects with gradient overlays and subtle transforms.
     *   `NewsCard.tsx`: A reusable UI card for displaying individual news articles with title, summary, source, timestamp, and an optional article image. Includes "Read More" button that opens articles in the user's default browser via IPC communication.
 
@@ -326,8 +330,14 @@ The application primarily uses React Context API for managing global state:
     *   Smart navigation flow that preserves user context when clicking between trending tokens and chart/analysis pages
     *   **Session-Only Token Viewing**: When users click on trending tokens to view charts, tokens are added temporarily using `addTemporaryToken()` rather than permanently to the user's collection. This prevents unwanted tokens from cluttering the manage tokens page while still enabling full chart functionality.
     *   **Robust Caching System**: 5-minute fresh cache with 30-minute stale cache fallback. When API calls fail, the system automatically serves stale cached data with clear visual indicators. Includes "Try Again" functionality and detailed cache status reporting.
-*   **Market News Page**: A comprehensive news aggregation system that fetches the latest cryptocurrency news from multiple RSS sources. Features include:
+*   **Market News Page**: A comprehensive news aggregation system that fetches the latest cryptocurrency and stock market news from multiple RSS sources and TradingView widgets. Features include:
     *   **Multi-Source RSS Aggregation**: Fetches from CoinDesk, Bitcoin.com, CryptoSlate, and Decrypt using direct RSS parsing in Electron's main process to avoid CSP issues
+    *   **TradingView News Integration**: Includes dedicated tabs for both crypto and stock market news briefs from TradingView's timeline widget
+    *   **Tabbed Interface**: Four distinct news tabs:
+        *   **Market**: Traditional RSS-aggregated cryptocurrency news
+        *   **Fundraising**: Venture funding and ecosystem investment news
+        *   **Crypto Stories**: TradingView's crypto market news briefs (20-second reads)
+        *   **Stock Market**: TradingView's stock market news briefs (20-second reads)
     *   **10-Minute Refresh Cycle**: Automatically refreshes news articles every 10 minutes with manual refresh capability
     *   **Manual Refresh Button**: A modern, animated refresh button in the header that forces immediate news updates, bypassing cache. Features liquid glass styling with smooth loading animations and disabled states during fetch operations.
     *   **Intelligent Caching**: 10-minute fresh cache with 1-hour stale cache fallback for offline functionality
@@ -449,3 +459,28 @@ Enhanced the overall user experience with strategic UI positioning improvements 
   - Optional tag row at top of card showing chain badges and a green "Tokenless" badge when applicable
 - Service layer:
   - `src/services/fundraisingService.ts` exposes `fetchFundraising(force?, { chains })` returning enriched articles 
+
+### Phase 10: TradingView Top Stories Crypto News (v2.5.0)
+- Added a third tab to `NewsPage` named "Top Stories" that displays TradingView’s market-wide crypto news brief feed (designed to be read in ~20 seconds).
+- Component: `src/components/TradingViewNewsWidget.tsx` now supports both `feedMode: 'market'` and `feedMode: 'symbol'`. The Top Stories tab uses:
+  - `feedMode = 'market'`
+  - `market = 'crypto'`
+  - `displayMode = 'regular'`
+  - `isTransparent = true`
+- No token selector for this tab; it intentionally shows overall crypto market briefs from TradingView.
+- Datafeed notes:
+  - Using TradingView’s external Timeline embed requires no custom Datafeed API (`getQuotes/subscribeQuotes/unsubscribeQuotes` not needed).
+  - If switching to the Charting Library + widgetbar News in the future, implement the Datafeed methods first.
+- Security & UX:
+  - External script appended asynchronously into a dedicated container; full cleanup on unmount or prop change.
+  - Attribution updated to Top Stories link with `rel="noopener noreferrer nofollow"`.
+  - Wrapped in a glass-styled panel to match the Liquid Glass theme.
+
+### Phase 11: Stock Market News Integration (v2.5.1)
+- Added a fourth tab to `NewsPage` named "Stock Market" that displays TradingView's stock market news briefs alongside the existing crypto news tabs.
+- **Enhanced Tab Clarity**: Renamed "Top Stories" tab to "Crypto Stories" for better user understanding of content types.
+- **Widget Reusability**: Leveraged the existing `TradingViewNewsWidget` component by simply passing `market="stock"` to display stock market news.
+- **Consistent UI**: Applied the same `WidgetPanel` styling used for crypto stories to maintain visual consistency across tabs.
+- **User Experience**: Users can now seamlessly switch between crypto and stock market news within the same interface, providing a comprehensive market overview.
+- **Performance**: No additional API calls or complex state management required - the widget handles all stock market data internally.
+- **Documentation**: Updated `implementation.md` to reflect the new tab structure and enhanced news aggregation capabilities. 

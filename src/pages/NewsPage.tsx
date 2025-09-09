@@ -7,6 +7,7 @@ import NewsCard from '../components/NewsCard';
 import LiveTimeAgo from '../components/LiveTimeAgo';
 import WaveLoadingPlaceholder from '../components/WaveLoadingPlaceholder';
 import { useNews } from '../context/NewsContext';
+import TradingViewNewsWidget from '../components/TradingViewNewsWidget';
 
 const PageContainer = styled.div`
   height: 100vh;
@@ -217,10 +218,12 @@ const ContentContainer = styled.div`
   flex: 1;
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 `;
 
 const ScrollContainer = styled.div`
-  height: 100%;
+  flex: 1;
   overflow-y: auto;
   padding-right: 8px;
   margin-right: -8px;
@@ -330,9 +333,23 @@ const TabButton = styled.button<{ $active?: boolean }>`
   }
 `;
 
+const WidgetPanel = styled.div`
+  background: rgba(28, 28, 40, 0.5);
+  border-radius: 16px;
+  padding: 1rem;
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  min-height: 520px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+`;
+
 const NewsPage: React.FC = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'market' | 'fundraising'>('market');
+  const [activeTab, setActiveTab] = useState<'market' | 'fundraising' | 'tv' | 'stocks'>('market');
 
   // Use preloaded news data from context
   const {
@@ -349,20 +366,17 @@ const NewsPage: React.FC = () => {
     refreshFundraisingNews,
   } = useNews();
 
-
   const handleRefresh = async () => {
     const loading = activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket;
-    if (!loading) {
-      console.log('[NEWS_PAGE] Performing complete refresh...');
+    if (!loading && activeTab !== 'tv') {
       try {
         if (activeTab === 'fundraising') {
           await refreshFundraisingNews();
         } else {
           await refreshMarketNews();
         }
-        console.log('[NEWS_PAGE] Refresh completed');
       } catch (error) {
-        console.error('[NEWS_PAGE] Refresh failed:', error);
+        // logged upstream
       }
     }
   };
@@ -375,7 +389,6 @@ const NewsPage: React.FC = () => {
     }
   };
 
-
   return (
     <PageContainer>
       <Header>
@@ -386,7 +399,7 @@ const NewsPage: React.FC = () => {
         <Title>
           📰 Market News
         </Title>
-        {(activeTab === 'fundraising' ? fundraisingLastUpdated : marketLastUpdated) && !(activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) && (
+        {activeTab !== 'tv' && (activeTab === 'fundraising' ? fundraisingLastUpdated : marketLastUpdated) && !(activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) && (
           <HeaderInfoContainer>
             <div>
               <StatusText $isStale={false}>
@@ -409,11 +422,21 @@ const NewsPage: React.FC = () => {
       <Tabs>
         <TabButton $active={activeTab === 'market'} onClick={() => setActiveTab('market')}>Market</TabButton>
         <TabButton $active={activeTab === 'fundraising'} onClick={() => setActiveTab('fundraising')}>Fundraising</TabButton>
+        <TabButton $active={activeTab === 'tv'} onClick={() => setActiveTab('tv')}>Crypto Stories</TabButton>
+        <TabButton $active={activeTab === 'stocks'} onClick={() => setActiveTab('stocks')}>Stock Market</TabButton>
       </Tabs>
 
       <ContentContainer>
         <ScrollContainer>
-          {(activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) || isInitializing ? (
+          {activeTab === 'tv' ? (
+            <WidgetPanel>
+              <TradingViewNewsWidget feedMode="market" market="crypto" isTransparent height="100%" displayMode="regular" />
+            </WidgetPanel>
+          ) : activeTab === 'stocks' ? (
+            <WidgetPanel>
+              <TradingViewNewsWidget feedMode="market" market="stock" isTransparent height="100%" displayMode="regular" />
+            </WidgetPanel>
+          ) : (activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) || isInitializing ? (
             <LoadingContainer>
               <WaveLoadingPlaceholder />
               <LoadingText>
