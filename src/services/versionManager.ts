@@ -107,7 +107,7 @@ export async function getAppVersion(): Promise<string> {
     // Priority 5: Hardcoded version from package.json at build time
     // Only use this as a fallback if all else fails
     // This value should be updated by the build script
-    const buildTimeVersion = '2.4.2'; // Injected by build script
+    const buildTimeVersion = '2.5.2'; // Injected by build script
     if (buildTimeVersion && buildTimeVersion.length > 0 && !buildTimeVersion.includes('0.0.0')) {
       currentVersion = buildTimeVersion;
       console.log(`[Version Manager] Using hardcoded build-time version: ${currentVersion}`);

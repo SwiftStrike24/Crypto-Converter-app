@@ -313,11 +313,12 @@ The application primarily uses React Context API for managing global state:
     *   `BorderBeam.tsx`: A purely decorative component that creates a soft, animated gradient beam around the main application window, enhancing the "Liquid Glass" theme. It is implemented using performant, hardware-accelerated CSS animations.
     *   `TrendingTokensPage.tsx`: Full-page component that displays a grid of the top trending tokens based on 24-hour percentage change. Features a centered "🔥 Trending Tokens" title, custom scrollbar styling matching the ManageTokens page design, and smart navigation flow that preserves user context when navigating to/from chart pages.
     *   `TrendingTokenCard.tsx`: A reusable UI card for displaying a single token in the trending list, styled with the "Liquid Glass" theme. Includes navigation state management to enable proper back navigation flow.
-    *   `NewsPage.tsx`: Full-page component that displays the latest cryptocurrency and stock market news articles aggregated from multiple RSS feeds (Cointelegraph, Decrypt, U.Today) and TradingView news widgets. Features automatic refresh every 10 minutes, cached fallback data, and visual indicators for cache status. Matches the "Liquid Glass" design theme with custom scrollbar styling. Includes tabbed interface with:
+    *   `NewsPage.tsx`: Full-page component that displays the latest cryptocurrency, stock market, and economic calendar data aggregated from multiple RSS feeds (Cointelegraph, Decrypt, U.Today) and TradingView widgets. Features automatic refresh every 10 minutes, cached fallback data, and visual indicators for cache status. Matches the "Liquid Glass" design theme with custom scrollbar styling. Includes tabbed interface with:
         *   **Market Tab**: Traditional RSS-aggregated cryptocurrency news
         *   **Fundraising Tab**: Venture funding and ecosystem investment news
         *   **Crypto Stories Tab**: TradingView's crypto market news briefs (renamed from "Top Stories" for clarity)
         *   **Stock Market Tab**: TradingView's stock market news briefs
+        *   **Economic Calendar Tab**: Interactive economic calendar with USA and Canada filters, showing key economic events, announcements, and news. Features smooth transitions when toggling between countries and side-by-side viewing capability.
         *   **Manual Refresh Button**: Features a modern, circular refresh button in the header with "Liquid Glass" styling that allows users to force immediate news updates. Includes smooth spin animations during loading, disabled states, and hover effects with gradient overlays and subtle transforms.
     *   `NewsCard.tsx`: A reusable UI card for displaying individual news articles with title, summary, source, timestamp, and an optional article image. Includes "Read More" button that opens articles in the user's default browser via IPC communication.
 
@@ -330,14 +331,18 @@ The application primarily uses React Context API for managing global state:
     *   Smart navigation flow that preserves user context when clicking between trending tokens and chart/analysis pages
     *   **Session-Only Token Viewing**: When users click on trending tokens to view charts, tokens are added temporarily using `addTemporaryToken()` rather than permanently to the user's collection. This prevents unwanted tokens from cluttering the manage tokens page while still enabling full chart functionality.
     *   **Robust Caching System**: 5-minute fresh cache with 30-minute stale cache fallback. When API calls fail, the system automatically serves stale cached data with clear visual indicators. Includes "Try Again" functionality and detailed cache status reporting.
-*   **Market News Page**: A comprehensive news aggregation system that fetches the latest cryptocurrency and stock market news from multiple RSS sources and TradingView widgets. Features include:
+*   **Market News Page**: A comprehensive news aggregation system that fetches the latest cryptocurrency, stock market, and economic calendar data from multiple RSS sources and TradingView widgets. Features include:
     *   **Multi-Source RSS Aggregation**: Fetches from CoinDesk, Bitcoin.com, CryptoSlate, and Decrypt using direct RSS parsing in Electron's main process to avoid CSP issues
     *   **TradingView News Integration**: Includes dedicated tabs for both crypto and stock market news briefs from TradingView's timeline widget
-    *   **Tabbed Interface**: Four distinct news tabs:
+    *   **Economic Calendar Widget**: Interactive TradingView economic calendar with country-specific filtering for USA and Canada, showing key economic events and announcements
+    *   **Tabbed Interface**: Five distinct news tabs:
         *   **Market**: Traditional RSS-aggregated cryptocurrency news
         *   **Fundraising**: Venture funding and ecosystem investment news
         *   **Crypto Stories**: TradingView's crypto market news briefs (20-second reads)
         *   **Stock Market**: TradingView's stock market news briefs (20-second reads)
+        *   **Economic Calendar**: Interactive calendar showing economic events for USA and Canada with smooth toggle animations
+    *   **Dual Country View**: Economic Calendar tab allows users to view USA and Canada calendars side-by-side with smooth transitions
+    *   **Country Selection Buttons**: Interactive buttons with flag icons and smooth hover animations for toggling between USA and Canada calendars
     *   **10-Minute Refresh Cycle**: Automatically refreshes news articles every 10 minutes with manual refresh capability
     *   **Manual Refresh Button**: A modern, animated refresh button in the header that forces immediate news updates, bypassing cache. Features liquid glass styling with smooth loading animations and disabled states during fetch operations.
     *   **Intelligent Caching**: 10-minute fresh cache with 1-hour stale cache fallback for offline functionality
@@ -483,4 +488,36 @@ Enhanced the overall user experience with strategic UI positioning improvements 
 - **Consistent UI**: Applied the same `WidgetPanel` styling used for crypto stories to maintain visual consistency across tabs.
 - **User Experience**: Users can now seamlessly switch between crypto and stock market news within the same interface, providing a comprehensive market overview.
 - **Performance**: No additional API calls or complex state management required - the widget handles all stock market data internally.
-- **Documentation**: Updated `implementation.md` to reflect the new tab structure and enhanced news aggregation capabilities. 
+- **Documentation**: Updated `implementation.md` to reflect the new tab structure and enhanced news aggregation capabilities.
+
+### Phase 12: Economic Calendar Integration (v2.5.2)
+- Added a fifth tab to `NewsPage` named "Economic Calendar" featuring TradingView's interactive economic calendar widget.
+- **Dual Country Support**: Implemented USA and Canada economic calendar support with smooth toggle functionality.
+- **Side-by-Side Viewing**: Users can view both USA and Canada calendars simultaneously with responsive layout that adapts to selections.
+- **Interactive Country Buttons**: Created animated toggle buttons with high-quality national flags from Wikimedia Commons and smooth hover/selection animations.
+- **Smooth Transitions**: Implemented CSS transitions with `cubic-bezier` easing for calendar panel visibility and country selection changes.
+- **Widget Container**: Built a reusable `EconomicCalendarWidget` component that handles TradingView's economic events script loading and cleanup.
+- **Liquid Glass Styling**: Applied consistent "Liquid Glass" theme with backdrop blur, gradient overlays, and subtle animations throughout the economic calendar interface.
+- **Performance Optimization**: Efficient state management with Set-based country selection and conditional rendering to prevent unnecessary re-renders.
+- **User Experience**: Intuitive interface allowing users to track key economic events, announcements, and news for both North American markets.
+- **Responsive Design**: Calendar panels dynamically adjust width based on number of selected countries, maintaining optimal viewing experience.
+
+### Phase 13: Crash Prevention & Performance Optimization (v2.5.3)
+- **Error Boundary Protection**: Implemented comprehensive `NewsErrorBoundary` component to catch and handle React errors gracefully without crashing the entire application.
+- **Debounced Tab Switching**: Added intelligent debouncing mechanism (300ms minimum interval) to prevent crashes from rapid successive tab switches that could overwhelm the system.
+- **Transition State Management**: Introduced `isTransitioning` state to prevent concurrent operations during tab switches and provide visual feedback to users.
+- **Enhanced Widget Cleanup**: Improved TradingView widget cleanup with proper timeout management, mounted state tracking, and safe DOM manipulation to prevent memory leaks.
+- **Performance Optimizations**:
+  - Added `React.memo` to both `NewsPage` and `EconomicCalendarWidget` components to prevent unnecessary re-renders
+  - Implemented `useCallback` for all event handlers to maintain reference stability
+  - Added proper timeout cleanup on component unmount
+  - Enhanced error handling with try-catch blocks and safe DOM operations
+- **Code Quality Improvements**:
+  - **Eliminated All Inline Styles**: Converted 15+ inline style objects to proper styled-components following project conventions
+  - Created reusable styled components: `ErrorContainer`, `ErrorBoundaryContainer`, `LoadingOverlay`, `WidgetContainer`, etc.
+  - Maintained Liquid Glass theme consistency across all error states and loading indicators
+  - Improved maintainability and consistency with the existing styled-components pattern
+- **Robust State Management**: Protected state updates with error boundaries and safe fallbacks to prevent state corruption from rapid user interactions.
+- **Memory Leak Prevention**: Comprehensive cleanup of timers, event listeners, and DOM elements to ensure optimal memory usage during intensive usage patterns.
+- **User Feedback**: Added loading states, disabled buttons during transitions, and clear error recovery options for better user experience.
+- **Development Debugging**: Enhanced error logging with stack traces in development mode for easier troubleshooting of edge cases. 

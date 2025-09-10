@@ -4,7 +4,7 @@ import { buildLogger } from './buildLogger';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import prompts from 'prompts';
-import chalk from 'chalk';
+import pc from 'picocolors';
 import fs from 'fs';
 import path from 'path';
 import rcedit from 'rcedit';
@@ -136,8 +136,8 @@ async function getBuildType(): Promise<BuildType> {
   if (isPortableBuild) return 'portable';
 
   // Otherwise, prompt the user
-  console.log(chalk.cyan.bold('🚀 CryptoVertX Build System 🚀'));
-  console.log(chalk.dim('━'.repeat(50)));
+  console.log(pc.bold(pc.cyan('🚀 CryptoVertX Build System 🚀')));
+  console.log(pc.dim('━'.repeat(50)));
   
   const response = await prompts({
     type: 'select',
@@ -166,7 +166,7 @@ async function handleVersionManagement(): Promise<string> {
   
   // If current version exists in release directory
   if (existingVersions.includes(currentVersion)) {
-    console.log(chalk.yellow(`⚠️ Version ${currentVersion} already exists in the release directory.`));
+    console.log(pc.yellow(`⚠️ Version ${currentVersion} already exists in the release directory.`));
     
     const { action } = await prompts({
       type: 'select',
@@ -180,7 +180,7 @@ async function handleVersionManagement(): Promise<string> {
     });
     
     if (action === 'overwrite') {
-      console.log(chalk.cyan(`🔄 Will overwrite version ${currentVersion}`));
+      console.log(pc.cyan(`🔄 Will overwrite version ${currentVersion}`));
       return currentVersion;
     } else {
       // Prompt for new version
@@ -196,20 +196,20 @@ async function handleVersionManagement(): Promise<string> {
       });
       
       if (!newVersion) {
-        console.log(chalk.red('❌ Version input cancelled. Using current version.'));
+        console.log(pc.red('❌ Version input cancelled. Using current version.'));
         return currentVersion;
       }
       
       // Update package.json with new version
       await updateVersionInPackageJson(newVersion);
-      
-      console.log(chalk.green(`✅ Will build version ${newVersion}`));
+
+      console.log(pc.green(`✅ Will build version ${newVersion}`));
       return newVersion;
     }
   }
   
   // If no existing version, just use current version
-  console.log(chalk.green(`📝 Building version ${currentVersion}`));
+  console.log(pc.green(`📝 Building version ${currentVersion}`));
   return currentVersion;
 }
 
@@ -456,8 +456,8 @@ async function runBuild() {
     
     // Display cool version management header
     console.log('\n');
-    console.log(chalk.cyan.bold('🔢 CryptoVertX Version Management 🔢'));
-    console.log(chalk.dim('━'.repeat(50)));
+    console.log(pc.bold(pc.cyan('🔢 CryptoVertX Version Management 🔢')));
+    console.log(pc.dim('━'.repeat(50)));
     console.log('\n');
     
     // Handle version management
@@ -544,8 +544,8 @@ async function runBuild() {
     buildLogger.buildComplete(buildType);
     
     // Display version information at the end
-    console.log(chalk.green.bold(`🏁 Build completed for CryptoVertX v${version}`));
-    console.log(chalk.cyan(`📁 Output directory: ${OUTPUT_DIR}`));
+    console.log(pc.bold(pc.green(`🏁 Build completed for CryptoVertX v${version}`)));
+    console.log(pc.cyan(`📁 Output directory: ${OUTPUT_DIR}`));
     
     // Final verification of versionManager.ts
     try {
@@ -553,9 +553,9 @@ async function runBuild() {
       const content = fs.readFileSync(versionManagerPath, 'utf-8');
       
       if (content.includes(`buildTimeVersion = '${version}'`)) {
-        console.log(chalk.green(`✅ Verified versionManager.ts contains the correct version: ${version}`));
+        console.log(pc.green(`✅ Verified versionManager.ts contains the correct version: ${version}`));
       } else {
-        console.log(chalk.yellow(`⚠️ versionManager.ts might not have the correct version. Final manual check recommended.`));
+        console.log(pc.yellow(`⚠️ versionManager.ts might not have the correct version. Final manual check recommended.`));
         // One last attempt to update it
         await updateVersionInVersionManager(version);
       }

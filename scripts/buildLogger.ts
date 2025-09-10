@@ -1,5 +1,5 @@
 import ora, { Ora } from 'ora';
-import chalk from 'chalk';
+import pc from 'picocolors';
 import { cpus, totalmem, freemem, platform, release, arch } from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -125,19 +125,19 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     
     // Add color to important parts
     if (message.includes('version=')) {
-      message = message.replace(/version=([^ ]+)/, `version=${chalk.green('$1')}`);
+      message = message.replace(/version=([^ ]+)/, `version=${pc.green('$1')}`);
     }
-    
+
     if (message.includes('platform=')) {
-      message = message.replace(/platform=([^ ]+)/, `platform=${chalk.cyan('$1')}`);
+      message = message.replace(/platform=([^ ]+)/, `platform=${pc.cyan('$1')}`);
     }
-    
+
     if (message.includes('arch=')) {
-      message = message.replace(/arch=([^ ]+)/, `arch=${chalk.yellow('$1')}`);
+      message = message.replace(/arch=([^ ]+)/, `arch=${pc.yellow('$1')}`);
     }
-    
+
     if (message.includes('file=')) {
-      message = message.replace(/file=([^ ]+)/, `file=${chalk.green('$1')}`);
+      message = message.replace(/file=([^ ]+)/, `file=${pc.green('$1')}`);
     }
     
     return message;
@@ -171,48 +171,48 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     
     this.buildProgress = 0;
     this.startTime = Date.now();
-    
-    console.log(chalk.cyan.bold(`${this.emojis.start} Starting CryptoVertX v${this.appVersion} ${buildTypeText} Build Process ${this.emojis.start}`));
-    console.log(chalk.dim('━'.repeat(65)));
+
+    console.log(pc.bold(pc.cyan(`${this.emojis.start} Starting CryptoVertX v${this.appVersion} ${buildTypeText} Build Process ${this.emojis.start}`)));
+    console.log(pc.dim('━'.repeat(65)));
     console.log(await this.getSystemSpecs());
-    console.log(chalk.dim('━'.repeat(65)));
+    console.log(pc.dim('━'.repeat(65)));
     console.log('');
   }
 
   startViteBuild() {
-    this.spinner.start(chalk.blue(`${this.emojis.vite} Building Vite application...`));
+    this.spinner.start(pc.blue(`${this.emojis.vite} Building Vite application...`));
   }
 
   moduleTransformed(count: number) {
-    this.spinner.text = chalk.blue(`${this.emojis.modules} Transformed ${count} modules...`);
+    this.spinner.text = pc.blue(`${this.emojis.modules} Transformed ${count} modules...`);
   }
 
   assetEmitted(name: string, size: string) {
     this.spinner.succeed();
-    console.log(chalk.green(`${this.emojis.assets} Generated ${chalk.bold(name)} (${size})`));
+    console.log(pc.green(`${this.emojis.assets} Generated ${pc.bold(name)} (${size})`));
     this.spinner.start();
   }
 
   viteBuildComplete(time: string) {
-    this.spinner.succeed(chalk.green(`${this.emojis.success} Vite build completed in ${time}s`));
+    this.spinner.succeed(pc.green(`${this.emojis.success} Vite build completed in ${time}s`));
     console.log('');
     this.updateProgress();
   }
 
   startElectronBuild() {
-    console.log(chalk.dim('━'.repeat(65)));
-    this.spinner.start(chalk.blue(`${this.emojis.electron} Building Electron application...`));
+    console.log(pc.dim('━'.repeat(65)));
+    this.spinner.start(pc.blue(`${this.emojis.electron} Building Electron application...`));
   }
 
   electronConfigStep() {
-    this.spinner.text = chalk.blue(`${this.emojis.config} Configuring Electron builder...`);
-    console.log(chalk.dim('\n       Electron Builder Configuration:'));
+    this.spinner.text = pc.blue(`${this.emojis.config} Configuring Electron builder...`);
+    console.log(pc.dim('\n       Electron Builder Configuration:'));
     this.updateProgress();
   }
 
   electronPackagingStep() {
     console.log(''); // spacing
-    this.spinner.text = chalk.blue(`${this.emojis.package} Packaging application for Windows...`);
+    this.spinner.text = pc.blue(`${this.emojis.package} Packaging application for Windows...`);
   }
 
   startBuildType(type: 'portable' | 'msi' | 'exe') {
@@ -226,8 +226,8 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     
     this.buildStartTimes[type] = Date.now();
     
-    console.log(chalk.dim('━'.repeat(50)));
-    this.spinner.start(chalk.blue(`${emoji} Building ${typeName}...`));
+    console.log(pc.dim('━'.repeat(50)));
+    this.spinner.start(pc.blue(`${emoji} Building ${typeName}...`));
   }
 
   buildTypeComplete(type: 'portable' | 'msi' | 'exe') {
@@ -280,7 +280,7 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
       this.buildFileSizes[type] = 'Unknown';
     }
     
-    this.spinner.succeed(chalk.green(`${emoji} ${typeName} built successfully!`));
+    this.spinner.succeed(pc.green(`${emoji} ${typeName} built successfully!`));
     this.updateProgress();
   }
 
@@ -290,14 +290,14 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     const formattedMessage = this.formatElectronMessage(message);
     console.log(formattedMessage);
     // Restart spinner on a new line
-    this.spinner.start(chalk.blue(`${this.emojis.package} Packaging application for Windows...`));
+    this.spinner.start(pc.blue(`${this.emojis.package} Packaging application for Windows...`));
   }
 
   displayBuildSummary() {
     if (Object.keys(this.buildDurations).length === 0) return;
     
-    console.log(chalk.dim('━'.repeat(65)));
-    console.log(chalk.cyan.bold(`${this.emojis.summary} Build Performance Summary ${this.emojis.summary}`));
+    console.log(pc.dim('━'.repeat(65)));
+    console.log(pc.bold(pc.cyan(`${this.emojis.summary} Build Performance Summary ${this.emojis.summary}`)));
     console.log('');
     
     // Create a table-like structure for the build times
@@ -308,9 +308,9 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     };
     
     // Modern table header with gradient
-    console.log(chalk.dim('┌─────────────────────────────────────────────────────────────────┐'));
-    console.log(chalk.dim('│') + chalk.cyan.bold(' Build Type'.padEnd(30)) + chalk.dim('│') + chalk.cyan.bold(' Duration'.padEnd(15)) + chalk.dim('│') + chalk.cyan.bold(' Size'.padEnd(18)) + chalk.dim('│'));
-    console.log(chalk.dim('├─────────────────────────────────────────────────────────────────┤'));
+    console.log(pc.dim('┌─────────────────────────────────────────────────────────────────┐'));
+    console.log(pc.dim('│') + pc.bold(pc.cyan(' Build Type'.padEnd(30))) + pc.dim('│') + pc.bold(pc.cyan(' Duration'.padEnd(15))) + pc.dim('│') + pc.bold(pc.cyan(' Size'.padEnd(18))) + pc.dim('│'));
+    console.log(pc.dim('├─────────────────────────────────────────────────────────────────┤'));
     
     // Display each build type duration with improved styling
     Object.entries(this.buildDurations).forEach(([type, duration]) => {
@@ -327,17 +327,17 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
       const fileSize = this.buildFileSizes[type] || 'Unknown';
       
       console.log(
-        chalk.dim('│') + 
-        chalk.yellow(` ${emoji} ${typeName}`.padEnd(29)) + 
-        chalk.dim('│') + 
-        chalk.green(` ${formatTime(duration)}`.padEnd(14)) + 
-        chalk.dim('│') + 
-        chalk.blue(` ${fileSize}`.padEnd(17)) + 
-        chalk.dim('│')
+        pc.dim('│') +
+        pc.yellow(` ${emoji} ${typeName}`.padEnd(29)) +
+        pc.dim('│') +
+        pc.green(` ${formatTime(duration)}`.padEnd(14)) +
+        pc.dim('│') +
+        pc.blue(` ${fileSize}`.padEnd(17)) +
+        pc.dim('│')
       );
     });
     
-    console.log(chalk.dim('└─────────────────────────────────────────────────────────────────┘'));
+    console.log(pc.dim('└─────────────────────────────────────────────────────────────────┘'));
     
     // If both installer types were built, compare them
     const builtInstallers = Object.keys(this.buildDurations).filter(k => k === 'msi' || k === 'exe');
@@ -353,11 +353,11 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
       
       const typeNameMap = { msi: 'MSI Installer', exe: 'EXE Setup Wizard' };
 
-      console.log(chalk.green(`${this.emojis.trophy} ${typeNameMap[fasterType]} was faster by ${formatTime(timeDiff)} (${percentFaster}%)! ${this.emojis.rocket}`));
-      
+      console.log(pc.green(`${this.emojis.trophy} ${typeNameMap[fasterType]} was faster by ${formatTime(timeDiff)} (${percentFaster}%)! ${this.emojis.rocket}`));
+
       // Visual comparison with improved styling
       console.log('');
-      console.log(chalk.cyan.bold('⚡ Build Time Comparison (Installers):'));
+      console.log(pc.bold(pc.cyan('⚡ Build Time Comparison (Installers):')));
       
       // Calculate bar lengths for visual comparison
       const maxBarLength = 40;
@@ -369,15 +369,15 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
       const exeBar = '█'.repeat(exeBarLength);
       
       // Add visual indicators for faster/slower
-      console.log(`${this.emojis.msi} ${'MSI Installer'.padEnd(20)} ${chalk.green(msiBar)} ${formatTime(this.buildDurations['msi'])} ${fasterType === 'msi' ? chalk.green('(faster)') : ''}`);
-      console.log(`${this.emojis.exe} ${'EXE Setup Wizard'.padEnd(20)} ${chalk.yellow(exeBar)} ${formatTime(this.buildDurations['exe'])} ${fasterType === 'exe' ? chalk.green('(faster)') : ''}`);
+      console.log(`${this.emojis.msi} ${'MSI Installer'.padEnd(20)} ${pc.green(msiBar)} ${formatTime(this.buildDurations['msi'])} ${fasterType === 'msi' ? pc.green('(faster)') : ''}`);
+      console.log(`${this.emojis.exe} ${'EXE Setup Wizard'.padEnd(20)} ${pc.yellow(exeBar)} ${formatTime(this.buildDurations['exe'])} ${fasterType === 'exe' ? pc.green('(faster)') : ''}`);
       
       // Add size comparison
       if (this.buildFileSizes['msi'] && this.buildFileSizes['exe']) {
         console.log('');
-        console.log(chalk.cyan.bold('💾 Size Comparison (Installers):'));
-        console.log(`${this.emojis.msi} MSI: ${chalk.blue(this.buildFileSizes['msi'])}`);
-        console.log(`${this.emojis.exe} EXE: ${chalk.blue(this.buildFileSizes['exe'])}`);
+        console.log(pc.bold(pc.cyan('💾 Size Comparison (Installers):')));
+        console.log(`${this.emojis.msi} MSI: ${pc.blue(this.buildFileSizes['msi'])}`);
+        console.log(`${this.emojis.exe} EXE: ${pc.blue(this.buildFileSizes['exe'])}`);
       }
     }
     
@@ -393,10 +393,10 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     this.buildProgress = this.totalBuildSteps;
     this.updateProgress();
     
-    console.log(chalk.dim('━'.repeat(65)));
-    console.log(chalk.green.bold(`${this.emojis.complete} Build Complete! ${this.emojis.complete}`));
-    console.log(chalk.yellow(`${this.emojis.time} Total build time: ${totalElapsedTime}`));
-    console.log(chalk.cyan(`${this.emojis.version} App Version: v${this.appVersion}`));
+    console.log(pc.dim('━'.repeat(65)));
+    console.log(pc.bold(pc.green(`${this.emojis.complete} Build Complete! ${this.emojis.complete}`)));
+    console.log(pc.yellow(`${this.emojis.time} Total build time: ${totalElapsedTime}`));
+    console.log(pc.cyan(`${this.emojis.version} App Version: v${this.appVersion}`));
     console.log('');
     
     if (buildType === 'all' || buildType === 'default') {
@@ -405,39 +405,39 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     
     const releaseFolder = `release/${this.appVersion}`;
     if (buildType === 'all') {
-      console.log(chalk.cyan(`${this.emojis.sparkles} All packages are ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
+      console.log(pc.cyan(`${this.emojis.sparkles} All packages are ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     } else if (buildType === 'default') {
-      console.log(chalk.cyan(`${this.emojis.sparkles} Your default packages (MSI Setup + Portable) are ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
+      console.log(pc.cyan(`${this.emojis.sparkles} Your default packages (MSI Setup + Portable) are ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     } else if (buildType === 'msi') {
-      console.log(chalk.cyan(`${this.emojis.sparkles} Your MSI installer is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
+      console.log(pc.cyan(`${this.emojis.sparkles} Your MSI installer is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     } else if (buildType === 'exe') {
-      console.log(chalk.cyan(`${this.emojis.sparkles} Your EXE setup wizard is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
+      console.log(pc.cyan(`${this.emojis.sparkles} Your EXE setup wizard is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     } else {
-      console.log(chalk.cyan(`${this.emojis.sparkles} Your portable executable is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
+      console.log(pc.cyan(`${this.emojis.sparkles} Your portable executable is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     }
     
     console.log('');
   }
 
   error(message: string) {
-    this.spinner.fail(chalk.red(`${this.emojis.error} Error: ${message}`));
+    this.spinner.fail(pc.red(`${this.emojis.error} Error: ${message}`));
     console.log('');
   }
 
   warn(message: string) {
     this.spinner.stop();
-    console.warn(chalk.yellow(`${this.emojis.info} Warning: ${message}`));
+    console.warn(pc.yellow(`${this.emojis.info} Warning: ${message}`));
     this.spinner.start();
   }
 
   cleanupStep() {
-    this.spinner.start(chalk.blue(`${this.emojis.cleanup} Cleaning up before build...`));
+    this.spinner.start(pc.blue(`${this.emojis.cleanup} Cleaning up before build...`));
     this.spinner.succeed();
     this.updateProgress();
   }
-  
+
   log(message: string) {
-    this.spinner.info(chalk.blue(`${this.emojis.info} ${message}`));
+    this.spinner.info(pc.blue(`${this.emojis.info} ${message}`));
   }
 
   updateProgress() {
@@ -447,8 +447,8 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
       const percentage = Math.min(100, Math.floor((this.buildProgress / this.totalBuildSteps) * 100));
       
       // Always show the build pipeline visualization
-      console.log(chalk.dim('━'.repeat(65)));
-      
+      console.log(pc.dim('━'.repeat(65)));
+
       // Create a modern build pipeline visualization
       const stages = [
         { name: 'Cleanup', emoji: '🧹', step: 1 },
@@ -459,9 +459,9 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
         { name: 'App Config', emoji: '📝', step: 6 },
         { name: 'Complete', emoji: '🎉', step: 7 }
       ];
-      
+
       // Display build pipeline
-      console.log(chalk.cyan.bold(`🔄 Build Pipeline (${percentage}% Complete)`));
+      console.log(pc.bold(pc.cyan(`🔄 Build Pipeline (${percentage}% Complete)`)));
       console.log('');
       
       // Create a visual pipeline
@@ -471,16 +471,16 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
         
         let stageSymbol;
         let stageName;
-        
+
         if (isCompleted) {
-          stageSymbol = chalk.green('✓');
-          stageName = chalk.green(stage.name);
+          stageSymbol = pc.green('✓');
+          stageName = pc.green(stage.name);
         } else if (isActive) {
-          stageSymbol = chalk.yellow('⟳');
-          stageName = chalk.yellow.bold(stage.name);
+          stageSymbol = pc.yellow('⟳');
+          stageName = pc.bold(pc.yellow(stage.name));
         } else {
-          stageSymbol = chalk.gray('○');
-          stageName = chalk.gray(stage.name);
+          stageSymbol = pc.gray('○');
+          stageName = pc.gray(stage.name);
         }
         
         return `  ${stageSymbol} ${stage.emoji} ${stageName}`;
@@ -491,9 +491,9 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
       
       // Add a visual time indicator
       const elapsedTime = ((Date.now() - this.startTime) / 1000).toFixed(1);
-      console.log(chalk.dim(`  ⏱️ Elapsed: ${elapsedTime}s`));
-      
-      console.log(chalk.dim('━'.repeat(65)));
+      console.log(pc.dim(`  ⏱️ Elapsed: ${elapsedTime}s`));
+
+      console.log(pc.dim('━'.repeat(65)));
       console.log('');
     }
   }
