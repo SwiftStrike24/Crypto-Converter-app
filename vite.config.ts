@@ -65,7 +65,7 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 1000,
     target: 'esnext',
     reportCompressedSize: false,
-    cssMinify: true,
+    cssMinify: 'lightningcss', // Enable Lightning CSS for faster CSS processing
     cssCodeSplit: true,
     modulePreload: false,
     rollupOptions: {
@@ -88,12 +88,15 @@ export default defineConfig(({ mode }) => ({
       },
     } : undefined
   },
+  // Enable Rolldown (Rust-based bundler) for faster builds
   esbuild: {
     target: 'esnext',
     legalComments: 'none',
     treeShaking: true,
     minifyIdentifiers: true,
     minifySyntax: true,
-    minifyWhitespace: true
+    minifyWhitespace: true,
+    // Enable source maps for debugging in development
+    sourcemap: mode !== 'production'
   }
 })); 

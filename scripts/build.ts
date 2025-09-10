@@ -15,8 +15,31 @@ const mkdirAsync = promisify(fs.mkdir);
 const existsAsync = promisify(fs.exists);
 const readdirAsync = promisify(fs.readdir);
 
-// Build types
-type BuildType = 'default' | 'portable' | 'msi' | 'exe' | 'all';
+// Build types and profiles
+type BuildType = 'default' | 'portable' | 'msi' | 'exe' | 'all' | 'release';
+type BuildProfile = 'dev' | 'release';
+
+// Build profile configuration
+const BUILD_PROFILES = {
+  dev: {
+    compression: 'store' as const,
+    signExecutables: false,
+    signDlls: false,
+    npmRebuild: false,
+    removePackageScripts: true,
+    skipIconFix: true,
+    skipRegistrySetup: true
+  },
+  release: {
+    compression: 'normal' as const,
+    signExecutables: true,
+    signDlls: false,
+    npmRebuild: false,
+    removePackageScripts: true,
+    skipIconFix: false,
+    skipRegistrySetup: false
+  }
+};
 
 // Check if any arguments are passed to skip interactive mode
 const hasArgs = process.argv.length > 2;
@@ -25,6 +48,8 @@ const isPortableBuild = process.argv.includes('--portable');
 const isMsiBuild = process.argv.includes('--msi');
 const isExeBuild = process.argv.includes('--exe');
 const isAllBuild = process.argv.includes('--all');
+const isReleaseBuild = process.argv.includes('--release');
+const isDevBuild = process.argv.includes('--dev');
 
 // Temporary directory for build assets
 const TEMP_DIR = path.join(__dirname, '../temp-build-assets');
@@ -79,7 +104,7 @@ async function updateVersionInPackageJson(version: string): Promise<void> {
     
     buildLogger.log(`Updated package.json version to ${version}`);
   } catch (error) {
-    buildLogger.error(`Failed to update package.json version: ${error.message}`);
+    buildLogger.error(`Failed to update package.json version: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -112,7 +137,7 @@ async function prepareAssets() {
     
     buildLogger.log('Assets prepared for build');
   } catch (error) {
-    buildLogger.error(`Failed to prepare assets: ${error.message}`);
+    buildLogger.error(`Failed to prepare assets: ${error instanceof Error ? error.message : String(error)}`);
     throw error;
   }
 }
@@ -123,8 +148,17 @@ async function cleanupTempAssets() {
       await execAsync(`rmdir /S /Q "${TEMP_DIR}"`);
     }
   } catch (error) {
-    buildLogger.error(`Failed to clean up temp assets: ${error.message}`);
+    buildLogger.error(`Failed to clean up temp assets: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+async function getBuildProfile(): Promise<BuildProfile> {
+  // If arguments are provided, use them
+  if (isDevBuild) return 'dev';
+  if (isReleaseBuild) return 'release';
+
+  // Default to dev for development builds (fast)
+  return 'dev';
 }
 
 async function getBuildType(): Promise<BuildType> {
@@ -134,6 +168,7 @@ async function getBuildType(): Promise<BuildType> {
   if (isMsiBuild) return 'msi';
   if (isExeBuild) return 'exe';
   if (isPortableBuild) return 'portable';
+  if (isReleaseBuild) return 'release';
 
   // Otherwise, prompt the user
   console.log(pc.bold(pc.cyan('🚀 CryptoVertX Build System 🚀')));
@@ -189,7 +224,7 @@ async function handleVersionManagement(): Promise<string> {
         name: 'newVersion',
         message: 'Enter new version number (e.g., 1.0.1):',
         initial: incrementVersion(currentVersion),
-        validate: value => 
+        validate: (value: string) => 
           /^\d+\.\d+\.\d+$/.test(value) 
             ? true 
             : 'Please enter a valid semantic version (e.g., 1.0.1)'
@@ -220,19 +255,24 @@ function incrementVersion(version: string): string {
   return parts.join('.');
 }
 
-async function buildPortable() {
+async function buildPortable(profile: BuildProfile = 'dev') {
   buildLogger.startBuildType('portable');
-  
+
+  const profileConfig = BUILD_PROFILES[profile];
+
   const config: Configuration = {
     asar: true,
+    compression: profileConfig.compression,
+    npmRebuild: profileConfig.npmRebuild,
+    removePackageScripts: profileConfig.removePackageScripts,
     win: {
       target: {
         target: 'portable',
         arch: ['x64']
       },
       icon: TEMP_ICON_PATH,
-      signAndEditExecutable: true,
-      signDlls: false
+      signAndEditExecutable: profileConfig.signExecutables,
+      signDlls: profileConfig.signDlls
     },
     extraResources: [
       {
@@ -251,19 +291,24 @@ async function buildPortable() {
   buildLogger.buildTypeComplete('portable');
 }
 
-async function buildMsi() {
+async function buildMsi(profile: BuildProfile = 'dev') {
   buildLogger.startBuildType('msi');
-  
+
+  const profileConfig = BUILD_PROFILES[profile];
+
   const config: Configuration = {
     asar: true,
+    compression: profileConfig.compression,
+    npmRebuild: profileConfig.npmRebuild,
+    removePackageScripts: profileConfig.removePackageScripts,
     win: {
       target: {
         target: 'msi',
         arch: ['x64']
       },
       icon: TEMP_ICON_PATH,
-      signAndEditExecutable: true,
-      signDlls: false
+      signAndEditExecutable: profileConfig.signExecutables,
+      signDlls: profileConfig.signDlls
     },
     extraResources: [
       {
@@ -282,19 +327,24 @@ async function buildMsi() {
   buildLogger.buildTypeComplete('msi');
 }
 
-async function buildExe() {
+async function buildExe(profile: BuildProfile = 'dev') {
   buildLogger.startBuildType('exe');
-  
+
+  const profileConfig = BUILD_PROFILES[profile];
+
   const config: Configuration = {
     asar: true,
+    compression: profileConfig.compression,
+    npmRebuild: profileConfig.npmRebuild,
+    removePackageScripts: profileConfig.removePackageScripts,
     win: {
       target: {
         target: 'nsis',
         arch: ['x64']
       },
       icon: TEMP_ICON_PATH,
-      signAndEditExecutable: true,
-      signDlls: false
+      signAndEditExecutable: profileConfig.signExecutables,
+      signDlls: profileConfig.signDlls
     },
     extraResources: [
       {
@@ -311,6 +361,111 @@ async function buildExe() {
   });
 
   buildLogger.buildTypeComplete('exe');
+}
+
+// Pre-packaging strategy: Build once, package many
+async function buildAndPackage(profile: BuildProfile, buildType: BuildType) {
+  const profileConfig = BUILD_PROFILES[profile];
+  const startTime = Date.now();
+
+  buildLogger.log(`🚀 Starting ${profile.toUpperCase()} build with pre-packaging strategy...`);
+
+  // Step 1: Build directory (unpackaged app)
+  buildLogger.startBuildType('directory');
+  const dirConfig: Configuration = {
+    asar: true,
+    compression: profileConfig.compression,
+    npmRebuild: profileConfig.npmRebuild,
+    removePackageScripts: profileConfig.removePackageScripts,
+    win: {
+      target: {
+        target: 'dir',
+        arch: ['x64']
+      },
+      icon: TEMP_ICON_PATH,
+      signAndEditExecutable: profileConfig.signExecutables,
+      signDlls: profileConfig.signDlls
+    },
+    extraResources: [
+      {
+        from: TEMP_DIR,
+        to: 'assets'
+      }
+    ],
+    executableName: 'CryptoVertX'
+  };
+
+  await electronBuilder({
+    targets: Platform.WINDOWS.createTarget(),
+    config: dirConfig
+  });
+  buildLogger.buildTypeComplete('directory');
+
+  const dirTime = ((Date.now() - startTime) / 1000).toFixed(2);
+  buildLogger.log(`📁 Directory build completed in ${dirTime}s`);
+
+  // Step 2: Package from the prepackaged directory
+  const prepackagedDir = path.join(OUTPUT_DIR, 'win-unpacked');
+
+  if (buildType === 'default' || buildType === 'all') {
+    await packageFromPrebuilt(prepackagedDir, 'portable', profile);
+    await packageFromPrebuilt(prepackagedDir, 'msi', profile);
+  } else if (buildType === 'portable') {
+    await packageFromPrebuilt(prepackagedDir, 'portable', profile);
+  } else if (buildType === 'msi') {
+    await packageFromPrebuilt(prepackagedDir, 'msi', profile);
+  } else if (buildType === 'exe') {
+    await packageFromPrebuilt(prepackagedDir, 'exe', profile);
+  } else if (buildType === 'release') {
+    // Release build: MSI + Portable only (MSI first, then Portable)
+    await packageFromPrebuilt(prepackagedDir, 'msi', profile);
+    await packageFromPrebuilt(prepackagedDir, 'portable', profile);
+  }
+
+  const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+  buildLogger.log(`🎉 Pre-packaging strategy completed in ${totalTime}s`);
+}
+
+async function packageFromPrebuilt(prepackagedDir: string, target: 'portable' | 'msi' | 'exe', profile: BuildProfile) {
+  const profileConfig = BUILD_PROFILES[profile];
+
+  // Map 'exe' to the correct build type for logging
+  const logTarget = target === 'exe' ? 'exe' : target;
+  buildLogger.startBuildType(logTarget);
+
+  // Map target for electron-builder configuration
+  const electronBuilderTarget = target === 'exe' ? 'nsis' : target;
+
+  const config: Configuration = {
+    asar: true,
+    compression: profileConfig.compression,
+    npmRebuild: profileConfig.npmRebuild,
+    removePackageScripts: profileConfig.removePackageScripts,
+    win: {
+      target: {
+        target: electronBuilderTarget as any,
+        arch: ['x64']
+      },
+      icon: TEMP_ICON_PATH,
+      signAndEditExecutable: profileConfig.signExecutables,
+      signDlls: profileConfig.signDlls
+    },
+    extraResources: [
+      {
+        from: TEMP_DIR,
+        to: 'assets'
+      }
+    ],
+    executableName: 'CryptoVertX'
+  };
+
+  await electronBuilder({
+    targets: Platform.WINDOWS.createTarget(),
+    config,
+    prepackaged: prepackagedDir
+  });
+
+  buildLogger.buildTypeComplete(logTarget);
 }
 
 async function fixExecutableIcon() {
@@ -358,10 +513,10 @@ async function fixExecutableIcon() {
           // This is just a placeholder for a verification step
           buildLogger.log('Icon verification completed');
         } catch (verifyError) {
-          buildLogger.error(`Icon verification failed: ${verifyError.message}`);
+          buildLogger.error(`Icon verification failed: ${verifyError instanceof Error ? verifyError.message : String(verifyError)}`);
         }
       } catch (error) {
-        buildLogger.error(`Failed to fix executable icon: ${error.message}`);
+        buildLogger.error(`Failed to fix executable icon: ${error instanceof Error ? error.message : String(error)}`);
         
         // Fallback approach if rcedit fails
         try {
@@ -373,14 +528,14 @@ async function fixExecutableIcon() {
             buildLogger.log('Alternative icon application completed');
           }
         } catch (fallbackError) {
-          buildLogger.error(`Alternative icon application failed: ${fallbackError.message}`);
+          buildLogger.error(`Alternative icon application failed: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
         }
       }
     } else {
       buildLogger.error(`Win-unpacked directory not found at: ${WIN_UNPACKED_DIR}`);
     }
   } catch (error) {
-    buildLogger.error(`Error in fixExecutableIcon: ${error.message}`);
+    buildLogger.error(`Error in fixExecutableIcon: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -442,37 +597,43 @@ This is optional and only needed if you want to customize the app icon appearanc
     
     buildLogger.log('Icon setup documentation created');
   } catch (error) {
-    buildLogger.error(`Failed to set up application icon configuration: ${error.message}`);
+    buildLogger.error(`Failed to set up application icon configuration: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 async function runBuild() {
   try {
+    // Get build profile (dev for fast builds, release for production)
+    const profile = await getBuildProfile();
+    const profileConfig = BUILD_PROFILES[profile];
+
+    buildLogger.log(`🚀 Using ${profile.toUpperCase()} build profile (compression: ${profileConfig.compression})`);
+
     // Get the version from package.json
     const currentVersion = await getCurrentVersion();
-    
+
     // Update versionManager.ts with the correct version for production builds
     await updateVersionInVersionManager(currentVersion);
-    
+
     // Display cool version management header
     console.log('\n');
     console.log(pc.bold(pc.cyan('🔢 CryptoVertX Version Management 🔢')));
     console.log(pc.dim('━'.repeat(50)));
     console.log('\n');
-    
+
     // Handle version management
     const version = await handleVersionManagement();
-    
+
     // Update versionManager.ts again in case the version was changed
     if (version !== currentVersion) {
       buildLogger.log(`Version changed from ${currentVersion} to ${version}, updating versionManager.ts...`);
       await updateVersionInVersionManager(version);
     }
-    
+
     // Update output directories with selected version
     OUTPUT_DIR = path.join(RELEASE_DIR, version);
     WIN_UNPACKED_DIR = path.join(OUTPUT_DIR, 'win-unpacked');
-    
+
     // Get build type preference
     const buildType = await getBuildType();
     
@@ -508,26 +669,15 @@ async function runBuild() {
       }
     };
 
-    // Build based on selection
-    if (buildType === 'default') {
-      await buildMsi();
-      await buildPortable();
-    } else if (buildType === 'all') {
-      await buildMsi();
-      await buildExe();
-      await buildPortable();
-    } else if (buildType === 'portable') {
-      await buildPortable();
-    } else if (buildType === 'msi') {
-      await buildMsi();
-    } else if (buildType === 'exe') {
-      await buildExe();
-    }
-    
-    // Fix executable icon after builds
-    if (buildType !== 'msi') { // MSI doesn't create a loose exe in the same way
+    // Use optimized pre-packaging strategy for faster builds
+    await buildAndPackage(profile, buildType);
+
+    // Fix executable icon after builds (skip for dev profile)
+    if (!profileConfig.skipIconFix && buildType !== 'msi') { // MSI doesn't create a loose exe in the same way
         buildLogger.log('Fixing main executable icon...');
         await fixExecutableIcon();
+    } else if (profileConfig.skipIconFix) {
+      buildLogger.log('⚡ Skipping icon fix for dev profile (fast build)');
     }
 
     // Restore console.log
@@ -535,10 +685,12 @@ async function runBuild() {
 
     // Clean up temp assets
     await cleanupTempAssets();
-    
-    // Set up app configuration instead of modifying registry
-    if (process.platform === 'win32') {
+
+    // Set up app configuration instead of modifying registry (skip for dev profile)
+    if (process.platform === 'win32' && !profileConfig.skipRegistrySetup) {
       await ensureWindowsRegistryIcon();
+    } else if (profileConfig.skipRegistrySetup) {
+      buildLogger.log('⚡ Skipping registry setup for dev profile (fast build)');
     }
 
     buildLogger.buildComplete(buildType);
@@ -560,13 +712,13 @@ async function runBuild() {
         await updateVersionInVersionManager(version);
       }
     } catch (error) {
-      buildLogger.warn(`Could not verify versionManager.ts in final step: ${error.message}`);
+      buildLogger.warn(`Could not verify versionManager.ts in final step: ${error instanceof Error ? error.message : String(error)}`);
     }
   } catch (error) {
     // Clean up temp assets even if build fails
     await cleanupTempAssets();
     
-    buildLogger.error(error.message);
+    buildLogger.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
   }
 }
@@ -624,7 +776,7 @@ async function updateVersionInVersionManager(version: string): Promise<void> {
       buildLogger.warn(`⚠️ Version update verification failed - the file might not have been updated correctly`);
     }
   } catch (error) {
-    buildLogger.error(`Failed to update version in versionManager.ts: ${error.message}`);
+    buildLogger.error(`Failed to update version in versionManager.ts: ${error instanceof Error ? error.message : String(error)}`);
     
     // Try an alternative approach with a more direct file manipulation
     try {
@@ -652,7 +804,7 @@ async function updateVersionInVersionManager(version: string): Promise<void> {
         buildLogger.error(`Could not find buildTimeVersion line using line-by-line method`);
       }
     } catch (fallbackError) {
-      buildLogger.error(`Fallback method also failed: ${fallbackError.message}`);
+        buildLogger.error(`Fallback method also failed: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
     }
   }
 }

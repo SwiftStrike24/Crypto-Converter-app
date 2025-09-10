@@ -6,7 +6,7 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 
-type BuildType = 'default' | 'portable' | 'msi' | 'exe' | 'all';
+type BuildType = 'default' | 'portable' | 'msi' | 'exe' | 'all' | 'release';
 
 class BuildLogger {
   private startTime: number = 0;
@@ -43,6 +43,8 @@ class BuildLogger {
     installer: '💿',
     msi: '💿',
     exe: '🚀',
+    directory: '📁',
+    release: '🏆',
     both: '🔥',
     summary: '📊',
     trophy: '🏆',
@@ -167,6 +169,9 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     } else if (buildType === 'all') {
       buildTypeText = 'Complete (All Packages)';
       this.totalBuildSteps = 8;
+    } else if (buildType === 'release') {
+      buildTypeText = 'Release (MSI + Portable)';
+      this.totalBuildSteps = 7;
     }
     
     this.buildProgress = 0;
@@ -215,12 +220,14 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     this.spinner.text = pc.blue(`${this.emojis.package} Packaging application for Windows...`);
   }
 
-  startBuildType(type: 'portable' | 'msi' | 'exe') {
+  startBuildType(type: 'portable' | 'msi' | 'exe' | 'directory' | 'release') {
     const emoji = this.emojis[type] || this.emojis.build;
     const typeNameMap = {
       portable: 'Portable Executable',
       msi: 'MSI Installer',
-      exe: 'EXE Setup Wizard'
+      exe: 'EXE Setup Wizard',
+      directory: 'Directory Build',
+      release: 'Release Build'
     };
     const typeName = typeNameMap[type];
     
@@ -230,12 +237,14 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     this.spinner.start(pc.blue(`${emoji} Building ${typeName}...`));
   }
 
-  buildTypeComplete(type: 'portable' | 'msi' | 'exe') {
+  buildTypeComplete(type: 'portable' | 'msi' | 'exe' | 'directory' | 'release') {
     const emoji = this.emojis[type] || this.emojis.build;
     const typeNameMap = {
       portable: 'Portable Executable',
       msi: 'MSI Installer',
-      exe: 'EXE Setup Wizard'
+      exe: 'EXE Setup Wizard',
+      directory: 'Directory Build',
+      release: 'Release Build'
     };
     const typeName = typeNameMap[type];
     
@@ -250,7 +259,9 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
       const filePattern = {
         portable: `CryptoVertX-Portable-${this.appVersion}.exe`,
         msi: `CryptoVertX-MSI-Installer-v${this.appVersion}.msi`,
-        exe: `CryptoVertX-Setup-v${this.appVersion}.exe`
+        exe: `CryptoVertX-Setup-v${this.appVersion}.exe`,
+        directory: `win-unpacked`,
+        release: `CryptoVertX-MSI-Installer-v${this.appVersion}.msi` // Use MSI as representative for release builds
       }[type];
       const filePath = path.join(outputDir, filePattern);
       
@@ -265,6 +276,8 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
             case 'portable': return file.includes('Portable');
             case 'msi': return file.endsWith('.msi');
             case 'exe': return file.includes('Setup') && file.endsWith('.exe');
+            case 'directory': return file === 'win-unpacked';
+            case 'release': return file.endsWith('.msi'); // Use MSI for release builds
             default: return false;
           }
         });
@@ -399,7 +412,7 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
     console.log(pc.cyan(`${this.emojis.version} App Version: v${this.appVersion}`));
     console.log('');
     
-    if (buildType === 'all' || buildType === 'default') {
+    if (buildType === 'all' || buildType === 'default' || buildType === 'release') {
       this.displayBuildSummary();
     }
     
@@ -412,6 +425,8 @@ ${formatLine(this.emojis.os + ' System:  ', osInfo)}
       console.log(pc.cyan(`${this.emojis.sparkles} Your MSI installer is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     } else if (buildType === 'exe') {
       console.log(pc.cyan(`${this.emojis.sparkles} Your EXE setup wizard is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
+    } else if (buildType === 'release') {
+      console.log(pc.cyan(`${this.emojis.sparkles} Your release packages (MSI + Portable) are ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     } else {
       console.log(pc.cyan(`${this.emojis.sparkles} Your portable executable is ready in the ${releaseFolder} folder! ${this.emojis.sparkles}`));
     }
