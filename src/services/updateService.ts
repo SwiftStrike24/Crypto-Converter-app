@@ -1,5 +1,6 @@
 // import axios from 'axios';
-import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // Bucket name - should be configured in .env
 export const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'cryptoconverter-downloads';
@@ -205,6 +206,24 @@ export const createR2Client = () => {
   }
 };
 
+async function getPresignedDownloadUrl(key: string, expiresSeconds = 7200): Promise<string | null> {
+  try {
+    const client = createR2Client();
+    if (!client) return null;
+    const fileName = key.split('/').pop() || 'CryptoVertX-Setup.msi';
+    const command = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      ResponseContentType: 'application/x-msi',
+      ResponseContentDisposition: `attachment; filename="${fileName}"`
+    });
+    const signed = await getSignedUrl(client as any, command as any, { expiresIn: expiresSeconds });
+    return signed;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get file metadata from R2
  * @param prefix The prefix to filter objects by
@@ -242,7 +261,7 @@ export async function getFileMetadata(prefix: string) {
     });
     
     try {
-      const response = await client.send(command);
+      const response = await (client as any).send(command as any);
       const contents = response.Contents || [];
       log.success(`Found ${contents.length} files via R2 client`);
       return contents;
@@ -314,16 +333,25 @@ async function getFileMetadataFromApi(prefix: string) {
 }
 
 /**
- * Generate a URL for downloading a file
+ * Generate a URL for downloading a file (prefers presigned R2 URL with long TTL)
  * @param key The object key in the R2 bucket
  * @returns URL for downloading the file
  */
+export async function getStrongDownloadUrl(key: string): Promise<string> {
+  // Prefer presigned URL with long TTL (2 hours)
+  const presigned = await getPresignedDownloadUrl(key, 7200);
+  if (presigned) return presigned;
+  // Fallback to API which should stream with Range
+  return getProxiedUrl(`${API_BASE_URL}/download?key=${encodeURIComponent(key)}`);
+}
+
+/**
+ * Backward-compatible sync wrapper used by existing code paths
+ */
 export function getDownloadUrl(key: string) {
   try {
-    // Always use the landing page API for downloads
+    // For sync callers, return API URL; async paths should use getStrongDownloadUrl
     const apiUrl = `${API_BASE_URL}/download?key=${encodeURIComponent(key)}`;
-    
-    // Get the proxied URL for development environments
     return getProxiedUrl(apiUrl);
   } catch (error) {
     // Fallback to a direct download URL for the latest version
@@ -417,7 +445,7 @@ export async function checkForUpdates() {
     const files = await getFileMetadata('latest/');
 
     // Find the Windows installer (support both MSI and EXE)
-    const windowsInstaller = files.find(file =>
+    const windowsInstaller = files.find((file: { Key?: string; Size?: number }) =>
       (file.Key?.includes('CryptoVertX-MSI-Installer') && file.Key?.endsWith('.msi')) ||
       (file.Key?.includes('CryptoVertX-Setup') && file.Key?.endsWith('.exe'))
     );
@@ -440,14 +468,15 @@ export async function checkForUpdates() {
     const comparison = compareVersions(latestVersion, appVersion);
     
     if (comparison > 0) {
-      // Use the direct download link for the latest version
+      // Use strong long-lived URL
       const downloadKey = windowsInstaller.Key;
+      const longUrl = await getStrongDownloadUrl(downloadKey);
       log.success(`Update available! ${appVersion} → ${latestVersion}`);
       return {
         hasUpdate: true,
         currentVersion: appVersion,
         latestVersion,
-        downloadUrl: getDownloadUrl(downloadKey),
+        downloadUrl: longUrl,
         fileName: downloadKey.split('/').pop() || '',
         fileSize: windowsInstaller.Size || 0
       };

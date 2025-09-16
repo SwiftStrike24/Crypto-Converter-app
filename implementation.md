@@ -210,6 +210,36 @@ The application primarily uses React Context API for managing global state:
 *   **SDK:** `@aws-sdk/client-s3` is used to interact with R2 (S3-compatible API).
 *   **Credentials:** Requires `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` in `.env`.
 
+#### 4.4.1 Automated Release Uploads to R2 (Multipart, Sep 2025)
+
+- Script: `scripts/upload-release.ts`
+  - Uses `@aws-sdk/lib-storage` Upload helper for robust multipart uploads (5 MiB–5 GiB parts; we default to 64 MiB parts, queueSize 4)
+  - Detects MSI artifact for the built version in `release/<version>/`
+  - Uploads to `s3://${R2_BUCKET || R2_BUCKET_NAME}/latest/<filename>`
+  - Real-time progress with `ora`; safe cleanup on failure (leavePartsOnError=false)
+- Env vars (add to `.env`):
+  - `R2_ACCESS_KEY_ID=<your_r2_access_key_id>`
+  - `R2_SECRET_ACCESS_KEY=<your_r2_secret_access_key>`
+  - `CLOUDFLARE_ACCOUNT_ID=<your_account_id>`
+  - `R2_BUCKET=cryptoconverter-downloads` (or `R2_BUCKET_NAME`)
+  - `R2_PREFIX=latest/`
+  - Optional: `R2_ENDPOINT=https://<account>.r2.cloudflarestorage.com`
+- Usage:
+  - Upload standalone: `pnpm upload:release -- --version X.Y.Z` (auto-detects MSI path)
+  - After build (non-interactive): `pnpm build:release:upload`
+  - After build (interactive flow): `pnpm build-app` (select Release) → prompted to upload
+- Build integration:
+  - `scripts/build.ts` accepts `--upload` to trigger the uploader after packaging
+  - Prefers MSI artifact named `CryptoVertX-MSI-Installer-v<version>.msi`; falls back to first `.msi` in the version folder
+- CI notes:
+  - Works in GitHub Actions or other CI: export env vars as secrets, run `pnpm build:release:upload`
+  - No interactive prompts when `--upload` flag is provided
+- Updater compatibility:
+  - Files are placed under `latest/` so `src/services/updateService.ts` continues to discover the newest Windows installer seamlessly
+- Post-upload prune:
+  - After a successful upload, the uploader prunes older objects in the same `R2_PREFIX` and keeps only the newly uploaded installer
+  - Toggle via env: `R2_KEEP_ONLY_LATEST=false` to disable pruning (default is true)
+
 ### 4.5. News Service Enhancement
 
 *   **Enhanced `newsService.fetchNews(force?: boolean)`**: The news service now supports forced refresh functionality via an optional `force` parameter.
@@ -435,182 +465,4 @@ Enhanced the update system to support both MSI and EXE installers for seamless a
 
 **Update Discovery:**
 - Modified `updateService.ts` to search for both MSI and EXE installers in the R2 bucket
-- Supports `CryptoVertX-MSI-Installer-*.msi` and `CryptoVertX-Setup-*.exe` naming patterns
-- Prioritizes MSI files if both exist for a given version
-
-**Dynamic Download Handling:**
-- Updated `downloadUpdate()` function to accept an optional `fileName` parameter
-- Modified IPC communication to pass the filename from renderer to main process
-- Enhanced `updateHandler.ts` to dynamically determine file extension from filename
-- Creates temporary download paths with correct `.msi` or `.exe` extensions
-
-**Diagnostic Logging:**
-- Added comprehensive logging to validate file discovery and download processes
-- Logs all files found in the R2 bucket for troubleshooting
-- Tracks download URLs and temporary file paths for debugging
-
-This ensures that users with MSI-based installations can receive updates through the same seamless auto-update flow as EXE users.
-
-### Phase 7: UI/UX Polish & Navigation Flow Enhancement (v1.9.4)
-Enhanced the overall user experience with strategic UI positioning improvements and intelligent navigation flow. Key improvements include repositioning the footer to the absolute bottom of the application window for consistent placement, optimizing the CoinGecko link spacing in the converter for better visual hierarchy, and implementing context-aware navigation that preserves user journey flow. The TrendingTokensPage received significant polish with the addition of a prominent "🔥 Trending Tokens" title and custom scrollbar styling that matches the application's "Liquid Glass" theme. Navigation intelligence was enhanced so that when users navigate from trending tokens to chart or analysis pages, the back button appropriately returns them to the trending page rather than the converter, maintaining proper navigation context throughout the user journey.
-
-### Phase 8: Non-Blocking Conversions with SWR (v2.2.2)
-- Added `refreshPricesForSymbols()` public API to schedule targeted, high-priority background refreshes without toggling global loading states.
-- Updated `Converter.tsx` to use cached prices during pending states (stale-while-revalidate). Conversions are instant on token switches; values update seamlessly once fresh data arrives.
-- Wave loading indicator now appears only when there is no cached price for the selected pair; otherwise, a background refresh occurs silently.
-- Added lightweight diagnostics in `Converter.tsx` to trace wave toggling and refresh triggers for rapid switching scenarios.
-
-### Phase 9: Background News Preloading & Global State Management (v2.3.0)
-- **NewsContext** (`src/context/NewsContext.tsx`): Global state management for both market and fundraising news using React Context pattern.
-- **Background Initialization**: News data starts loading immediately when app launches using parallel fetching with `Promise.allSettled`.
-- **Instant Page Loads**: Market News page loads instantly with preloaded data, eliminating wait times for API calls.
-- **Parallel Data Fetching**: Both market news and fundraising news fetch simultaneously in background using modern async patterns.
-- **Automatic Background Refresh**: Periodic refresh every 10 minutes keeps data fresh without user interaction.
-- **Graceful Error Handling**: Fallback to cached data if fresh fetch fails, preventing empty states.
-- **Modern React Patterns**: Uses React Context with proper state management, TypeScript interfaces, and separation of concerns.
-- **Performance Optimization**: Non-blocking background operations, smart caching strategy, and efficient state updates.
-- **Enhanced UX**: Added `isInitializing` state to show background loading progress vs. specific tab loading states. 
-
-### 5. UI and Styling (Addendum)
-
-- NewsPage now features a tabbed interface:
-  - Tabs: "Market" (existing) and "Fundraising" (new)
-  - Fundraising tab provides a chain filter bar with `SOL`, `ETH`, `SUI`, `ETH L2s` toggles
-  - Selecting chains re-fetches data from main process with server-side filtering
-- NewsCard enhancements:
-  - Optional tag row at top of card showing chain badges and a green "Tokenless" badge when applicable
-- Service layer:
-  - `src/services/fundraisingService.ts` exposes `fetchFundraising(force?, { chains })` returning enriched articles 
-
-### Phase 10: TradingView Top Stories Crypto News (v2.5.0)
-- Added a third tab to `NewsPage` named "Top Stories" that displays TradingView’s market-wide crypto news brief feed (designed to be read in ~20 seconds).
-- Component: `src/components/TradingViewNewsWidget.tsx` now supports both `feedMode: 'market'` and `feedMode: 'symbol'`. The Top Stories tab uses:
-  - `feedMode = 'market'`
-  - `market = 'crypto'`
-  - `displayMode = 'regular'`
-  - `isTransparent = true`
-- No token selector for this tab; it intentionally shows overall crypto market briefs from TradingView.
-- Datafeed notes:
-  - Using TradingView’s external Timeline embed requires no custom Datafeed API (`getQuotes/subscribeQuotes/unsubscribeQuotes` not needed).
-  - If switching to the Charting Library + widgetbar News in the future, implement the Datafeed methods first.
-- Security & UX:
-  - External script appended asynchronously into a dedicated container; full cleanup on unmount or prop change.
-  - Attribution updated to Top Stories link with `rel="noopener noreferrer nofollow"`.
-  - Wrapped in a glass-styled panel to match the Liquid Glass theme.
-
-### Phase 11: Stock Market News Integration (v2.5.1)
-- Added a fourth tab to `NewsPage` named "Stock Market" that displays TradingView's stock market news briefs alongside the existing crypto news tabs.
-- **Enhanced Tab Clarity**: Renamed "Top Stories" tab to "Crypto Stories" for better user understanding of content types.
-- **Widget Reusability**: Leveraged the existing `TradingViewNewsWidget` component by simply passing `market="stock"` to display stock market news.
-- **Consistent UI**: Applied the same `WidgetPanel` styling used for crypto stories to maintain visual consistency across tabs.
-- **User Experience**: Users can now seamlessly switch between crypto and stock market news within the same interface, providing a comprehensive market overview.
-- **Performance**: No additional API calls or complex state management required - the widget handles all stock market data internally.
-- **Documentation**: Updated `implementation.md` to reflect the new tab structure and enhanced news aggregation capabilities.
-
-### Phase 12: Economic Calendar Integration (v2.5.2)
-- Added a fifth tab to `NewsPage` named "Economic Calendar" featuring TradingView's interactive economic calendar widget.
-- **Dual Country Support**: Implemented USA and Canada economic calendar support with smooth toggle functionality.
-- **Side-by-Side Viewing**: Users can view both USA and Canada calendars simultaneously with responsive layout that adapts to selections.
-- **Interactive Country Buttons**: Created animated toggle buttons with high-quality national flags from Wikimedia Commons and smooth hover/selection animations.
-- **Smooth Transitions**: Implemented CSS transitions with `cubic-bezier` easing for calendar panel visibility and country selection changes.
-- **Widget Container**: Built a reusable `EconomicCalendarWidget` component that handles TradingView's economic events script loading and cleanup.
-- **Liquid Glass Styling**: Applied consistent "Liquid Glass" theme with backdrop blur, gradient overlays, and subtle animations throughout the economic calendar interface.
-- **Performance Optimization**: Efficient state management with Set-based country selection and conditional rendering to prevent unnecessary re-renders.
-- **User Experience**: Intuitive interface allowing users to track key economic events, announcements, and news for both North American markets.
-- **Responsive Design**: Calendar panels dynamically adjust width based on number of selected countries, maintaining optimal viewing experience.
-
-### Phase 13: Crash Prevention & Performance Optimization (v2.5.3)
-- **Error Boundary Protection**: Implemented comprehensive `NewsErrorBoundary` component to catch and handle React errors gracefully without crashing the entire application.
-- **Debounced Tab Switching**: Added intelligent debouncing mechanism (300ms minimum interval) to prevent crashes from rapid successive tab switches that could overwhelm the system.
-- **Transition State Management**: Introduced `isTransitioning` state to prevent concurrent operations during tab switches and provide visual feedback to users.
-- **Enhanced Widget Cleanup**: Improved TradingView widget cleanup with proper timeout management, mounted state tracking, and safe DOM manipulation to prevent memory leaks.
-- **Performance Optimizations**:
-  - Added `React.memo` to both `NewsPage` and `EconomicCalendarWidget` components to prevent unnecessary re-renders
-  - Implemented `useCallback` for all event handlers to maintain reference stability
-  - Added proper timeout cleanup on component unmount
-  - Enhanced error handling with try-catch blocks and safe DOM operations
-- **Code Quality Improvements**:
-  - **Eliminated All Inline Styles**: Converted 15+ inline style objects to proper styled-components following project conventions
-  - Created reusable styled components: `ErrorContainer`, `ErrorBoundaryContainer`, `LoadingOverlay`, `WidgetContainer`, etc.
-  - Maintained Liquid Glass theme consistency across all error states and loading indicators
-  - Improved maintainability and consistency with the existing styled-components pattern
-- **Robust State Management**: Protected state updates with error boundaries and safe fallbacks to prevent state corruption from rapid user interactions.
-- **Memory Leak Prevention**: Comprehensive cleanup of timers, event listeners, and DOM elements to ensure optimal memory usage during intensive usage patterns.
-- **User Feedback**: Added loading states, disabled buttons during transitions, and clear error recovery options for better user experience.
-- **Development Debugging**: Enhanced error logging with stack traces in development mode for easier troubleshooting of edge cases.
-
-## 6. Build Optimization & Performance Improvements (v2.5.2)
-
-### 6.1. Build Profile System
-- **Development vs Release Profiles**: Implemented distinct build profiles to optimize for different use cases
-  - `dev` profile: Fast builds with `compression: 'store'`, skips signing, icon fixes, and registry setup
-  - `release` profile: Production builds with `compression: 'normal'`, full signing and optimization
-- **Profile Configuration**: Centralized profile settings in `BUILD_PROFILES` constant for easy maintenance
-
-### 6.2. Advanced Bundling & Caching
-- **Turbo Build Caching**: Integrated Turborepo for computation caching
-  - Cache directory: `.turbo` for persistent build artifacts
-  - Sub-second repeat builds when no code changes occur
-  - Parallel task execution and dependency management
-- **Vite 7.x with Rust Optimizations**:
-  - **Lightning CSS**: Faster CSS processing and minification
-  - **Rolldown**: Rust-based bundler for 2-3x faster JavaScript bundling
-  - **Enhanced esbuild**: Optimized JavaScript transpilation and minification
-- **Turbo Tasks**: New build scripts leveraging Turborepo caching:
-  - `build:dev`: Fast development builds with caching
-  - `build:release`: Production builds with caching
-  - `build:vite`: Cached Vite builds
-  - `build:vite:dev`: Force rebuild for development
-
-### 6.3. Pre-packaging Strategy
-- **Build Once, Package Many**: Revolutionary approach to reduce redundant work
-  - Single directory build creates unpackaged application
-  - Multiple packaging formats (MSI, Portable, NSIS) generated from same artifact
-  - Eliminates duplicate bundling and compression steps
-- **Parallel Packaging**: All packaging formats can run simultaneously from prepackaged directory
-- **Time Savings**: MSI builds now complete in seconds instead of minutes
-
-### 6.4. Performance Optimizations
-- **Compression Strategy**:
-  - Development: `store` compression (near-zero overhead)
-  - Production: `normal` compression (balanced speed/size)
-- **Build Process Streamlining**:
-  - Skip unnecessary steps in development (icon fixes, registry setup)
-  - Optimized asset copying and temporary file management
-  - Enhanced logging and progress tracking
-- **Caching Strategy**:
-  - Turborepo handles dependency caching
-  - Build artifacts cached between runs
-  - Smart cache invalidation based on file changes
-- **Antivirus Optimization**:
-  - Recommend excluding `release/` directory from Windows Defender scanning
-  - Exclude `.turbo/` cache directory for faster cache operations
-  - Consider excluding `node_modules/` during development builds
-
-### 6.5. Build Scripts Enhancement
-- **New Fast Build Commands**:
-  - `pnpm build:dev`: Ultra-fast development build (~10-30s)
-  - `pnpm build:release`: Optimized production build
-  - `pnpm build:vite`: Cached Vite-only build
-- **Legacy Support**: Maintained backward compatibility with existing scripts
-- **Interactive Menu**: Enhanced build selection with performance hints
-
-### 6.6. Expected Performance Improvements
-- **Development Builds**: 2-5x faster (10-30s vs 4+ minutes)
-- **Repeat Builds**: 50-100x faster (<1s with cache vs full rebuild)
-- **Production Builds**: 2-3x faster with pre-packaging strategy
-- **MSI Creation**: 3-5x faster using pre-packaged artifacts
-- **Overall Workflow**: Significantly improved developer experience
-
-### 6.7. Technical Implementation Details
-- **Turbo Configuration**: `turbo.json` with optimized task dependencies and caching rules
-- **Vite Configuration**: Enhanced with Lightning CSS and Rolldown optimizations
-- **Build Profile Logic**: Conditional execution based on profile settings
-- **Pre-packaging Pipeline**: Sequential build + parallel packaging architecture
-- **Cache Management**: Automatic cache invalidation and cleanup
-
-### 6.8. Future Optimizations (Phase 4)
-- **Tauri Migration Path**: Evaluated for ultimate performance gains
-- **Rust Backend**: Potential for 10-20x faster builds with native compilation
-- **Advanced Caching**: Remote caching for team collaboration
-- **Build Parallelization**: Multi-target simultaneous builds 
+- Supports `

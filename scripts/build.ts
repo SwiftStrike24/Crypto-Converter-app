@@ -8,6 +8,7 @@ import pc from 'picocolors';
 import fs from 'fs';
 import path from 'path';
 import rcedit from 'rcedit';
+import { uploadReleaseArtifact } from './upload-release';
 
 const execAsync = promisify(exec);
 const copyFileAsync = promisify(fs.copyFile);
@@ -50,6 +51,7 @@ const isExeBuild = process.argv.includes('--exe');
 const isAllBuild = process.argv.includes('--all');
 const isReleaseBuild = process.argv.includes('--release');
 const isDevBuild = process.argv.includes('--dev');
+const shouldUpload = process.argv.includes('--upload');
 
 // Temporary directory for build assets
 const TEMP_DIR = path.join(__dirname, '../temp-build-assets');
@@ -699,6 +701,52 @@ async function runBuild() {
     console.log(pc.bold(pc.green(`🏁 Build completed for CryptoVertX v${version}`)));
     console.log(pc.cyan(`📁 Output directory: ${OUTPUT_DIR}`));
     
+    // Optional upload step
+    let doUpload = shouldUpload;
+    if (!shouldUpload && !hasArgs) {
+      // Ask interactively only in interactive flow
+      const answer = await prompts({
+        type: 'confirm',
+        name: 'upload',
+        message: 'Do you want to upload the MSI to Cloudflare R2 now?',
+        initial: true
+      });
+      doUpload = !!answer.upload;
+    }
+
+    if (doUpload) {
+      try {
+        console.log(pc.dim('━'.repeat(65)));
+        console.log(pc.bold(pc.cyan('📡 Uploading release artifact to Cloudflare R2')));
+        // Prefer MSI artifact for updater compatibility
+        const msiName = `CryptoVertX-MSI-Installer-v${version}.msi`;
+        const msiPath = path.join(OUTPUT_DIR, msiName);
+        // If not found, fallback to first .msi in folder
+        let artifactPath = msiPath;
+        if (!fs.existsSync(artifactPath)) {
+          const candidates = fs.readdirSync(OUTPUT_DIR).filter(f => f.toLowerCase().endsWith('.msi'));
+          if (candidates.length === 0) {
+            console.log(pc.yellow('⚠️ No MSI artifact found to upload in output folder; checking release directory...'));
+            const folderMsi = fs.readdirSync(OUTPUT_DIR).find(f => /MSI-Installer.*\.msi$/i.test(f));
+            if (folderMsi) artifactPath = path.join(OUTPUT_DIR, folderMsi);
+          } else {
+            artifactPath = path.join(OUTPUT_DIR, candidates[0]);
+          }
+        }
+        if (fs.existsSync(artifactPath)) {
+          console.log(pc.cyan(`Uploading artifact: ${path.basename(artifactPath)}`));
+          await uploadReleaseArtifact({ version, filePath: artifactPath });
+          console.log(pc.green('🚀 Upload finished.'));
+        } else {
+          console.log(pc.yellow('⚠️ Could not locate an MSI to upload.'));
+        }
+      } catch (uploadErr) {
+        console.log(pc.red('❌ Upload failed.')); 
+        console.log(pc.dim(String(uploadErr instanceof Error ? uploadErr.message : uploadErr)));
+        // do not exit with error to keep build successful
+      }
+    }
+
     // Final verification of versionManager.ts
     try {
       const versionManagerPath = path.join(__dirname, '../src/services/versionManager.ts');

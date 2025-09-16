@@ -1,6 +1,6 @@
 import { ipcMain, app, shell, BrowserWindow, Notification } from 'electron';
 import { join } from 'path';
-import { createWriteStream, unlink, writeFileSync } from 'fs';
+import { createWriteStream, unlink, writeFileSync, existsSync } from 'fs';
 import { pipeline } from 'stream/promises';
 import axios from 'axios';
 import { stat } from 'fs/promises';
@@ -14,6 +14,10 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
   ipcMain.handle('download-update', async (_event, url: string, fileName?: string) => {
     try {
       console.log(`Starting download from: ${url}`);
+      try {
+        const u = new URL(url);
+        console.log(`[UPDATER] Download host: ${u.host}`);
+      } catch {}
       
       // Determine the file extension from the filename or default to .exe
       let extension = '.exe'; // Default fallback
@@ -29,162 +33,165 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
       const downloadPath = join(app.getPath('temp'), `CryptoVertX-Update-${Date.now()}${extension}`);
       console.log(`Downloading to: ${downloadPath}`);
       
-      // Create a write stream for the file
-      const writer = createWriteStream(downloadPath);
-      
-      // Download the file
-      const response = await axios({
-        url,
-        method: 'GET',
-        responseType: 'stream',
-        timeout: 30000, // 30 second timeout
-      });
-      
-      // Get total file size from Content-Length header
-      const contentLength = response.headers['content-length'];
-      const totalSize = contentLength ? parseInt(contentLength, 10) : 0;
-      let downloadedSize = 0;
-      
-      console.log(`Content-Length header: ${contentLength || 'not provided'}`);
-      console.log(`Expected file size: ${totalSize} bytes`);
-      
-      // Enhanced progress tracking variables
-      let lastProgressUpdate = Date.now();
-      let progressUpdateInterval: NodeJS.Timeout | null = null;
-      let downloadSpeed = 0; // bytes per second
-      let lastDownloadedSize = 0;
-      let speedSamples: number[] = [];
-      const maxSpeedSamples = 10; // Keep last 10 speed samples for smoothing
-      
-      // Estimated file size based on historical data (your logs show ~101MB consistently)
-      const estimatedFileSize = 101 * 1024 * 1024; // 101 MB in bytes
-      const fallbackSize = totalSize > 0 ? totalSize : estimatedFileSize;
-      
-      // Function to send progress updates with additional metrics
-      const sendProgress = (progress: number, speed: number = 0, eta: number = 0) => {
-        const cappedProgress = Math.min(progress, 99); // Cap at 99% until completion
-        mainWindow.webContents.send('download-progress', {
-          progress: cappedProgress,
-          downloadedBytes: downloadedSize,
-          totalBytes: fallbackSize,
-          speed: speed,
-          eta: eta
+      // Configurable timeouts/retries
+      const CONNECT_TIMEOUT_MS = 30_000;           // initial connect timeout
+      const RESPONSE_HEADER_TIMEOUT_MS = 60_000;   // header wait timeout
+      const OVERALL_REQUEST_TIMEOUT_MS = 10 * 60_000; // 10 minutes per request
+      const MAX_RETRIES = 3;
+      const RETRY_BACKOFF_MS = 2_000;
+      let expectedTotalBytes: number | null = null;
+
+      // Internal helper to do a ranged request from an offset
+      const downloadWithRange = async (startOffset: number, totalSizeHint: number | null) => {
+        console.log(`Downloading with Range from offset=${startOffset}`);
+        const headers: Record<string, string> = {};
+        if (startOffset > 0) {
+          headers['Range'] = `bytes=${startOffset}-`;
+        }
+        // MSI content-type helps some proxies
+        headers['Accept'] = 'application/octet-stream';
+
+        const response = await axios({
+          url,
+          method: 'GET',
+          responseType: 'stream',
+          headers,
+          // axios doesn't have separate header timeout; keep overall generous
+          timeout: OVERALL_REQUEST_TIMEOUT_MS,
+          transitional: { clarifyTimeoutError: true }
         });
-      };
-      
-      // Enhanced speed calculation
-      const calculateSpeed = () => {
-        const now = Date.now();
-        const timeDelta = (now - lastProgressUpdate) / 1000; // seconds
-        const bytesDelta = downloadedSize - lastDownloadedSize;
-        
-        if (timeDelta > 0) {
-          const currentSpeed = bytesDelta / timeDelta;
-          speedSamples.push(currentSpeed);
-          
-          // Keep only recent samples for smoothing
-          if (speedSamples.length > maxSpeedSamples) {
-            speedSamples.shift();
+
+        // Detect content-length of this segment
+        const isPartial = response.status === 206;
+        const contentLengthHeader = response.headers['content-length'];
+        const contentRange = response.headers['content-range'];
+        const acceptRanges = response.headers['accept-ranges'];
+        const etagHeader = response.headers['etag'];
+        console.log(`[UPDATER] GET headers → Content-Length: ${contentLengthHeader || 'n/a'}, Accept-Ranges: ${acceptRanges || 'n/a'}, ETag: ${etagHeader || 'n/a'}, Status: ${response.status}`);
+        let segmentLength = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
+        let totalSize = totalSizeHint || 0;
+        if (contentRange) {
+          // format: bytes start-end/total
+          const match = /bytes\s+(\d+)-(\d+)\/(\d+)/i.exec(contentRange);
+          if (match) {
+            const end = parseInt(match[2], 10);
+            const total = parseInt(match[3], 10);
+            totalSize = total;
+            if (segmentLength === 0) segmentLength = end - startOffset + 1;
           }
-          
-          // Calculate average speed for smoother display
-          downloadSpeed = speedSamples.reduce((sum, speed) => sum + speed, 0) / speedSamples.length;
-          
-          lastProgressUpdate = now;
-          lastDownloadedSize = downloadedSize;
         }
-        
-        return downloadSpeed;
+        // If not partial and server provided Content-Length for full body, use it as expected total
+        if (!isPartial && !contentRange && contentLengthHeader) {
+          totalSize = parseInt(contentLengthHeader, 10);
+        }
+        if (totalSize > 0) {
+          expectedTotalBytes = totalSize;
+        }
+
+        // Progress bookkeeping
+        const writer = createWriteStream(downloadPath, { flags: startOffset > 0 ? 'a' : 'w' });
+        let downloadedSize = startOffset;
+        let lastProgressEmit = Date.now();
+        let bytesSinceLast = 0;
+        let speed = 0;
+
+        const sendProgress = () => {
+          const total = expectedTotalBytes || 0;
+          const pct = expectedTotalBytes ? Math.min(99, Math.floor((downloadedSize / expectedTotalBytes) * 100)) : 0;
+          const eta = speed > 0 && total > downloadedSize ? Math.round((total - downloadedSize) / speed) : 0;
+          mainWindow.webContents.send('download-progress', {
+            progress: pct,
+            downloadedBytes: downloadedSize,
+            totalBytes: total,
+            speed,
+            eta
+          });
+        };
+
+        response.data.on('data', (chunk: Buffer) => {
+          downloadedSize += chunk.length;
+          bytesSinceLast += chunk.length;
+          const now = Date.now();
+          const dt = (now - lastProgressEmit) / 1000;
+          if (dt >= 0.5) {
+            speed = bytesSinceLast / dt;
+            bytesSinceLast = 0;
+            lastProgressEmit = now;
+            sendProgress();
+          }
+        });
+
+        await pipeline(response.data, writer);
+
+        // Final emit for this segment
+        sendProgress();
+
+        return { finalSize: downloadedSize, totalSize: expectedTotalBytes };
       };
-      
-      // Function to calculate ETA
-      const calculateETA = () => {
-        if (downloadSpeed > 0 && fallbackSize > downloadedSize) {
-          return Math.round((fallbackSize - downloadedSize) / downloadSpeed);
-        }
-        return 0;
-      };
-      
-      // Set up real-time progress tracking with data chunks
-      response.data.on('data', (chunk: Buffer) => {
-        downloadedSize += chunk.length;
-        
-        // Calculate real-time progress
-        const progress = (downloadedSize / fallbackSize) * 100;
-        const speed = calculateSpeed();
-        const eta = calculateETA();
-        
-        // Send immediate progress update for responsiveness
-        sendProgress(progress, speed, eta);
-      });
-      
-      // Start periodic progress updates for smooth animation
-      progressUpdateInterval = setInterval(() => {
-        if (downloadedSize > 0) {
-          const progress = (downloadedSize / fallbackSize) * 100;
-          const speed = calculateSpeed();
-          const eta = calculateETA();
-          sendProgress(progress, speed, eta);
-        }
-      }, 100); // Update every 100ms for ultra-smooth progress
-      
-      // Handle download errors and stalls
-      response.data.on('error', (error: Error) => {
-        console.error('Download stream error:', error);
-        if (progressUpdateInterval) {
-          clearInterval(progressUpdateInterval);
-        }
-      });
-      
-      // Pipe the response to the file
-      await pipeline(response.data, writer);
-      
-      // Clean up interval
-      if (progressUpdateInterval) {
-        clearInterval(progressUpdateInterval);
+
+      // First HEAD to discover size and support, but tolerate failures
+      let totalSizeKnown: number | null = null;
+      try {
+        const head = await axios({ url, method: 'HEAD', timeout: CONNECT_TIMEOUT_MS });
+        const cl = head.headers['content-length'];
+        const ar = head.headers['accept-ranges'];
+        const et = head.headers['etag'];
+        console.log(`[UPDATER] HEAD headers → Content-Length: ${cl || 'n/a'}, Accept-Ranges: ${ar || 'n/a'}, ETag: ${et || 'n/a'}`);
+        if (cl) totalSizeKnown = parseInt(cl, 10);
+        if (totalSizeKnown && totalSizeKnown > 0) expectedTotalBytes = totalSizeKnown;
+      } catch {
+        // ignore HEAD failures; proceed to GET
       }
-      
-      console.log('Download completed successfully');
-      console.log(`Final downloaded size: ${downloadedSize} bytes`);
-      
-      // Send 100% progress on completion with final stats
-      mainWindow.webContents.send('download-progress', {
-        progress: 100,
-        downloadedBytes: downloadedSize,
-        totalBytes: downloadedSize, // Use actual size as total for 100%
-        speed: downloadSpeed,
-        eta: 0
-      });
-      
-      // Verify the downloaded file integrity
+
+      // Retry loop with resume
+      let attempt = 0;
+      let downloadedBytes = 0;
+      while (attempt < MAX_RETRIES) {
+        try {
+          attempt++;
+          const resumeOffset = existsSync(downloadPath) ? (await stat(downloadPath)).size : 0;
+          const startAt = Math.max(resumeOffset, downloadedBytes);
+          const { finalSize, totalSize } = await downloadWithRange(startAt, totalSizeKnown);
+          downloadedBytes = finalSize;
+          totalSizeKnown = totalSize || totalSizeKnown;
+
+          // If we reached or exceeded total size, break
+          if (!totalSizeKnown || downloadedBytes >= totalSizeKnown) {
+            break;
+          }
+        } catch (err) {
+          console.warn(`Download attempt ${attempt} failed:`, err instanceof Error ? err.message : err);
+          if (attempt >= MAX_RETRIES) throw err;
+          await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS * attempt));
+        }
+      }
+
+      // Final verification of the file
       try {
         const fileStats = await stat(downloadPath);
-        console.log(`Downloaded file size: ${fileStats.size} bytes`);
-        
-        // If Content-Length was provided and valid, do strict verification
-        if (totalSize > 0) {
-          if (fileStats.size !== totalSize) {
-            throw new Error(`Downloaded file size (${fileStats.size}) does not match expected size (${totalSize})`);
-          }
-          console.log('Strict file verification successful.');
-        } else {
-          // If Content-Length was not provided, do basic verification
-          if (fileStats.size === 0) {
-            throw new Error('Downloaded file is empty');
-          }
-          if (fileStats.size < 1024) { // Less than 1KB is suspicious for an installer
-            throw new Error(`Downloaded file is too small (${fileStats.size} bytes) to be a valid installer`);
-          }
-          console.log('Basic file verification successful (Content-Length not provided by server).');
+        if (expectedTotalBytes && fileStats.size !== expectedTotalBytes) {
+          throw new Error(`Downloaded file size (${fileStats.size}) does not match expected size (${expectedTotalBytes})`);
         }
+        if (fileStats.size < 1024) {
+          throw new Error('Downloaded file is too small to be a valid installer');
+        }
+        console.log(`Downloaded file size: ${fileStats.size} bytes`);
       } catch (error) {
         console.error('File verification failed:', error);
-        // Clean up the corrupted file
         unlink(downloadPath, (err) => {
           if (err) console.error('Error deleting corrupted update file:', err);
         });
         throw new Error('Downloaded file is incomplete or corrupted.');
       }
+      
+      // Complete 100%
+      mainWindow.webContents.send('download-progress', {
+        progress: 100,
+        downloadedBytes: downloadedBytes,
+        totalBytes: expectedTotalBytes || downloadedBytes,
+        speed: 0,
+        eta: 0
+      });
       
       return downloadPath;
     } catch (error) {
@@ -286,7 +293,7 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
       const flagPath = join(app.getPath('userData'), 'update.flag');
       try {
         unlink(flagPath, (err) => {
-          if (err && err.code !== 'ENOENT') { // Ignore "file not found" errors
+          if (err && (err as any).code !== 'ENOENT') { // Ignore "file not found" errors
             console.error('Failed to clean up update.flag on catch:', err);
           }
         });

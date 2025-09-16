@@ -1,6 +1,6 @@
 {
   "name": "cryptovertx",
-  "version": "2.5.4",
+  "version": "2.5.5",
   "description": "A sleek cryptocurrency converter desktop app",
   "main": "./dist-electron/main.js",
   "scripts": {
@@ -20,6 +20,8 @@
     "build-app": "tsx scripts/build.ts",
     "build:dev": "turbo run build:dev --cache-dir=.turbo",
     "build:release": "cross-env NODE_ENV=production tsx scripts/build.ts --release",
+    "build:release:upload": "cross-env NODE_ENV=production tsx scripts/build.ts --release --upload",
+    "upload:release": "tsx scripts/upload-release.ts",
     "build:vite": "turbo run build --cache-dir=.turbo",
     "build:vite:dev": "turbo run build --cache-dir=.turbo --force",
     "update-top-tokens": "tsx scripts/fetchTop100CoinGeckoIds.ts",
@@ -27,6 +29,8 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.504.0",
+    "@aws-sdk/lib-storage": "^3.504.0",
+    "@aws-sdk/s3-request-presigner": "^3.504.0",
     "@emotion/react": "^11.11.3",
     "@emotion/styled": "^11.11.0",
     "@mui/material": "^5.15.10",
