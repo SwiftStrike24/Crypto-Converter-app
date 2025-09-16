@@ -319,7 +319,12 @@ The application primarily uses React Context API for managing global state:
         *   **Crypto Stories Tab**: TradingView's crypto market news briefs (renamed from "Top Stories" for clarity)
         *   **Stock Market Tab**: TradingView's stock market news briefs
         *   **Economic Calendar Tab**: Interactive economic calendar with USA and Canada filters, showing key economic events, announcements, and news. Features smooth transitions when toggling between countries and side-by-side viewing capability.
+        *   **Heatmap Tab**: Interactive market heatmaps powered by TradingView widgets, featuring three sub-tabs for comprehensive market visualization:
+            *   **Stocks**: Global stock market heatmap with sector-based grouping and market cap segmentation
+            *   **Crypto**: Cryptocurrency market heatmap showing coins by market cap and 24-hour performance
+            *   **ETFs**: Exchange-traded funds heatmap with asset class grouping and volume-based sizing
         *   **Manual Refresh Button**: Features a modern, circular refresh button in the header with "Liquid Glass" styling that allows users to force immediate news updates. Includes smooth spin animations during loading, disabled states, and hover effects with gradient overlays and subtle transforms.
+    *   `TradingViewHeatmapWidget.tsx`: A reusable React component that encapsulates TradingView heatmap widgets with robust error handling, loading states, and cleanup. Supports three heatmap types (stock, crypto, ETF) with configurable options for transparency, height, and attribution. Implements proper script injection and cleanup to prevent memory leaks and ensure smooth transitions between different heatmap views.
     *   `NewsCard.tsx`: A reusable UI card for displaying individual news articles with title, summary, source, timestamp, and an optional article image. Includes "Read More" button that opens articles in the user's default browser via IPC communication.
 
 ## 6. Key Features Implemented
@@ -334,13 +339,18 @@ The application primarily uses React Context API for managing global state:
 *   **Market News Page**: A comprehensive news aggregation system that fetches the latest cryptocurrency, stock market, and economic calendar data from multiple RSS sources and TradingView widgets. Features include:
     *   **Multi-Source RSS Aggregation**: Fetches from CoinDesk, Bitcoin.com, CryptoSlate, and Decrypt using direct RSS parsing in Electron's main process to avoid CSP issues
     *   **TradingView News Integration**: Includes dedicated tabs for both crypto and stock market news briefs from TradingView's timeline widget
+    *   **TradingView Heatmap Integration**: Features interactive market heatmaps with three specialized views:
+        *   **Stock Heatmap**: Global stock market overview with sector-based grouping and market cap segmentation
+        *   **Crypto Heatmap**: Cryptocurrency market visualization showing coins by market cap and 24-hour performance changes
+        *   **ETF Heatmap**: Exchange-traded funds overview with asset class grouping and volume-based sizing
     *   **Economic Calendar Widget**: Interactive TradingView economic calendar with country-specific filtering for USA and Canada, showing key economic events and announcements
-    *   **Tabbed Interface**: Five distinct news tabs:
+    *   **Tabbed Interface**: Six distinct news tabs:
         *   **Market**: Traditional RSS-aggregated cryptocurrency news
         *   **Fundraising**: Venture funding and ecosystem investment news
         *   **Crypto Stories**: TradingView's crypto market news briefs (20-second reads)
         *   **Stock Market**: TradingView's stock market news briefs (20-second reads)
         *   **Economic Calendar**: Interactive calendar showing economic events for USA and Canada with smooth toggle animations
+        *   **Heatmap**: Market visualization with three sub-tabs (Stocks, Crypto, ETFs) for comprehensive market analysis
     *   **Dual Country View**: Economic Calendar tab allows users to view USA and Canada calendars side-by-side with smooth transitions
     *   **Country Selection Buttons**: Interactive buttons with flag icons and smooth hover animations for toggling between USA and Canada calendars
     *   **10-Minute Refresh Cycle**: Automatically refreshes news articles every 10 minutes with manual refresh capability
@@ -351,6 +361,13 @@ The application primarily uses React Context API for managing global state:
     *   **Content Normalization**: Extracts clean summaries from HTML content and handles various RSS feed formats consistently
     *   **Smart Browser Management**: CoinGecko URLs use singleton pattern (one reusable window) while news articles create separate windows for better multi-article reading
     *   **Enhanced Status Display**: Shows "Last updated" timestamp with live updates and visual indicators for cached vs. fresh data
+*   **Interactive Market Heatmaps**: Advanced market visualization system powered by TradingView widgets, providing comprehensive market overviews across multiple asset classes. Features three specialized heatmap views with real-time data updates and interactive segmentation options:
+    *   **Stock Market Heatmap**: Macro-level view of global stocks with sector-based grouping, market cap segmentation, and performance-based color coding
+    *   **Cryptocurrency Heatmap**: Birds-eye view of crypto markets showing coins by market cap and 24-hour performance changes with interactive filtering
+    *   **ETF Heatmap**: Comprehensive overview of exchange-traded funds with asset class grouping, volume-based sizing, and performance segmentation
+    *   **Seamless Integration**: Built with robust error handling, loading states, and memory-efficient script management to ensure smooth transitions between heatmap views
+    *   **Responsive Design**: Fully responsive widgets that adapt to different screen sizes while maintaining optimal viewing experience
+    *   **Real-time Updates**: Live data feeds with automatic refresh cycles and fallback error recovery mechanisms
 *   **Modern Charting Dashboard**: The `ChartPage` provides a comprehensive and visually appealing dashboard for analyzing cryptocurrencies. It integrates a powerful `TradingViewWidget` with a dedicated `TokenStats` sidebar, all within a responsive two-column grid layout.
 *   **Unified Exchange Views**: The list of supported exchanges for charting (e.g., Binance, MEXC, Bybit) is now centralized in `src/constants/cryptoConstants.ts` and used consistently across both the `ChartPage` and `TechnicalAnalysisPage` to prevent discrepancies and improve maintainability.
 *   **Animated Launch Screen**: An initial loading screen built with `framer-motion` that provides a polished startup experience before the main application UI is displayed.

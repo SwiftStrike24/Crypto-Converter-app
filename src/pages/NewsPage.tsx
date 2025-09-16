@@ -8,6 +8,7 @@ import LiveTimeAgo from '../components/LiveTimeAgo';
 import WaveLoadingPlaceholder from '../components/WaveLoadingPlaceholder';
 import { useNews } from '../context/NewsContext';
 import TradingViewNewsWidget from '../components/TradingViewNewsWidget';
+import TradingViewHeatmapWidget, { HeatmapType } from '../components/TradingViewHeatmapWidget';
 
 // Enhanced Economic Calendar Widget Component with robust error handling
 const EconomicCalendarWidget: React.FC<{ country: 'us' | 'ca' }> = ({ country }) => {
@@ -482,6 +483,59 @@ const Tabs = styled.div`
   gap: 10px;
 `;
 
+// Heatmap sub-tabs styled components
+const HeatmapSubTabs = styled.div`
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  padding: 0.5rem 0;
+  background: rgba(28, 28, 40, 0.3);
+  border-radius: 8px;
+  margin: 0.5rem 0;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+`;
+
+const SubTabButton = styled.button<{ $active?: boolean; disabled?: boolean }>`
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid ${props => props.$active ? 'rgba(139, 92, 246, 0.6)' : 'rgba(139, 92, 246, 0.3)'};
+  background: ${props => {
+    if (props.$active) {
+      return 'linear-gradient(135deg, rgba(139, 92, 246, 0.25), rgba(59, 130, 246, 0.25))';
+    }
+    return 'rgba(139, 92, 246, 0.1)';
+  }};
+  color: #c4b5fd;
+  font-weight: 600;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  transition: all 0.2s ease;
+  opacity: ${props => props.disabled ? 0.5 : 1};
+  font-size: 0.85rem;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: rgba(139, 92, 246, 0.5);
+    background: ${props => props.$active
+      ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.3))'
+      : 'rgba(139, 92, 246, 0.15)'
+    };
+  }
+
+  &:disabled {
+    pointer-events: none;
+  }
+`;
+
+const CryptoIconImg = styled.img`
+  width: 18px;
+  height: 18px;
+  margin-right: 6px;
+  display: inline-block;
+  vertical-align: middle;
+`;
+
 const TabButton = styled.button<{ $active?: boolean; disabled?: boolean }>`
   padding: 8px 14px;
   border-radius: 8px;
@@ -833,8 +887,9 @@ class NewsErrorBoundary extends React.Component<
 
 const NewsPage: React.FC = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'market' | 'fundraising' | 'tv' | 'stocks' | 'economic'>('market');
+  const [activeTab, setActiveTab] = useState<'market' | 'fundraising' | 'tv' | 'stocks' | 'economic' | 'heatmap'>('market');
   const [selectedCountries, setSelectedCountries] = useState<Set<'us' | 'ca'>>(new Set(['us']));
+  const [activeHeatmap, setActiveHeatmap] = useState<HeatmapType>('crypto');
   const [isTransitioning, setIsTransitioning] = useState(false);
   const tabSwitchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTabSwitchRef = useRef<number>(0);
@@ -878,7 +933,7 @@ const NewsPage: React.FC = () => {
   }, [activeTab, refreshFundraisingNews, refreshMarketNews]);
 
   // Debounced tab switching to prevent crashes from rapid switching
-  const handleTabChange = useCallback((newTab: 'market' | 'fundraising' | 'tv' | 'stocks' | 'economic') => {
+  const handleTabChange = useCallback((newTab: 'market' | 'fundraising' | 'tv' | 'stocks' | 'economic' | 'heatmap') => {
     if (isTransitioning) {
       console.warn('Tab switch already in progress, ignoring rapid switch');
       return;
@@ -1016,7 +1071,46 @@ const NewsPage: React.FC = () => {
         >
           Economic Calendar
         </TabButton>
+        <TabButton
+          $active={activeTab === 'heatmap'}
+          onClick={() => handleTabChange('heatmap')}
+          disabled={isTransitioning}
+        >
+          📊 Heatmap
+        </TabButton>
       </Tabs>
+
+      {/* Heatmap Sub-tabs */}
+      {activeTab === 'heatmap' && (
+        <HeatmapSubTabs>
+          <SubTabButton
+            $active={activeHeatmap === 'stock'}
+            onClick={() => setActiveHeatmap('stock')}
+            disabled={isTransitioning}
+          >
+            📈 Stocks
+          </SubTabButton>
+          <SubTabButton
+            $active={activeHeatmap === 'crypto'}
+            onClick={() => setActiveHeatmap('crypto')}
+            disabled={isTransitioning}
+          >
+            <CryptoIconImg
+              src="https://cdn.simpleicons.org/bitcoin/FF9900"
+              alt="Bitcoin"
+              loading="lazy"
+            />
+            Crypto
+          </SubTabButton>
+          <SubTabButton
+            $active={activeHeatmap === 'etf'}
+            onClick={() => setActiveHeatmap('etf')}
+            disabled={isTransitioning}
+          >
+            🏛️ ETFs
+          </SubTabButton>
+        </HeatmapSubTabs>
+      )}
 
       <ContentContainer>
         <ScrollContainer>
@@ -1064,6 +1158,14 @@ const NewsPage: React.FC = () => {
                 ))}
               </CalendarWrapper>
             </EconomicContainer>
+          ) : activeTab === 'heatmap' ? (
+            <WidgetPanel>
+              <TradingViewHeatmapWidget
+                type={activeHeatmap}
+                height="100%"
+                isTransparent={true}
+              />
+            </WidgetPanel>
           ) : (activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) || isInitializing ? (
             <LoadingContainer>
               <WaveLoadingPlaceholder />
