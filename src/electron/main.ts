@@ -285,12 +285,13 @@ app.whenReady().then(() => {
     if (!mainWindow) return;
     if (mainWindow.isVisible()) {
       mainWindow.hide();
+      // Send blur event when hidden by hotkey
+      mainWindow.webContents.send('window-blurred');
     } else {
       mainWindow.show();
       mainWindow.focus();
-      setTimeout(() => {
-        mainWindow?.webContents.send('window-focused');
-      }, 100);
+      // Send focus event immediately on show
+      mainWindow.webContents.send('window-focused');
     }
   };
 

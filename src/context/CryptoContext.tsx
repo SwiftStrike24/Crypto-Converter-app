@@ -74,6 +74,7 @@ interface CryptoContextType {
   error: string | null;
   updatePrices: (force?: boolean) => Promise<void>;
   lastUpdated: Date | null;
+  lastRefreshedTimestamp: Date | null;
   addCrypto: (symbol: string, id?: string) => Promise<void>;
   addCryptos: (tokens: { symbol: string; id: string }[]) => Promise<void>;
   addTemporaryToken: (token: { symbol: string; id: string; name: string; image: string }) => void;
@@ -102,6 +103,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [lastRefreshedTimestamp, setLastRefreshedTimestamp] = useState<Date | null>(null);
+  const [isAppActive, setIsAppActive] = useState<boolean>(true);
   const [availableCryptos, setAvailableCryptos] = useState<string[]>(() => {
     // localStorage for custom tokens is not general caching, so it remains for now
     const stored = localStorage.getItem(STORAGE_KEY_CUSTOM_TOKENS);
@@ -577,6 +580,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const updatedCache = { ...currentPriceCache, ...tempPreloadedPricesForState };
             setCachePrices(updatedCache);
             console.log('[PRELOAD/METADATA_FETCH] Updated prices state and cache with price data for symbols:', Object.keys(tempPreloadedPricesForState).join(', '));
+          setLastRefreshedTimestamp(new Date());
 
             // If prices were updated from this metadata fetch, remove these symbols from pendingPriceUpdates
             Object.keys(tempPreloadedPricesForState).forEach(symbolUpper => {
@@ -949,6 +953,9 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setPrices(newPrices);
       setCachePrices(newPrices);
       setLastUpdated(new Date());
+      if (requestSuccessful) {
+        setLastRefreshedTimestamp(new Date());
+      }
 
       // Reset error indicators on success
       if (requestSuccessful) {
@@ -1089,22 +1096,23 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [queuePriceUpdate]);
 
-  // Modified updatePrices to use the queue system with proper debouncing
+  // Modified updatePrices to follow SWR: serve cache immediately, always revalidate
   const updatePrices = useCallback(async (force: boolean = false) => {
     clearUpdateTimeout();
 
-    if (!force) {
-      const cachedResult = getCachedData<Record<string, Record<string, CryptoPriceData>>>(CACHE_STORAGE_KEY_PRICES);
-      if (cachedResult) {
-        setPrices(cachedResult.data);
-        setLastUpdated(new Date(cachedResult.timestamp)); // Use timestamp from fresh cache read
-        setLoading(false);
-        return;
-      }
+    const cachedResult = getCachedData<Record<string, Record<string, CryptoPriceData>>>(CACHE_STORAGE_KEY_PRICES);
+    if (cachedResult) {
+      setPrices(cachedResult.data);
+      // On focus-forced updates, show "just now" UX while background fetch revalidates
+      setLastUpdated(force ? new Date() : new Date(cachedResult.timestamp));
+      setLoading(false);
     }
 
-    // Queue all tokens for update
-    queuePriceUpdate(Object.keys(cryptoIds));
+    // Always queue a background refresh (high priority when forced)
+    const allSymbols = Object.keys(cryptoIds);
+    if (allSymbols.length > 0) {
+      queuePriceUpdate(allSymbols, force);
+    }
   }, [cryptoIds, queuePriceUpdate]);
 
   // Modified addCrypto to use the queue system with immediate updates and no loading indicators
@@ -1340,6 +1348,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (Object.keys(newPriceUpdates).length > 0) {
           setPrices(newPriceUpdates); // Update with the full new set
           setCachePrices(newPriceUpdates);
+          setLastRefreshedTimestamp(new Date());
         }
         
         window.dispatchEvent(new CustomEvent('cryptoMetadataUpdated'));
@@ -1400,25 +1409,79 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
   }, []);
 
-  // Main interval useEffect: Depends on updatePrices
+  // Main fetch on mount; polling handled separately
   useEffect(() => {
-    // Initial fetch
     updatePrices(true);
-
-    // Set up interval
-    const interval = setInterval(() => {
-      // Use updatePrices(false) which now contains the cache-check logic
-      updatePrices(false);
-    }, PRICE_CACHE_DURATION / 2); // Check cache more frequently (e.g., every 5 mins)
-
     return () => {
-      clearInterval(interval);
       clearUpdateTimeout();
       if (requestQueue.current.batchTimer) {
         clearTimeout(requestQueue.current.batchTimer);
       }
     };
   }, [updatePrices]);
+
+  // Listen for window focus/blur via IPC and browser online/offline
+  useEffect(() => {
+    const handleFocus = () => setIsAppActive(true);
+    const handleBlur = () => setIsAppActive(false);
+
+    let ipc: any = null;
+    try {
+      ipc = (window as any).require?.('electron')?.ipcRenderer || null;
+    } catch {
+      ipc = null;
+    }
+
+    if (ipc) {
+      ipc.on('window-focused', handleFocus);
+      ipc.on('window-blurred', handleBlur);
+    }
+
+    window.addEventListener('online', handleFocus);
+    window.addEventListener('offline', handleBlur);
+
+    // Initial state based on connectivity
+    if (!navigator.onLine) {
+      handleBlur();
+    }
+
+    return () => {
+      if (ipc) {
+        ipc.removeListener?.('window-focused', handleFocus);
+        ipc.removeListener?.('window-blurred', handleBlur);
+      }
+      window.removeEventListener('online', handleFocus);
+      window.removeEventListener('offline', handleBlur);
+    };
+  }, []);
+
+  // Intelligent polling that respects app focus/online status
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const poll = () => {
+      if (isAppActive && navigator.onLine) {
+        console.log('[Intelligent Polling] App is active, fetching prices.');
+        updatePrices(false);
+      } else {
+        console.log('[Intelligent Polling] App inactive or offline, skipping poll.');
+      }
+    };
+
+    intervalId = setInterval(poll, 45 * 1000);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isAppActive, updatePrices]);
+
+  // Immediate refresh when the app becomes active
+  useEffect(() => {
+    if (isAppActive && navigator.onLine) {
+      console.log('[Focus Refresh] App gained focus, triggering immediate price update.');
+      updatePrices(true);
+    }
+  }, [isAppActive, updatePrices]);
 
   // Preload default token icons
   const preloadDefaultTokenIcons = useCallback(async () => {
@@ -1554,6 +1617,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         error,
         updatePrices,
         lastUpdated,
+        lastRefreshedTimestamp,
         addCrypto,
         addCryptos,
         addTemporaryToken: (token) => {

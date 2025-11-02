@@ -709,7 +709,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const [updateTooltipMessage, setUpdateTooltipMessage] = useState('');
   const [updateTooltipType, setUpdateTooltipType] = useState<'success' | 'error'>('success');
   const updateTooltipTimeoutRef = useRef<number | null>(null);
-  const { prices, loading, error, lastUpdated, updatePrices, isPending, isCoinGeckoRateLimitedGlobal, getCoinGeckoRetryAfterSeconds } = useCrypto();
+  const { prices, loading, error, lastUpdated, lastRefreshedTimestamp, updatePrices, isPending, isCoinGeckoRateLimitedGlobal, getCoinGeckoRetryAfterSeconds } = useCrypto();
   const headerWaveTimerActive = useRef<Record<string, boolean>>({}); // Changed to a map
   const headerWaveStartTimeRef = useRef<Record<string, number | null>>({}); // Changed to a map
   const lastHeaderLogRef = useRef<Record<string, { price: number | undefined, change: number | null | undefined, formatted: string }>>({}); // Ref for last logged header data
@@ -1272,7 +1272,7 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
       {showPrice && (
         <ExchangeRate $isError={!!error}>
           <LastUpdated className="last-updated">
-            {lastUpdated ? <LiveTimeAgo date={lastUpdated} /> : ''}
+            {lastUpdated ? <LiveTimeAgo date={lastUpdated} lastRefreshedTimestamp={lastRefreshedTimestamp} /> : ''}
           </LastUpdated>
           {getPrice()}
         </ExchangeRate>

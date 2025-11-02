@@ -133,6 +133,11 @@ The application primarily uses React Context API for managing global state:
             *   Fetches data for `POPULAR_TOKEN_IDS_TO_PRELOAD`.
             *   Pre-loaded price/metadata updates the main states and clears the pending status for these tokens via `fetchTokenMetadata`.
             *   If a user adds a pre-loaded token, `addCryptos` uses this data and ensures the token is not left unnecessarily pending.
+    *   **Event-Driven Live Updates (NEW, Nov 2025):**
+        *   Tracks `isAppActive` based on Electron `window-focused`/`window-blurred` IPC events and browser `online`/`offline` events.
+        *   Implements intelligent polling every 45 seconds that runs only when the app is focused and online, reducing wasted API calls.
+        *   Triggers an immediate refresh when the app regains focus to eliminate stale data after returning to the app.
+        *   Exposes `lastRefreshedTimestamp` which is updated only when fresh data is fetched from APIs (not when serving cache). Used by UI to provide subtle refresh feedback.
     *   **UI Components Interaction with CryptoContext:**
         *   **`Header.tsx` & `Converter.tsx`:**
             *   Use `useCrypto()` to get prices, loading states, the `isPending(symbol)` function, and the global rate limit state `isCoinGeckoRateLimitedGlobal`.
@@ -336,6 +341,7 @@ The application primarily uses React Context API for managing global state:
     *   `Header.tsx`, `Footer.tsx`: Standard layout components. Footer is now positioned absolutely at the bottom of the application window for consistent placement across all pages.
     *   `LivePrice.tsx`: Component for displaying real-time price updates.
     *   `LiveTimeAgo.tsx`: A small, efficient component that renders a self-updating timestamp (e.g., "5s ago"), ensuring the "last updated" indicator in the `Header` is always live without causing unnecessary re-renders of the entire header.
+        *   Enhancement (Nov 2025): Accepts `lastRefreshedTimestamp` from `CryptoContext` and briefly flashes the timestamp color when fresh data arrives to convey liveness.
     *   `TokenStats.tsx`: A detailed statistics panel displayed within the `ChartPage` sidebar. It shows key metrics like Market Rank, Market Cap, Volume, All-Time High/Low, and a visual progress bar for Circulating Supply. It also calculates and displays the percentage drop from the token's All-Time High (ATH), the percentage increase from its All-Time Low (ATL), and its 7-day volatility, highlighting significant changes with color. It features robust, locale-aware currency formatting.
     *   `InstanceDialog.tsx`: Dialog shown when a second instance of the app is attempted. Redesigned with the "Liquid Glass" theme to ensure UI consistency.
     *   `UpdateDialog.tsx`: Modal for handling the in-app update flow.
