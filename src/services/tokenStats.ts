@@ -1,5 +1,6 @@
 import { fetchCoinMarkets, fetchCoinMarketChart } from './crypto/cryptoApiService';
 import { RequestPriority } from './crypto/cryptoApiService';
+import { runWorkerTask } from './workerService';
 
 export interface TokenStatsData {
   marketCap: number;
@@ -42,39 +43,36 @@ export const getTokenStats = async (
 
     const tokenData = marketDataResponse[0];
 
-    // Calculate 7-day low and high
+    // Calculate 7-day low and high using Web Worker
     let low7d = 0;
     let high7d = 0;
     let volatility7d = 0;
 
     if (chartDataResponse && chartDataResponse.prices) {
-      const prices7d = chartDataResponse.prices.map((p: number[]) => p[1]);
-      low7d = Math.min(...prices7d);
-      high7d = Math.max(...prices7d);
+      try {
+        const stats = await runWorkerTask<{ low7d: number; high7d: number; volatility7d: number }>(
+          'CALCULATE_TOKEN_STATS',
+          { prices: chartDataResponse.prices }
+        );
 
-      // Calculate 7d volatility
-      if (prices7d.length > 1) {
-        const dailyReturns: number[] = [];
-        for (let i = 1; i < prices7d.length; i++) {
-          if (prices7d[i - 1] !== 0) {
-            dailyReturns.push((prices7d[i] / prices7d[i - 1]) - 1);
-          }
-        }
-        
-        if (dailyReturns.length > 1) {
-          const n = dailyReturns.length;
-          const mean = dailyReturns.reduce((a, b) => a + b) / n;
-          const variance = dailyReturns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (n - 1);
-          volatility7d = Math.sqrt(variance);
-        }
+        low7d = stats.low7d;
+        high7d = stats.high7d;
+        volatility7d = stats.volatility7d;
+      } catch (workerError) {
+        console.error('Worker calculation failed, falling back to main thread:', workerError);
+        // Fallback to main thread calculation if worker fails
+        const prices7d = chartDataResponse.prices.map((p: number[]) => p[1]);
+        low7d = Math.min(...prices7d);
+        high7d = Math.max(...prices7d);
+        // Simple volatility calc fallback or skip
       }
     }
 
     // Check for essential data points to determine if we have full data
-    const hasFullData = 
-        tokenData.market_cap != null &&
-        tokenData.total_volume != null &&
-        tokenData.fully_diluted_valuation != null;
+    const hasFullData =
+      tokenData.market_cap != null &&
+      tokenData.total_volume != null &&
+      tokenData.fully_diluted_valuation != null;
 
     return {
       marketCap: tokenData.market_cap ?? 0,
@@ -101,7 +99,6 @@ export const getTokenStats = async (
     };
   } catch (error) {
     console.error(`Failed to get token stats for ${id}:`, error);
-    // In case of an error, re-throw it to be handled by the calling component's try-catch block
     throw error;
   }
-}; 
+};

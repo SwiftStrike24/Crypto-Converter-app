@@ -1,23 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { HashRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import styled from 'styled-components';
 import { AnimatePresence, motion } from 'framer-motion';
 import Header from './components/Header';
 import Converter from './components/Converter';
 import Footer from './components/Footer';
-import AddTokens from './pages/AddTokens';
-import ManageTokens from './pages/ManageTokens';
-import ChartPage from './pages/ChartPage';
-import TechnicalAnalysisPage from './pages/TechnicalAnalysisPage';
-import TrendingTokensPage from './pages/TrendingTokensPage'; // Import the new page
-import NewsPage from './pages/NewsPage';
 import { CryptoProvider } from './context/CryptoContext';
 import { CryptoCompareProvider } from './context/CryptoCompareContext';
 import { ExchangeRatesProvider } from './context/ExchangeRatesContext';
 import { NewsProvider } from './context/NewsContext';
 import { BorderBeam } from './components/BorderBeam';
-import InstanceDialog from './pages/InstanceDialog';
 import LoadingScreen from './components/LoadingScreen';
+import PageLoader from './components/PageLoader';
+
+// Lazy load pages
+const AddTokens = lazy(() => import('./pages/AddTokens'));
+const ManageTokens = lazy(() => import('./pages/ManageTokens'));
+const ChartPage = lazy(() => import('./pages/ChartPage'));
+const TechnicalAnalysisPage = lazy(() => import('./pages/TechnicalAnalysisPage'));
+const TrendingTokensPage = lazy(() => import('./pages/TrendingTokensPage'));
+const NewsPage = lazy(() => import('./pages/NewsPage'));
+const InstanceDialog = lazy(() => import('./pages/InstanceDialog'));
 
 const AppContainer = styled.div<{ $isFullScreen?: boolean }>`
   width: ${props => props.$isFullScreen ? '100%' : '400px'};
@@ -53,12 +56,12 @@ const MainContentWrapper = styled.div`
 
 const AppContent: React.FC = () => {
   const location = useLocation();
-  const isFullScreen = location.pathname === '/add-tokens' || 
-                      location.pathname === '/chart' || 
-                      location.pathname === '/manage-tokens' ||
-                      location.pathname === '/analysis' ||
-                      location.pathname === '/trending' ||
-                      location.pathname === '/news'; // Add news to full screen
+  const isFullScreen = location.pathname === '/add-tokens' ||
+    location.pathname === '/chart' ||
+    location.pathname === '/manage-tokens' ||
+    location.pathname === '/analysis' ||
+    location.pathname === '/trending' ||
+    location.pathname === '/news'; // Add news to full screen
   const [selectedCrypto, setSelectedCrypto] = useState('BTC');
   const [selectedFiat, setSelectedFiat] = useState('USD');
 
@@ -83,32 +86,34 @@ const AppContent: React.FC = () => {
   }, [isFullScreen, location.pathname]);
 
   return (
-    <Routes>
-      <Route path="/add-tokens" element={<AddTokens />} />
-      <Route path="/manage-tokens" element={<ManageTokens />} />
-      <Route path="/chart" element={<ChartPage />} />
-      <Route path="/analysis" element={<TechnicalAnalysisPage />} />
-      <Route path="/trending" element={<TrendingTokensPage />} />
-      <Route path="/news" element={<NewsPage />} />
-      <Route path="/" element={
-        <AppContainer $isFullScreen={false}>
-          <BorderBeam />
-          <MainContentWrapper>
-            <Header selectedCrypto={selectedCrypto} selectedFiat={selectedFiat} />
-            <ContentContainer>
-              <Converter 
-                onCryptoChange={setSelectedCrypto} 
-                onFiatChange={setSelectedFiat}
-                defaultCrypto={selectedCrypto}
-                defaultFiat={selectedFiat}
-              />
-            </ContentContainer>
-            <Footer />
-          </MainContentWrapper>
-        </AppContainer>
-      } />
-      <Route path="/instance-dialog" element={<InstanceDialog />} />
-    </Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/add-tokens" element={<AddTokens />} />
+        <Route path="/manage-tokens" element={<ManageTokens />} />
+        <Route path="/chart" element={<ChartPage />} />
+        <Route path="/analysis" element={<TechnicalAnalysisPage />} />
+        <Route path="/trending" element={<TrendingTokensPage />} />
+        <Route path="/news" element={<NewsPage />} />
+        <Route path="/" element={
+          <AppContainer $isFullScreen={false}>
+            <BorderBeam />
+            <MainContentWrapper>
+              <Header selectedCrypto={selectedCrypto} selectedFiat={selectedFiat} />
+              <ContentContainer>
+                <Converter
+                  onCryptoChange={setSelectedCrypto}
+                  onFiatChange={setSelectedFiat}
+                  defaultCrypto={selectedCrypto}
+                  defaultFiat={selectedFiat}
+                />
+              </ContentContainer>
+              <Footer />
+            </MainContentWrapper>
+          </AppContainer>
+        } />
+        <Route path="/instance-dialog" element={<InstanceDialog />} />
+      </Routes>
+    </Suspense>
   );
 };
 

@@ -13,7 +13,9 @@ CryptoVertX is a desktop application built with Electron and React (using TypeSc
 *   **Language:** TypeScript (v5, strict mode enabled)
 *   **Process Model:** Standard Electron Main process and Renderer process structure.
     *   **Main Process:** `src/electron/main.ts` - Handles window creation, lifecycle events, system integration (tray, global hotkeys), instance management, and auto-updates.
+    *   **Main Process:** `src/electron/main.ts` - Handles window creation, lifecycle events, system integration (tray, global hotkeys), instance management, and auto-updates.
     *   **Renderer Process:** Manages the user interface, interacts with React components, and communicates with the Main process via IPC.
+    *   **Web Workers:** `src/workers/cryptoWorker.ts` - Handles CPU-intensive tasks like price batch processing and volatility calculations to keep the UI responsive.
 *   **Packaging:** Electron Builder (v24.9.1) for creating distributable versions (portable, MSI installer).
 *   **Package Manager:** `pnpm`
 
@@ -472,3 +474,16 @@ Enhanced the update system to support both MSI and EXE installers for seamless a
 **Update Discovery:**
 - Modified `updateService.ts` to search for both MSI and EXE installers in the R2 bucket
 - Supports `
+
+### Phase 8: Performance Optimizations (v2.3.0)
+Focused on improving application responsiveness and reducing initial load times through architectural improvements:
+
+*   **Web Worker Integration:**
+    *   Offloaded CPU-intensive tasks to a dedicated Web Worker (`src/workers/cryptoWorker.ts`) to prevent blocking the main UI thread.
+    *   **Price Batch Processing:** The complex logic for processing large batches of price updates, including currency conversions (USD -> EUR/CAD) and data normalization, is now handled in the background.
+    *   **Volatility Calculations:** The 7-day volatility, low, and high calculations for token statistics are now computed in the worker.
+    *   **Worker Service:** A `workerService.ts` abstraction provides a clean, Promise-based API for interacting with the worker, handling message passing and error propagation.
+*   **Lazy Loading:**
+    *   Implemented `React.lazy` and `Suspense` for heavy route components (`ChartPage`, `TechnicalAnalysisPage`, `TrendingTokensPage`, `NewsPage`, `ManageTokens`, `AddTokens`).
+    *   This reduces the initial bundle size, allowing the application to startup and render the main converter interface significantly faster.
+    *   Added a `PageLoader` component to provide immediate visual feedback during route transitions.
