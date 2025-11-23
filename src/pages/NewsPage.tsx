@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, ErrorInfo } from 'react';
+import React, { useCallback, useEffect, useRef, useState, ErrorInfo, useMemo } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
@@ -242,9 +242,9 @@ const BackButton = styled.button`
 `;
 
 const BackIcon = () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
-      <path d="M19 12H5M12 19l-7-7 7-7"/>
-    </svg>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+    <path d="M19 12H5M12 19l-7-7 7-7" />
+  </svg>
 );
 
 // Status indicators
@@ -297,11 +297,11 @@ const RefreshButton = styled.button<{ $isLoading: boolean; $isCompleteRefresh?: 
     right: 0;
     bottom: 0;
     background: ${props => {
-      if (props.$isCompleteRefresh) {
-        return 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(22, 163, 74, 0.1) 100%)';
-      }
-      return 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%)';
-    }};
+    if (props.$isCompleteRefresh) {
+      return 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(22, 163, 74, 0.1) 100%)';
+    }
+    return 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%)';
+  }};
     opacity: 0;
     transition: opacity 0.3s ease;
     border-radius: 50%;
@@ -310,11 +310,11 @@ const RefreshButton = styled.button<{ $isLoading: boolean; $isCompleteRefresh?: 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: ${props => {
-      if (props.$isCompleteRefresh) {
-        return '0 6px 24px rgba(34, 197, 94, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
-      }
-      return '0 6px 24px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
-    }};
+    if (props.$isCompleteRefresh) {
+      return '0 6px 24px rgba(34, 197, 94, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+    }
+    return '0 6px 24px rgba(139, 92, 246, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+  }};
 
     &:before {
       opacity: 1;
@@ -324,11 +324,11 @@ const RefreshButton = styled.button<{ $isLoading: boolean; $isCompleteRefresh?: 
   &:active:not(:disabled) {
     transform: translateY(0);
     box-shadow: ${props => {
-      if (props.$isCompleteRefresh) {
-        return '0 2px 8px rgba(34, 197, 94, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
-      }
-      return '0 2px 8px rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
-    }};
+    if (props.$isCompleteRefresh) {
+      return '0 2px 8px rgba(34, 197, 94, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+    }
+    return '0 2px 8px rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
+  }};
   }
 
   &:disabled {
@@ -518,9 +518,9 @@ const SubTabButton = styled.button<{ $active?: boolean; disabled?: boolean }>`
     transform: translateY(-1px);
     border-color: rgba(139, 92, 246, 0.5);
     background: ${props => props.$active
-      ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.3))'
-      : 'rgba(139, 92, 246, 0.15)'
-    };
+    ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.3))'
+    : 'rgba(139, 92, 246, 0.15)'
+  };
   }
 
   &:disabled {
@@ -825,6 +825,55 @@ const ErrorPre = styled.pre`
   max-height: 200px;
 `;
 
+// Filter Styled Components
+const FilterContainer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0 4px;
+`;
+
+const FilterGroup = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+`;
+
+const FilterPill = styled.button<{ $active?: boolean }>`
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid ${p => p.$active ? 'rgba(139, 92, 246, 0.6)' : 'rgba(139, 92, 246, 0.2)'};
+  background: ${p => p.$active ? 'rgba(139, 92, 246, 0.25)' : 'rgba(139, 92, 246, 0.1)'};
+  color: ${p => p.$active ? '#ffffff' : '#c4b5fd'};
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: ${p => p.$active ? 'rgba(139, 92, 246, 0.3)' : 'rgba(139, 92, 246, 0.15)'};
+    transform: translateY(-1px);
+  }
+`;
+
+const SortSelect = styled.select`
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  background: rgba(28, 28, 40, 0.6);
+  color: #c4b5fd;
+  font-size: 0.8rem;
+  outline: none;
+  cursor: pointer;
+
+  &:focus {
+    border-color: rgba(139, 92, 246, 0.6);
+  }
+`;
+
 // Error Boundary Component for crash protection
 class NewsErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -893,6 +942,10 @@ const NewsPage: React.FC = () => {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const tabSwitchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastTabSwitchRef = useRef<number>(0);
+
+  // Filter and Sort State
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [sortOption, setSortOption] = useState<'latest' | 'bullish' | 'bearish'>('latest');
 
   // Use preloaded news data from context
   const {
@@ -1004,6 +1057,30 @@ const NewsPage: React.FC = () => {
     };
   }, []);
 
+  // Filter and Sort Logic
+  const displayedNews = useMemo(() => {
+    let news = activeTab === 'fundraising' ? fundraisingNews : marketNews;
+
+    // Filter by Category
+    if (selectedCategory !== 'All') {
+      news = news.filter(article => article.categories?.includes(selectedCategory));
+    }
+
+    // Sort
+    return [...news].sort((a, b) => {
+      if (sortOption === 'latest') {
+        return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
+      } else if (sortOption === 'bullish') {
+        return (b.sentimentScore || 0) - (a.sentimentScore || 0);
+      } else if (sortOption === 'bearish') {
+        return (a.sentimentScore || 0) - (b.sentimentScore || 0);
+      }
+      return 0;
+    });
+  }, [activeTab, fundraisingNews, marketNews, selectedCategory, sortOption]);
+
+  const categories = ['All', 'Regulation', 'Market', 'Tech', 'DeFi', 'Security', 'NFT/Gaming'];
+
   return (
     <NewsErrorBoundary>
       <PageContainer>
@@ -1015,209 +1092,234 @@ const NewsPage: React.FC = () => {
           <Title>
             📰 Market News
           </Title>
-        {activeTab !== 'tv' && (activeTab === 'fundraising' ? fundraisingLastUpdated : marketLastUpdated) && !(activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) && (
-          <HeaderInfoContainer>
-            <div>
-              <StatusText $isStale={false}>
-                Last updated: <LiveTimeAgo date={(activeTab === 'fundraising' ? fundraisingLastUpdated : marketLastUpdated)!} />
-              </StatusText>
-            </div>
-            <RefreshButton
-              $isLoading={activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket}
-              $isCompleteRefresh={false}
-              onClick={handleRefresh}
-              title="Refresh news data"
-            >
-              <FiRefreshCw />
-            </RefreshButton>
-          </HeaderInfoContainer>
-        )}
-      </Header>
-
-      {/* Tabs */}
-      <Tabs>
-        <TabButton
-          $active={activeTab === 'market'}
-          onClick={() => handleTabChange('market')}
-          disabled={isTransitioning}
-        >
-          Market
-        </TabButton>
-        <TabButton
-          $active={activeTab === 'fundraising'}
-          onClick={() => handleTabChange('fundraising')}
-          disabled={isTransitioning}
-        >
-          Fundraising
-        </TabButton>
-        <TabButton
-          $active={activeTab === 'tv'}
-          onClick={() => handleTabChange('tv')}
-          disabled={isTransitioning}
-        >
-          Crypto Stories
-        </TabButton>
-        <TabButton
-          $active={activeTab === 'stocks'}
-          onClick={() => handleTabChange('stocks')}
-          disabled={isTransitioning}
-        >
-          Stock Market
-        </TabButton>
-        <TabButton
-          $active={activeTab === 'economic'}
-          onClick={() => handleTabChange('economic')}
-          disabled={isTransitioning}
-        >
-          Economic Calendar
-        </TabButton>
-        <TabButton
-          $active={activeTab === 'heatmap'}
-          onClick={() => handleTabChange('heatmap')}
-          disabled={isTransitioning}
-        >
-          📊 Heatmap
-        </TabButton>
-      </Tabs>
-
-      {/* Heatmap Sub-tabs */}
-      {activeTab === 'heatmap' && (
-        <HeatmapSubTabs>
-          <SubTabButton
-            $active={activeHeatmap === 'stock'}
-            onClick={() => setActiveHeatmap('stock')}
-            disabled={isTransitioning}
-          >
-            📈 Stocks
-          </SubTabButton>
-          <SubTabButton
-            $active={activeHeatmap === 'crypto'}
-            onClick={() => setActiveHeatmap('crypto')}
-            disabled={isTransitioning}
-          >
-            <CryptoIconImg
-              src="https://cdn.simpleicons.org/bitcoin/FF9900"
-              alt="Bitcoin"
-              loading="lazy"
-            />
-            Crypto
-          </SubTabButton>
-          <SubTabButton
-            $active={activeHeatmap === 'etf'}
-            onClick={() => setActiveHeatmap('etf')}
-            disabled={isTransitioning}
-          >
-            🏛️ ETFs
-          </SubTabButton>
-        </HeatmapSubTabs>
-      )}
-
-      <ContentContainer>
-        <ScrollContainer>
-          {activeTab === 'tv' ? (
-            <WidgetPanel>
-              <TradingViewNewsWidget feedMode="market" market="crypto" isTransparent height="100%" displayMode="regular" />
-            </WidgetPanel>
-          ) : activeTab === 'stocks' ? (
-            <WidgetPanel>
-              <TradingViewNewsWidget feedMode="market" market="stock" isTransparent height="100%" displayMode="regular" />
-            </WidgetPanel>
-          ) : activeTab === 'economic' ? (
-            <EconomicContainer>
-              <CountryButtons>
-                <CountryButton
-                  $active={selectedCountries.has('us')}
-                  $selected={selectedCountries.has('us')}
-                  onClick={() => handleCountryToggle('us')}
-                >
-                  <img
-                    src="https://upload.wikimedia.org/wikipedia/commons/a/a4/Flag_of_the_United_States.svg"
-                    alt="United States Flag"
-                    className="flag"
-                  />
-                  <span className="country-name">United States</span>
-                </CountryButton>
-                <CountryButton
-                  $active={selectedCountries.has('ca')}
-                  $selected={selectedCountries.has('ca')}
-                  onClick={() => handleCountryToggle('ca')}
-                >
-                  <img
-                    src="https://upload.wikimedia.org/wikipedia/commons/c/cf/Flag_of_Canada.svg"
-                    alt="Canada Flag"
-                    className="flag"
-                  />
-                  <span className="country-name">Canada</span>
-                </CountryButton>
-              </CountryButtons>
-              <CalendarWrapper>
-                {Array.from(selectedCountries).map(country => (
-                  <CalendarPanel key={country} $isVisible={true}>
-                    <MemoizedEconomicCalendarWidget country={country} />
-                  </CalendarPanel>
-                ))}
-              </CalendarWrapper>
-            </EconomicContainer>
-          ) : activeTab === 'heatmap' ? (
-            <WidgetPanel>
-              <TradingViewHeatmapWidget
-                type={activeHeatmap}
-                height="100%"
-                isTransparent={true}
-              />
-            </WidgetPanel>
-          ) : (activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) || isInitializing ? (
-            <LoadingContainer>
-              <WaveLoadingPlaceholder />
-              <LoadingText>
-                {isInitializing
-                  ? 'Initializing news data...'
-                  : activeTab === 'fundraising'
-                    ? 'Loading latest fundraising news...'
-                    : 'Loading latest crypto news...'
-                }
-              </LoadingText>
-            </LoadingContainer>
-          ) : (activeTab === 'fundraising' ? fundraisingError : marketError) ? (
-            <ErrorContainer>
-              <ErrorMessage>Failed to Load News</ErrorMessage>
-              <ErrorDescription>{activeTab === 'fundraising' ? fundraisingError : marketError}</ErrorDescription>
-              <RetryButton onClick={handleRetry}>
-                Try Again
-              </RetryButton>
-            </ErrorContainer>
-          ) : (activeTab === 'fundraising' ? fundraisingNews.length === 0 : marketNews.length === 0) ? (
-            <EmptyContainer>
-              <EmptyMessage>📰</EmptyMessage>
-              <EmptyMessage>No {activeTab === 'fundraising' ? 'Fundraising' : 'News'} Available</EmptyMessage>
-              <EmptyDescription>
-                No {activeTab === 'fundraising' ? 'fundraising' : 'cryptocurrency'} news articles are currently available.
-                <br />
-                Please try again later.
-              </EmptyDescription>
-              <RetryButton onClick={handleRetry}>
-                Refresh
-              </RetryButton>
-            </EmptyContainer>
-          ) : (
-            <NewsGrid>
-              <AnimatePresence>
-                {(activeTab === 'fundraising' ? fundraisingNews : marketNews).map((article, index) => (
-                  <NewsCard
-                    key={`${article.url}-${article.publishedAt}`}
-                    article={article as any}
-                    index={index}
-                  />
-                ))}
-              </AnimatePresence>
-            </NewsGrid>
+          {activeTab !== 'tv' && (activeTab === 'fundraising' ? fundraisingLastUpdated : marketLastUpdated) && !(activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) && (
+            <HeaderInfoContainer>
+              <div>
+                <StatusText $isStale={false}>
+                  Last updated: <LiveTimeAgo date={(activeTab === 'fundraising' ? fundraisingLastUpdated : marketLastUpdated)!} />
+                </StatusText>
+              </div>
+              <RefreshButton
+                $isLoading={activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket}
+                $isCompleteRefresh={false}
+                onClick={handleRefresh}
+                title="Refresh news data"
+              >
+                <FiRefreshCw />
+              </RefreshButton>
+            </HeaderInfoContainer>
           )}
-        </ScrollContainer>
-      </ContentContainer>
-    </PageContainer>
+        </Header>
+
+        {/* Tabs */}
+        <Tabs>
+          <TabButton
+            $active={activeTab === 'market'}
+            onClick={() => handleTabChange('market')}
+            disabled={isTransitioning}
+          >
+            Market
+          </TabButton>
+          <TabButton
+            $active={activeTab === 'fundraising'}
+            onClick={() => handleTabChange('fundraising')}
+            disabled={isTransitioning}
+          >
+            Fundraising
+          </TabButton>
+          <TabButton
+            $active={activeTab === 'tv'}
+            onClick={() => handleTabChange('tv')}
+            disabled={isTransitioning}
+          >
+            Crypto Stories
+          </TabButton>
+          <TabButton
+            $active={activeTab === 'stocks'}
+            onClick={() => handleTabChange('stocks')}
+            disabled={isTransitioning}
+          >
+            Stock Market
+          </TabButton>
+          <TabButton
+            $active={activeTab === 'economic'}
+            onClick={() => handleTabChange('economic')}
+            disabled={isTransitioning}
+          >
+            Economic Calendar
+          </TabButton>
+          <TabButton
+            $active={activeTab === 'heatmap'}
+            onClick={() => handleTabChange('heatmap')}
+            disabled={isTransitioning}
+          >
+            📊 Heatmap
+          </TabButton>
+        </Tabs>
+
+        {/* Heatmap Sub-tabs */}
+        {activeTab === 'heatmap' && (
+          <HeatmapSubTabs>
+            <SubTabButton
+              $active={activeHeatmap === 'stock'}
+              onClick={() => setActiveHeatmap('stock')}
+              disabled={isTransitioning}
+            >
+              📈 Stocks
+            </SubTabButton>
+            <SubTabButton
+              $active={activeHeatmap === 'crypto'}
+              onClick={() => setActiveHeatmap('crypto')}
+              disabled={isTransitioning}
+            >
+              <CryptoIconImg
+                src="https://cdn.simpleicons.org/bitcoin/FF9900"
+                alt="Bitcoin"
+                loading="lazy"
+              />
+              Crypto
+            </SubTabButton>
+            <SubTabButton
+              $active={activeHeatmap === 'etf'}
+              onClick={() => setActiveHeatmap('etf')}
+              disabled={isTransitioning}
+            >
+              🏛️ ETFs
+            </SubTabButton>
+          </HeatmapSubTabs>
+        )}
+
+        <ContentContainer>
+          <ScrollContainer>
+            {activeTab === 'tv' ? (
+              <WidgetPanel>
+                <TradingViewNewsWidget feedMode="market" market="crypto" isTransparent height="100%" displayMode="regular" />
+              </WidgetPanel>
+            ) : activeTab === 'stocks' ? (
+              <WidgetPanel>
+                <TradingViewNewsWidget feedMode="market" market="stock" isTransparent height="100%" displayMode="regular" />
+              </WidgetPanel>
+            ) : activeTab === 'economic' ? (
+              <EconomicContainer>
+                <CountryButtons>
+                  <CountryButton
+                    $active={selectedCountries.has('us')}
+                    $selected={selectedCountries.has('us')}
+                    onClick={() => handleCountryToggle('us')}
+                  >
+                    <img
+                      src="https://upload.wikimedia.org/wikipedia/commons/a/a4/Flag_of_the_United_States.svg"
+                      alt="United States Flag"
+                      className="flag"
+                    />
+                    <span className="country-name">United States</span>
+                  </CountryButton>
+                  <CountryButton
+                    $active={selectedCountries.has('ca')}
+                    $selected={selectedCountries.has('ca')}
+                    onClick={() => handleCountryToggle('ca')}
+                  >
+                    <img
+                      src="https://upload.wikimedia.org/wikipedia/commons/c/cf/Flag_of_Canada.svg"
+                      alt="Canada Flag"
+                      className="flag"
+                    />
+                    <span className="country-name">Canada</span>
+                  </CountryButton>
+                </CountryButtons>
+                <CalendarWrapper>
+                  {Array.from(selectedCountries).map(country => (
+                    <CalendarPanel key={country} $isVisible={true}>
+                      <MemoizedEconomicCalendarWidget country={country} />
+                    </CalendarPanel>
+                  ))}
+                </CalendarWrapper>
+              </EconomicContainer>
+            ) : activeTab === 'heatmap' ? (
+              <WidgetPanel>
+                <TradingViewHeatmapWidget
+                  type={activeHeatmap}
+                  height="100%"
+                  isTransparent={true}
+                />
+              </WidgetPanel>
+            ) : (activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) || isInitializing ? (
+              <LoadingContainer>
+                <WaveLoadingPlaceholder />
+                <LoadingText>
+                  {isInitializing
+                    ? 'Initializing news data...'
+                    : activeTab === 'fundraising'
+                      ? 'Loading latest fundraising news...'
+                      : 'Loading latest crypto news...'
+                  }
+                </LoadingText>
+              </LoadingContainer>
+            ) : (activeTab === 'fundraising' ? fundraisingError : marketError) ? (
+              <ErrorContainer>
+                <ErrorMessage>Failed to Load News</ErrorMessage>
+                <ErrorDescription>{activeTab === 'fundraising' ? fundraisingError : marketError}</ErrorDescription>
+                <RetryButton onClick={handleRetry}>
+                  Try Again
+                </RetryButton>
+              </ErrorContainer>
+            ) : (activeTab === 'fundraising' ? fundraisingNews.length === 0 : marketNews.length === 0) ? (
+              <EmptyContainer>
+                <EmptyMessage>📰</EmptyMessage>
+                <EmptyMessage>No {activeTab === 'fundraising' ? 'Fundraising' : 'News'} Available</EmptyMessage>
+                <EmptyDescription>
+                  No {activeTab === 'fundraising' ? 'fundraising' : 'cryptocurrency'} news articles are currently available.
+                  <br />
+                  Please try again later.
+                </EmptyDescription>
+                <RetryButton onClick={handleRetry}>
+                  Refresh
+                </RetryButton>
+              </EmptyContainer>
+            ) : (
+              <>
+                {activeTab === 'market' && (
+                  <FilterContainer>
+                    <FilterGroup>
+                      {categories.map(cat => (
+                        <FilterPill
+                          key={cat}
+                          $active={selectedCategory === cat}
+                          onClick={() => setSelectedCategory(cat)}
+                        >
+                          {cat}
+                        </FilterPill>
+                      ))}
+                    </FilterGroup>
+                    <SortSelect
+                      value={sortOption}
+                      onChange={(e) => setSortOption(e.target.value as any)}
+                    >
+                      <option value="latest">Latest</option>
+                      <option value="bullish">Most Bullish</option>
+                      <option value="bearish">Most Bearish</option>
+                    </SortSelect>
+                  </FilterContainer>
+                )}
+                <NewsGrid>
+                  <AnimatePresence>
+                    {displayedNews.map((article, index) => (
+                      <NewsCard
+                        key={`${article.url}-${article.publishedAt}`}
+                        article={article as any}
+                        index={index}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </NewsGrid>
+              </>
+            )}
+          </ScrollContainer>
+        </ContentContainer>
+      </PageContainer>
     </NewsErrorBoundary>
   );
 };
 
 // Enhanced NewsPage with React.memo for performance optimization
-export default React.memo(NewsPage); 
+export default React.memo(NewsPage);

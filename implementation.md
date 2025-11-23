@@ -487,3 +487,25 @@ Focused on improving application responsiveness and reducing initial load times 
     *   Implemented `React.lazy` and `Suspense` for heavy route components (`ChartPage`, `TechnicalAnalysisPage`, `TrendingTokensPage`, `NewsPage`, `ManageTokens`, `AddTokens`).
     *   This reduces the initial bundle size, allowing the application to startup and render the main converter interface significantly faster.
     *   Added a `PageLoader` component to provide immediate visual feedback during route transitions.
+
+### Phase 9: Intelligent News Feed (v2.5.0)
+Transformed the news feed into a premium market intelligence tool with AI-driven features and enhanced UX:
+
+*   **Expanded Source Network**: Added high-quality sources including The Block, U.Today, Daily Hodl, and BeInCrypto to the existing lineup (CoinDesk, Cointelegraph, Decrypt, CryptoSlate).
+*   **Intelligent Enrichment Engine**:
+    *   **Sentiment Analysis**: Integrated local sentiment analysis using the `sentiment` library (AFINN-165 vocabulary) to score articles.
+        *   **Visual Badges**: Articles display "BULLISH" (green), "BEARISH" (red), or "NEUTRAL" (gray) badges based on score thresholds.
+        *   **Sorting**: Users can sort the feed by "Most Bullish" or "Most Bearish" to find high-impact news quickly.
+    *   **Smart Categorization**: Implemented a keyword-based tagging system to automatically categorize articles into:
+        *   **Regulation**: (SEC, law, court, ban, approval, ETF...)
+        *   **Market**: (Price, rally, bull, bear, ATH, launch...)
+        *   **Tech**: (Upgrade, fork, mainnet, bug...)
+        *   **DeFi**: (DEX, yield, swap, TVL...)
+        *   **Security**: (Hack, exploit, scam, attack...)
+        *   **NFT/Gaming**: (Metaverse, play-to-earn, mint...)
+    *   **Deduplication**: Uses `string-similarity` (Dice's Coefficient) to detect and group duplicate stories from different sources.
+        *   **Consolidated View**: Displays the primary article and lists "Related Sources" (e.g., "+ 3 other sources") to reduce noise.
+*   **Enhanced UI/UX**:
+    *   **Dynamic Filtering**: Filter pills allow users to view news by specific categories (e.g., "Regulation only").
+    *   **Robust Image Extraction**: Improved logic to extract high-quality images from RSS enclosures, media tags, and content bodies, with a fallback placeholder.
+    *   **Performance**: Used `useMemo` for efficient client-side filtering and sorting of the enriched article set.

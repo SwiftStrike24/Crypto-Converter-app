@@ -18,6 +18,72 @@ import {
   findInvestors,
 } from './fundraisingConfig';
 
+const Sentiment = require('sentiment');
+const stringSimilarity = require('string-similarity');
+const sentiment = new Sentiment();
+
+// --- News Feed Configuration ---
+
+const NEWS_SOURCES = [
+  { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
+  { name: 'Cointelegraph', url: 'https://cointelegraph.com/rss' },
+  { name: 'The Block', url: 'https://www.theblock.co/rss.xml' },
+  { name: 'Decrypt', url: 'https://decrypt.co/feed' },
+  { name: 'CryptoSlate', url: 'https://cryptoslate.com/feed/' },
+  { name: 'U.Today', url: 'https://u.today/rss' },
+  { name: 'Bitcoin.com', url: 'https://news.bitcoin.com/feed/' },
+  { name: 'Daily Hodl', url: 'https://dailyhodl.com/feed/' },
+  { name: 'BeInCrypto', url: 'https://beincrypto.com/feed/' },
+];
+
+const NEWS_CATEGORIES = {
+  'Regulation': ['sec', 'regulation', 'law', 'court', 'ban', 'tax', 'legal', 'compliance', 'gensler', 'senate', 'congress', 'approval', 'sue', 'lawsuit', 'settlement'],
+  'Market': ['price', 'rally', 'crash', 'bull', 'bear', 'ath', 'market', 'trading', 'analysis', 'forecast', 'prediction', 'etf', 'volume', 'liquidity', 'launch', 'listing'],
+  'Tech': ['upgrade', 'fork', 'mainnet', 'developer', 'bug', 'vulnerability', 'protocol', 'consensus', 'node', 'hashrate', 'difficulty'],
+  'DeFi': ['dex', 'yield', 'swap', 'liquidity', 'tvl', 'farming', 'staking', 'lending', 'borrowing', 'curve', 'uniswap', 'aave', 'maker', 'compound'],
+  'Security': ['hack', 'exploit', 'scam', 'phishing', 'stolen', 'attack', 'breach', 'security', 'audit', 'vulnerability', 'drain'],
+  'NFT/Gaming': ['nft', 'metaverse', 'gaming', 'play-to-earn', 'gamefi', 'collection', 'mint', 'avatar', 'opensea', 'blur'],
+};
+
+// --- News Helper Functions ---
+
+function analyzeSentiment(text: string): { score: number; label: 'positive' | 'negative' | 'neutral' } {
+  const result = sentiment.analyze(text);
+  const score = result.score;
+  let label: 'positive' | 'negative' | 'neutral' = 'neutral';
+
+  if (score >= 2) label = 'positive';
+  else if (score <= -2) label = 'negative';
+
+  return { score, label };
+}
+
+function tagArticle(text: string): string[] {
+  const lowerText = text.toLowerCase();
+  const tags: string[] = [];
+
+  for (const [category, keywords] of Object.entries(NEWS_CATEGORIES)) {
+    if (keywords.some(keyword => lowerText.includes(keyword))) {
+      tags.push(category);
+    }
+  }
+  return tags;
+}
+
+interface EnrichedArticle {
+  title: string;
+  source: string;
+  publishedAt: string;
+  summary: string;
+  url: string;
+  imageUrl?: string;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  sentimentScore: number;
+  categories: string[];
+  relatedSources: string[];
+}
+
+
 // Load environment variables
 dotenv.config({ path: path.join(process.cwd(), '.env') });
 
@@ -50,7 +116,7 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
 
 // Get app info dynamically
 const APP_PATH = app.getPath('exe');
-const DIST_PATH = IS_DEV 
+const DIST_PATH = IS_DEV
   ? path.join(__dirname, '../dist')
   : path.join(process.resourcesPath, 'app.asar/dist');
 
@@ -68,7 +134,7 @@ const loadAppConfig = () => {
   } catch (error) {
     console.error('Failed to load app config:', error);
   }
-  
+
   // Default config if not found
   return {
     appId: 'com.cryptovertx.app',
@@ -104,14 +170,14 @@ const getIconPath = () => {
       path.join(app.getPath('exe'), '../resources/assets/icon.ico'),
       path.join(app.getPath('exe'), '../icon.ico')
     ];
-    
+
     for (const iconPath of possiblePaths) {
       if (fs.existsSync(iconPath)) {
         console.log(`Using icon from: ${iconPath}`);
         return iconPath;
       }
     }
-    
+
     // Fallback to development path if no production icon found
     return path.join(__dirname, '../src/assets/icon.ico');
   }
@@ -126,7 +192,7 @@ let coingeckoWindow: BrowserWindow | null = null;
 
 function cleanupAndExit(shouldRelaunch = false) {
   isQuitting = true;
-  
+
   // Cleanup windows with explicit checks
   [mainWindow, dialogWindow].forEach(win => {
     if (win && !win.isDestroyed()) {
@@ -141,7 +207,7 @@ function cleanupAndExit(shouldRelaunch = false) {
   globalShortcut.unregisterAll();
 
   if (shouldRelaunch) {
-    const execPath = process.platform === 'win32' 
+    const execPath = process.platform === 'win32'
       ? process.env.NODE_ENV === 'development'
         ? process.execPath
         : APP_PATH
@@ -151,7 +217,7 @@ function cleanupAndExit(shouldRelaunch = false) {
       ? process.argv.slice(1)
       : ['--relaunch'];
 
-    app.relaunch({ 
+    app.relaunch({
       execPath,
       args
     });
@@ -197,7 +263,7 @@ ipcMain.on('quit-app', () => {
 app.on('activate', () => {
   if (process.argv.includes('--relaunch')) {
     process.argv = process.argv.filter(arg => arg !== '--relaunch');
-    
+
     // Windows-specific focus handling
     if (process.platform === 'win32') {
       setTimeout(() => {
@@ -216,9 +282,9 @@ function createDialogWindow() {
     dialogWindow.focus();
     return;
   }
-  
+
   const { workArea } = screen.getPrimaryDisplay();
-  
+
   dialogWindow = new BrowserWindow({
     width: 450,
     height: 250,
@@ -239,10 +305,10 @@ function createDialogWindow() {
     icon: getIconPath(),
   });
 
-  const url = VITE_DEV_SERVER_URL 
+  const url = VITE_DEV_SERVER_URL
     ? `${VITE_DEV_SERVER_URL}#/instance-dialog`
     : `file://${path.join(DIST_PATH, 'index.html')}`;
-    
+
   dialogWindow.loadURL(url);
 
   if (!VITE_DEV_SERVER_URL) {
@@ -315,10 +381,10 @@ app.whenReady().then(() => {
 // Get the app version from package.json
 let appVersion = '';
 try {
-  const packageJsonPath = IS_DEV 
-    ? path.join(__dirname, '../../package.json') 
+  const packageJsonPath = IS_DEV
+    ? path.join(__dirname, '../../package.json')
     : path.join(process.resourcesPath, 'app.asar/package.json');
-  
+
   if (fs.existsSync(packageJsonPath)) {
     const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     appVersion = packageJson.version || '';
@@ -344,7 +410,7 @@ const ENV_VARS = {
 // Log environment variables for debugging (excluding secrets)
 console.log('Main process environment variables loaded:', {
   CLOUDFLARE_ACCOUNT_ID: ENV_VARS.CLOUDFLARE_ACCOUNT_ID ? 'Set' : 'Not Set',
-  R2_ACCESS_KEY_ID: ENV_VARS.R2_ACCESS_KEY_ID ? 'Set' : 'Not Set', 
+  R2_ACCESS_KEY_ID: ENV_VARS.R2_ACCESS_KEY_ID ? 'Set' : 'Not Set',
   R2_SECRET_ACCESS_KEY: ENV_VARS.R2_SECRET_ACCESS_KEY ? 'Set' : 'Not Set',
   R2_ENDPOINT: ENV_VARS.R2_ENDPOINT,
   R2_PUBLIC_URL: ENV_VARS.R2_PUBLIC_URL,
@@ -388,7 +454,7 @@ function createWindow() {
 
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);
-    
+
     // In development, set environment variables after page load
     mainWindow.webContents.on('did-finish-load', () => {
       if (mainWindow) {
@@ -439,7 +505,7 @@ function createWindow() {
   } else {
     const indexPath = path.join(DIST_PATH, 'index.html');
     mainWindow.loadFile(indexPath);
-    
+
     mainWindow.webContents.on('did-finish-load', () => {
       // Pass environment variables to renderer process
       if (mainWindow) {
@@ -562,17 +628,17 @@ function createWindow() {
   // Add IPC handler for window resizing
   ipcMain.on('set-window-size', (_, { width, height, isFullScreen }) => {
     if (!mainWindow) return;
-    
+
     const { workArea } = screen.getPrimaryDisplay();
     const x = Math.round(workArea.x + (workArea.width - width) / 2);
     const y = Math.round(workArea.y + (workArea.height - height) / 2);
-    
+
     mainWindow.setMinimumSize(400, 300);
-    mainWindow.setBounds({ 
-      x, 
-      y, 
-      width, 
-      height 
+    mainWindow.setBounds({
+      x,
+      y,
+      width,
+      height
     }, true);
 
     // Update window properties based on isFullScreen while keeping the window non-resizable
@@ -616,12 +682,12 @@ function setupIpcHandlers() {
     // Prefer env version if set, otherwise use package.json version
     return envVersion || packageVersion || 'unknown';
   });
-  
+
   // Handle get-env-vars request
   ipcMain.handle('get-env-vars', () => {
     // Get the most up-to-date version info
     const currentAppVersion = appVersion || app.getVersion() || process.env.npm_package_version || '';
-    
+
     // Create a safe object with only the environment variables we want to expose
     const safeEnv = {
       CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || '',
@@ -633,11 +699,11 @@ function setupIpcHandlers() {
       APP_VERSION: currentAppVersion,
       NODE_ENV: process.env.NODE_ENV || 'production'
     };
-    
+
     console.log('Providing environment variables via IPC');
     return safeEnv;
   });
-  
+
   // Handle quit-app request
   ipcMain.on('quit-app', () => {
     app.quit();
@@ -656,15 +722,17 @@ function setupIpcHandlers() {
   });
 
   // Handle fetching news data from main process to avoid CSP issues
-  ipcMain.handle('fetch-news-data', async (_event, sources) => {
+  ipcMain.handle('fetch-news-data', async (_event, _clientSources) => {
     try {
-      console.log('[MAIN_PROCESS] Fetching news data from RSS sources using feedparser');
+      console.log('[MAIN_PROCESS] Fetching news data from expanded source network');
 
-      const fetchPromises = sources.map(async (source: { name: string; url: string }) => {
+      // Use server-side defined sources instead of client-provided ones for security and consistency
+      const sourcesToFetch = NEWS_SOURCES;
+
+      const fetchPromises = sourcesToFetch.map(async (source) => {
         try {
           console.log(`[MAIN_PROCESS] Fetching from ${source.name}: ${source.url}`);
 
-          // Fetch RSS XML directly
           const response = await fetch(source.url, {
             method: 'GET',
             headers: {
@@ -678,12 +746,7 @@ function setupIpcHandlers() {
           }
 
           const xmlText = await response.text();
-          console.log(`[MAIN_PROCESS] Downloaded RSS XML from ${source.name} (${xmlText.length} chars)`);
-
-          // Parse RSS XML using feedparser
           const articles = await parseRSSWithFeedparser(xmlText, source.name);
-
-          console.log(`[MAIN_PROCESS] Successfully parsed ${articles.length} articles from ${source.name}`);
 
           return {
             success: true,
@@ -701,11 +764,87 @@ function setupIpcHandlers() {
       });
 
       const results = await Promise.allSettled(fetchPromises);
-      const processedResults = results.map(result =>
-        result.status === 'fulfilled' ? result.value : { success: false, error: 'Promise rejected' }
-      );
 
-      return { success: true, results: processedResults };
+      // Aggregate all articles
+      let allArticles: EnrichedArticle[] = [];
+
+      for (const result of results) {
+        if (result.status === 'fulfilled' && result.value.success && Array.isArray(result.value.data)) {
+          const enrichedBatch = result.value.data.map((item: any) => {
+            const sentimentResult = analyzeSentiment(item.title + ' ' + item.summary);
+            const categories = tagArticle(item.title + ' ' + item.summary);
+
+            return {
+              title: item.title,
+              source: item.source,
+              publishedAt: item.publishedAt,
+              summary: item.summary,
+              url: item.url,
+              imageUrl: item.imageUrl,
+              sentiment: sentimentResult.label,
+              sentimentScore: sentimentResult.score,
+              categories: categories,
+              relatedSources: []
+            } as EnrichedArticle;
+          });
+
+          allArticles.push(...enrichedBatch);
+        }
+      }
+
+      // Deduplication Logic
+      const uniqueArticles: EnrichedArticle[] = [];
+
+      // Sort by date first (newest first) to prioritize recent news as "primary"
+      allArticles.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+
+      for (const article of allArticles) {
+        let isDuplicate = false;
+
+        // Check against already accepted unique articles
+        for (const uniqueArticle of uniqueArticles) {
+          // 1. Check URL exact match
+          if (article.url === uniqueArticle.url) {
+            isDuplicate = true;
+            break;
+          }
+
+          // 2. Check Title Similarity
+          const similarity = stringSimilarity.compareTwoStrings(article.title, uniqueArticle.title);
+          if (similarity > 0.6) { // 60% similarity threshold
+            isDuplicate = true;
+            // Add this source to the "related sources" of the primary article
+            if (!uniqueArticle.relatedSources.includes(article.source) && article.source !== uniqueArticle.source) {
+              uniqueArticle.relatedSources.push(article.source);
+            }
+            break;
+          }
+        }
+
+        if (!isDuplicate) {
+          uniqueArticles.push(article);
+        }
+      }
+
+      console.log(`[MAIN_PROCESS] Fetched ${allArticles.length} total articles, deduplicated to ${uniqueArticles.length}`);
+
+      // Wrap in the expected result format for the renderer
+      // We return a single "success" result containing all aggregated data
+      // The renderer expects an array of results, so we'll wrap our aggregated list in a single success object
+      // OR we can modify the renderer to handle a flat list. 
+      // To maintain backward compatibility with the renderer's loop:
+      // response.results.forEach((result: any) => { ... })
+      // We will return a single "synthetic" result object containing all our processed data.
+
+      return {
+        success: true,
+        results: [{
+          success: true,
+          source: 'Aggregated News Engine',
+          data: uniqueArticles
+        }]
+      };
+
     } catch (error) {
       console.error('[MAIN_PROCESS] Critical error during news fetch:', error);
       return {
@@ -834,7 +973,7 @@ function setupIpcHandlers() {
     return result;
   }
 
-    // New robust RSS parser using feedparser and html-to-text
+  // New robust RSS parser using feedparser and html-to-text
   async function parseRSSWithFeedparser(xmlText: string, sourceName: string): Promise<any[]> {
     const articles: any[] = [];
 
@@ -855,7 +994,7 @@ function setupIpcHandlers() {
           reject(error);
         });
 
-        feedparser.on('readable', function(this: any) {
+        feedparser.on('readable', function (this: any) {
           let item;
           while ((item = this.read())) {
             try {
@@ -911,7 +1050,7 @@ function setupIpcHandlers() {
       console.log(`[LEDE_EXTRACTION] Using description field (${item.description.length} chars)`);
       return extractLedeFromContent(item.description);
     }
-    
+
     if (item.summary) {
       console.log(`[LEDE_EXTRACTION] Using summary field (${item.summary.length} chars)`);
       return extractLedeFromContent(item.summary);
@@ -921,7 +1060,7 @@ function setupIpcHandlers() {
       console.log(`[LEDE_EXTRACTION] Extracting lede from content:encoded`);
       return extractLedeFromContent(item['content:encoded']);
     }
-    
+
     if (item.content) {
       console.log(`[LEDE_EXTRACTION] Using content field (${item.content.length} chars)`);
       return extractLedeFromContent(item.content);
@@ -985,9 +1124,9 @@ function setupIpcHandlers() {
     // Final fallback: hard truncate with ellipsis
     const lastSpace = first300.lastIndexOf(' ');
     if (lastSpace > 0) {
-        return first300.substring(0, lastSpace).trim() + '...';
+      return first300.substring(0, lastSpace).trim() + '...';
     }
-    
+
     return first300 + '...';
   }
 
@@ -1006,16 +1145,18 @@ function setupIpcHandlers() {
       }
     }
 
-    // 2. Check for media:content or media:thumbnail
-    if (item['media:content'] && item['media:content'].url) {
-      if (isValidImageUrl(item['media:content'].url)) {
-        return item['media:content'].url;
+    // 2. Check for media:content or media:thumbnail (handle arrays and objects)
+    if (item['media:content']) {
+      const media = Array.isArray(item['media:content']) ? item['media:content'][0] : item['media:content'];
+      if (media && media.url && isValidImageUrl(media.url)) {
+        return media.url;
       }
     }
 
-    if (item['media:thumbnail'] && item['media:thumbnail'].url) {
-      if (isValidImageUrl(item['media:thumbnail'].url)) {
-        return item['media:thumbnail'].url;
+    if (item['media:thumbnail']) {
+      const media = Array.isArray(item['media:thumbnail']) ? item['media:thumbnail'][0] : item['media:thumbnail'];
+      if (media && media.url && isValidImageUrl(media.url)) {
+        return media.url;
       }
     }
 
@@ -1051,52 +1192,52 @@ function setupIpcHandlers() {
   // Helper function to validate image URLs
   function isValidImageUrl(url: string): boolean {
     if (!url || typeof url !== 'string') return false;
-    
+
     // Check if it's a valid URL
     try {
       const urlObj = new URL(url);
       // Only allow http/https protocols
       if (!['http:', 'https:'].includes(urlObj.protocol)) return false;
-      
+
       // Strict hostname validation - must be at least 4 characters and contain a dot
       if (!urlObj.hostname || urlObj.hostname.length < 4 || !urlObj.hostname.includes('.')) {
         return false;
       }
-      
+
       // Check for obviously malformed hostnames
       if (urlObj.hostname.includes('..') || urlObj.hostname.startsWith('.') || urlObj.hostname.endsWith('.')) {
         return false;
       }
-      
+
       // Check for common image extensions
       const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?|$)/i;
       if (imageExtensions.test(url)) {
         return true;
       }
-      
+
       // Check for known image hosting domains and CDNs - be more specific
       const imageHostingDomains = /\.(imgur|cloudinary|unsplash|pexels|pixabay|flickr|amazonaws|googleusercontent|wp|wordpress|gravatar|twimg|fbcdn|cdninstagram|ytimg)\.com$/i;
       if (imageHostingDomains.test(urlObj.hostname)) {
         return true;
       }
-      
+
       // Be more strict with jwpsrv - only allow if it has proper path structure
       if (urlObj.hostname.includes('jwpsrv.com') && urlObj.pathname.includes('/') && urlObj.pathname.length > 10) {
         return true;
       }
-      
+
       // Check for other common CDN patterns but be more strict
       const cdnPatterns = /(cdn\.|images\.|static\.|media\.|assets\.|thumb)/i;
       if (cdnPatterns.test(urlObj.hostname) && urlObj.pathname.length > 5) {
         return true;
       }
-      
+
       // If URL contains common image-related keywords and has a reasonable path, it's likely an image
       const imageKeywords = /(image|img|photo|pic|thumb|avatar|logo|banner)/i;
       if (imageKeywords.test(url) && urlObj.pathname.length > 5) {
         return true;
       }
-      
+
       return false;
     } catch {
       return false;
@@ -1107,7 +1248,7 @@ function setupIpcHandlers() {
   ipcMain.on('open-link-in-app', (_event, url) => {
     // Check if this is a CoinGecko URL (use singleton pattern)
     const isCoinGeckoUrl = url.includes('coingecko.com');
-    
+
     if (isCoinGeckoUrl) {
       // Use singleton pattern for CoinGecko URLs
       if (coingeckoWindow && !coingeckoWindow.isDestroyed()) {
@@ -1121,7 +1262,7 @@ function setupIpcHandlers() {
             return inputUrl; // Return original if parsing fails
           }
         };
-        
+
         const currentURL = coingeckoWindow.webContents.getURL();
         const normalizedCurrentURL = normalizeUrl(currentURL);
         const normalizedRequestedURL = normalizeUrl(url);
@@ -1148,7 +1289,7 @@ function setupIpcHandlers() {
         // Create a new window and store the reference ONLY if creation succeeds
         const newWindow = createInternalBrowserWindow(url);
         if (newWindow) { // Check if window creation succeeded
-            coingeckoWindow = newWindow;
+          coingeckoWindow = newWindow;
         }
       }
     } else {
@@ -1252,13 +1393,13 @@ app.on('browser-window-created', (_event, window) => {
   const url = window.webContents.getURL();
   console.log(`New BrowserWindow created with title: "${title}"`);
   console.log(`Window webContents URL: "${url}"`);
-  
+
   // Add stack trace to identify what's creating unexpected windows
   if (!title && !url) {
     console.error('UNEXPECTED EMPTY WINDOW CREATED! Stack trace:');
     console.trace();
   }
-  
+
   // Monitor this window's URL changes to catch 404s
   window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error(`BrowserWindow failed to load URL: ${validatedURL}`);

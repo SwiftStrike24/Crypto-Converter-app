@@ -8,6 +8,11 @@ export interface NewsArticle {
   summary: string;
   url: string;
   imageUrl?: string;
+  // New fields
+  sentiment?: 'positive' | 'negative' | 'neutral';
+  sentimentScore?: number;
+  categories?: string[];
+  relatedSources?: string[];
   // Optional metadata (used by fundraising view)
   chains?: string[];
   tokenless?: boolean;
@@ -25,13 +30,9 @@ const CACHE_KEY = 'market-news';
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 const STALE_CACHE_MAX_AGE = 60 * 60 * 1000; // 1 hour (for fallback)
 
-// RSS sources with their display names
-const RSS_SOURCES = [
-  { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/' },
-  { name: 'Bitcoin.com', url: 'https://news.bitcoin.com/feed/' },
-  { name: 'CryptoSlate', url: 'https://cryptoslate.com/feed/' },
-  { name: 'Decrypt', url: 'https://decrypt.co/feed' },
-];
+// RSS sources are now defined in the main process for security and consistency
+// We pass an empty array or dummy to the IPC call as it ignores the argument now
+const RSS_SOURCES: any[] = [];
 
 class NewsService {
   async fetchNews(force: boolean = false): Promise<NewsFetchResult> {
@@ -52,29 +53,40 @@ class NewsService {
 
     try {
       console.log('[NEWS_SERVICE] Fetching fresh news data');
-      
+
       // Use IPC to fetch news from main process
       const response = await ipcRenderer.invoke('fetch-news-data', RSS_SOURCES);
-      
+
       if (response && response.success) {
         const allArticles: NewsArticle[] = [];
-        
+
         // Process all successful results
-        response.results.forEach((result: any) => {
-          if (result.success && result.data) {
-            // Process and normalize the data from main process
-            const normalizedArticles = result.data.map((item: any): NewsArticle => ({
-              title: item.title || 'Untitled',
-              source: item.source,
-              publishedAt: item.publishedAt || new Date().toISOString(),
-              summary: item.summary || '', // Backend now provides complete, clean summaries
-              url: item.url || '',
-              imageUrl: this.extractImageUrl(item.imageUrl || item.summary || '')
-            }));
-            
-            allArticles.push(...normalizedArticles);
-          }
-        });
+        if (response.results && Array.isArray(response.results)) {
+          response.results.forEach((result: any) => {
+            if (result.success && result.data) {
+              // Process and normalize the data from main process
+              const normalizedArticles = result.data.map((item: any): NewsArticle => ({
+                title: item.title || 'Untitled',
+                source: item.source,
+                publishedAt: item.publishedAt || new Date().toISOString(),
+                summary: item.summary || '',
+                url: item.url || '',
+                imageUrl: this.extractImageUrl(item.imageUrl || item.summary || ''),
+                sentiment: item.sentiment,
+                sentimentScore: item.sentimentScore,
+                categories: item.categories,
+                relatedSources: item.relatedSources,
+                // Preserve fundraising fields if present
+                chains: item.chains,
+                tokenless: item.tokenless,
+                fundingStage: item.fundingStage,
+                investors: item.investors
+              }));
+
+              allArticles.push(...normalizedArticles);
+            }
+          });
+        }
 
         if (allArticles.length === 0) {
           console.warn('[NEWS_SERVICE] No articles fetched from any source');
@@ -83,15 +95,15 @@ class NewsService {
 
         // Sort by publication date (newest first)
         allArticles.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-        
+
         // Take top 50 articles
         const topArticles = allArticles.slice(0, 50);
-        
+
         // Cache the results
         setCachedData(CACHE_KEY, topArticles, CACHE_DURATION);
-        
+
         console.log('[NEWS_SERVICE] Successfully fetched and cached news:', topArticles.length);
-        
+
         return {
           data: topArticles,
           fromCache: false
@@ -106,18 +118,14 @@ class NewsService {
     }
   }
 
-
-
-
-
   private extractImageUrl(content: string): string | undefined {
     if (!content) return undefined;
-    
+
     // If content is already a direct URL
     if (content.startsWith('http') && (content.includes('.jpg') || content.includes('.png') || content.includes('.webp'))) {
       return content;
     }
-    
+
     // Try to extract image URL from HTML content
     const imgMatch = content.match(/<img[^>]+src="([^"]+)"/);
     return imgMatch ? imgMatch[1] : undefined;
@@ -131,7 +139,7 @@ class NewsService {
       if (itemStr) {
         const cacheEntry = JSON.parse(itemStr);
         const cacheAge = Date.now() - cacheEntry.timestamp;
-        
+
         if (cacheAge <= STALE_CACHE_MAX_AGE) {
           console.log(`[NEWS_STALE_CACHE] Using stale cache data (${Math.round(cacheAge / 1000)}s old) as fallback`);
           return {
@@ -156,4 +164,4 @@ class NewsService {
   }
 }
 
-export const newsService = new NewsService(); 
+export const newsService = new NewsService();

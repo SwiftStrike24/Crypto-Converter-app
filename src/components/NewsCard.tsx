@@ -33,9 +33,10 @@ const TagRow = styled.div`
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
+  padding-right: 60px; /* Make space for sentiment badge */
 `;
 
-const Tag = styled.span<{ $variant?: 'chain' | 'tokenless' }>`
+const Tag = styled.span<{ $variant?: 'chain' | 'tokenless' | 'category' }>`
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -44,11 +45,64 @@ const Tag = styled.span<{ $variant?: 'chain' | 'tokenless' }>`
   font-weight: 700;
   border-radius: 999px;
   border: 1px solid rgba(139, 92, 246, 0.45);
-  color: ${p => (p.$variant === 'tokenless' ? '#4ade80' : '#ddd6fe')};
-  background: ${p => (p.$variant === 'tokenless'
-    ? 'linear-gradient(145deg, rgba(34,197,94,0.25), rgba(34,197,94,0.15))'
-    : 'linear-gradient(145deg, rgba(139,92,246,0.25), rgba(139,92,246,0.15))')};
+  
+  ${p => {
+    if (p.$variant === 'tokenless') {
+      return `
+        color: #4ade80;
+        background: linear-gradient(145deg, rgba(34,197,94,0.25), rgba(34,197,94,0.15));
+      `;
+    } else if (p.$variant === 'category') {
+      return `
+        color: #60a5fa;
+        border-color: rgba(96, 165, 250, 0.45);
+        background: linear-gradient(145deg, rgba(96,165,250,0.25), rgba(96,165,250,0.15));
+      `;
+    } else {
+      return `
+        color: #ddd6fe;
+        background: linear-gradient(145deg, rgba(139,92,246,0.25), rgba(139,92,246,0.15));
+      `;
+    }
+  }}
+  
   text-shadow: 0 0 6px rgba(0,0,0,0.15);
+`;
+
+const SentimentBadge = styled.div<{ $sentiment?: 'positive' | 'negative' | 'neutral' }>`
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid;
+  
+  ${p => {
+    switch (p.$sentiment) {
+      case 'positive':
+        return `
+          color: #4ade80;
+          background: rgba(34, 197, 94, 0.15);
+          border-color: rgba(34, 197, 94, 0.3);
+        `;
+      case 'negative':
+        return `
+          color: #f87171;
+          background: rgba(248, 113, 113, 0.15);
+          border-color: rgba(248, 113, 113, 0.3);
+        `;
+      default:
+        return `
+          color: #94a3b8;
+          background: rgba(148, 163, 184, 0.15);
+          border-color: rgba(148, 163, 184, 0.3);
+        `;
+    }
+  }}
 `;
 
 
@@ -137,6 +191,13 @@ const SourceName = styled.span`
   letter-spacing: 0.5px;
 `;
 
+const RelatedSources = styled.div`
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-top: 4px;
+  font-style: italic;
+`;
+
 const OpenButton = styled.button`
   background: linear-gradient(145deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.1));
   border: 1px solid rgba(139, 92, 246, 0.25);
@@ -165,9 +226,9 @@ const OpenButton = styled.button`
 
 const ExternalLinkIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="14" height="14">
-    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-    <polyline points="15,3 21,3 21,9"/>
-    <line x1="10" y1="14" x2="21" y2="3"/>
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    <polyline points="15,3 21,3 21,9" />
+    <line x1="10" y1="14" x2="21" y2="3" />
   </svg>
 );
 
@@ -179,50 +240,50 @@ interface NewsCardProps {
 // Helper function to validate image URLs
 const isValidImageUrl = (url: string): boolean => {
   if (!url || typeof url !== 'string') return false;
-  
+
   try {
     const urlObj = new URL(url);
     if (!['http:', 'https:'].includes(urlObj.protocol)) return false;
-    
+
     // Strict hostname validation - must be at least 4 characters and contain a dot
     if (!urlObj.hostname || urlObj.hostname.length < 4 || !urlObj.hostname.includes('.')) {
       return false;
     }
-    
+
     // Check for obviously malformed hostnames
     if (urlObj.hostname.includes('..') || urlObj.hostname.startsWith('.') || urlObj.hostname.endsWith('.')) {
       return false;
     }
-    
+
     // Check for common image extensions
     const imageExtensions = /\.(jpg|jpeg|png|gif|webp|svg|bmp|ico)(\?|$)/i;
     if (imageExtensions.test(url)) {
       return true;
     }
-    
+
     // Check for known image hosting domains and CDNs - be more specific
     const imageHostingDomains = /\.(imgur|cloudinary|unsplash|pexels|pixabay|flickr|amazonaws|googleusercontent|wp|wordpress|gravatar|twimg|fbcdn|cdninstagram|ytimg)\.com$/i;
     if (imageHostingDomains.test(urlObj.hostname)) {
       return true;
     }
-    
+
     // Be more strict with jwpsrv - only allow if it has proper path structure
     if (urlObj.hostname.includes('jwpsrv.com') && urlObj.pathname.includes('/') && urlObj.pathname.length > 10) {
       return true;
     }
-    
+
     // Check for other common CDN patterns but be more strict
     const cdnPatterns = /(cdn\.|images\.|static\.|media\.|assets\.|thumb)/i;
     if (cdnPatterns.test(urlObj.hostname) && urlObj.pathname.length > 5) {
       return true;
     }
-    
+
     // If URL contains common image-related keywords and has a reasonable path, it's likely an image
     const imageKeywords = /(image|img|photo|pic|thumb|avatar|logo|banner)/i;
     if (imageKeywords.test(url) && urlObj.pathname.length > 5) {
       return true;
     }
-    
+
     return false;
   } catch {
     return false;
@@ -232,7 +293,7 @@ const isValidImageUrl = (url: string): boolean => {
 const NewsCard: React.FC<NewsCardProps> = ({ article, index }) => {
   const handleOpenArticle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    
+
     try {
       console.log('Opening news article in-app:', article.url);
       ipcRenderer.send('open-link-in-app', article.url);
@@ -252,8 +313,8 @@ const NewsCard: React.FC<NewsCardProps> = ({ article, index }) => {
     <CardWrapper
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ 
-        duration: 0.3, 
+      transition={{
+        duration: 0.3,
         delay: index * 0.05,
         ease: [0.16, 1, 0.3, 1]
       }}
@@ -266,18 +327,28 @@ const NewsCard: React.FC<NewsCardProps> = ({ article, index }) => {
       whileTap={{ scale: 0.98 }}
       onClick={handleCardClick}
     >
-      {(article.chains?.length || article.tokenless) && (
+      {article.sentiment && (
+        <SentimentBadge $sentiment={article.sentiment}>
+          {article.sentiment}
+        </SentimentBadge>
+      )}
+
+      {((article.chains?.length ?? 0) > 0 || article.tokenless || (article.categories?.length ?? 0) > 0) && (
         <TagRow>
           {article.chains?.map((c) => (
             <Tag key={c} $variant="chain">{c}</Tag>
           ))}
+          {article.categories?.map((c) => (
+            <Tag key={c} $variant="category">{c}</Tag>
+          ))}
           {article.tokenless && <Tag $variant="tokenless">Tokenless</Tag>}
         </TagRow>
       )}
+
       <ArticleHeader>
         {article.imageUrl && isValidImageUrl(article.imageUrl) ? (
-          <ArticleImage 
-            src={article.imageUrl} 
+          <ArticleImage
+            src={article.imageUrl}
             alt={article.title}
             onError={(e) => {
               // Hide image on load error and show placeholder
@@ -316,7 +387,7 @@ const NewsCard: React.FC<NewsCardProps> = ({ article, index }) => {
             📰
           </ArticleImagePlaceholder>
         )}
-        
+
         <ArticleContent>
           <ArticleTitle>{article.title}</ArticleTitle>
           {article.summary && (
@@ -324,13 +395,18 @@ const NewsCard: React.FC<NewsCardProps> = ({ article, index }) => {
           )}
         </ArticleContent>
       </ArticleHeader>
-      
+
       <ArticleFooter>
         <SourceInfo>
           <SourceName>{article.source}</SourceName>
           <LiveTimeAgo date={new Date(article.publishedAt)} />
+          {article.relatedSources && article.relatedSources.length > 0 && (
+            <RelatedSources>
+              + {article.relatedSources.length} other sources
+            </RelatedSources>
+          )}
         </SourceInfo>
-        
+
         <OpenButton onClick={handleOpenArticle}>
           Read More
           <ExternalLinkIcon />
@@ -340,4 +416,4 @@ const NewsCard: React.FC<NewsCardProps> = ({ article, index }) => {
   );
 };
 
-export default NewsCard; 
+export default NewsCard;
