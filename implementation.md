@@ -296,25 +296,30 @@ The application primarily uses React Context API for managing global state:
     *   **Removed Redundant Processing**: Deleted the `extractSummary` method since the backend now provides complete, clean summaries.
     *   **Streamlined Data Processing**: Frontend now trusts the backend to deliver properly formatted summaries.
 
-### 4.9. Fundraising Intelligence Engine (v3)
+### 4.9. Fundraising Intelligence Engine (v2)
 
-- New dedicated backend pipeline and UI tab focused on venture funding, grants, and ecosystem investments.
-- Main process IPC: `fetch-fundraising-news` aggregates articles from curated fundraising-oriented sources (RSS + X via Nitter), filters for funding-related content, tags chains accurately, and flags tokenless L2s.
-- Sources (free-only):
-  - CoinDesk, Decrypt, CryptoSlate, Bitcoin.com, The Defiant (RSS)
-  - Airdrops.io (RSS) to correlate incentives appearing post-funding
-  - VC/Investor accounts via Nitter RSS bridge (availability may vary): a16z crypto, Paradigm, Binance Labs, Electric Capital, CoinFund, Multicoin
-- Tagging & Detection:
-  - Multi-stage filter: positive fundraising keywords and negative keyword suppression to reduce false positives
-  - Chain attribution using a hybrid approach:
-    - Direct chain keywords atlas for `SOL`, `ETH`, `SUI`, `ETH_L2s`
-    - Project-to-chain map for improved attribution (e.g., Jupiter → SOL, Uniswap → ETH, Linea → ETH_L2s)
-  - Tokenless inference: names like `base`, `linea`, `scroll`, `taiko` flag `tokenless = true`
-  - Funding stage extraction: detects Pre-Seed/Seed/Series A/B/C/Grant/Private/Public
-- Config module: `src/electron/fundraisingConfig.ts` contains source list, keyword sets, chain keywords, project map, tokenless set, and helpers.
-- Parser: Reuses `parseRSSWithFeedparser` + `html-to-text` pipeline for robust feed parsing and summary extraction.
-- Caching: 10-minute cache key `fundraising-news` via `cryptoCacheService` with manual full refresh support from the UI.
-- Logging: Prefixed `[FUNDRAISING]` logs for fetch, parsing counts, tagging results, and chain-filter impact.
+- **Overview**: A powerful, dedicated backend pipeline and UI tab focused on venture funding, grants, and ecosystem investments. It aggregates data from over 20 high-quality sources and uses advanced text analysis to extract structured deal metrics.
+- **Main Process IPC**: `fetch-fundraising-news` aggregates articles, filters for funding content, tags chains, and extracts deal data.
+- **Expanded Data Sources (v2)**:
+  - **News Outlets**: The Block (Deals), Cointelegraph (Funding), Blockworks (Fundraise), DL News, Chainwire, Bitcoin.com, CryptoRank.
+  - **VC Blogs**: a16z Crypto, Multicoin Capital, Pantera Capital, Coinbase Blog, Dragonfly, Fabric Ventures, Blockchain Founders Capital.
+  - **VC Nitter Bridges**: Paradigm, Binance Labs, Electric Capital, CoinFund, Framework, Variant, 1kx.
+- **Advanced Data Extraction**:
+  - **💰 Funding Amount**: Regex-based extraction of amounts (e.g., "$10M", "15.5 million").
+  - **💎 Valuation**: Extracts valuation figures (e.g., "at a $100M valuation").
+  - **🏆 Lead Investor**: Identifies lead investors (e.g., "led by Paradigm").
+  - **🌱 Funding Stage**: Detects stages (Pre-Seed, Seed, Series A-C, Strategic, Bridge, Grant).
+  - **🤝 Investor Tagging**: Automatically tags known investors from a curated keyword list.
+- **Chain Attribution**:
+  - **Direct Keywords**: `SOL`, `ETH`, `SUI`, `ETH_L2s`.
+  - **Project Mapping**: Maps projects (e.g., Jupiter -> SOL, Uniswap -> ETH) to their respective chains.
+  - **Tokenless Inference**: Flags projects like Base, Linea, Scroll as `tokenless`.
+- **UI Enhancements**:
+  - **Deal Badges**: `NewsCard` displays visual badges for Amount, Stage, Lead Investor, and Valuation.
+  - **Smart Layout**: Badges are integrated alongside chain and category tags.
+- **Configuration**: `src/electron/fundraisingConfig.ts` houses all source lists, regex patterns, and keyword maps.
+- **Caching**: 10-minute cache key `fundraising-news` via `cryptoCacheService`.
+- **Logging**: Prefixed `[FUNDRAISING]` logs for debugging extraction and filtering logic.
 
 ## 5. UI and Styling
 
@@ -474,6 +479,10 @@ Enhanced the update system to support both MSI and EXE installers for seamless a
 **Update Discovery:**
 - Modified `updateService.ts` to search for both MSI and EXE installers in the R2 bucket
 - Supports `
+- `src/services/updateService.ts` continues to discover the newest Windows installer seamlessly
+- Post-upload prune:
+  - After a successful upload, the uploader prunes older objects in the same `R2_PREFIX` and keeps only the newly uploaded installer
+  - Toggle via env: `R2_KEEP_ONLY_LATEST=false` to disable pruning (default is true)
 
 ### Phase 8: Performance Optimizations (v2.3.0)
 Focused on improving application responsiveness and reducing initial load times through architectural improvements:

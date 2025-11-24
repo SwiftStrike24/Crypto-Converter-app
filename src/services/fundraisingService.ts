@@ -6,6 +6,9 @@ export interface FundraisingArticle extends NewsArticle {
   chains?: string[];
   tokenless?: boolean;
   fundingStage?: string;
+  fundingAmount?: string;
+  valuation?: string;
+  leadInvestor?: string;
   investors?: string[];
 }
 

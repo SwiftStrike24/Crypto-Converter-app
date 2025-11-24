@@ -52,6 +52,9 @@ export const INVESTOR_KEYWORDS: readonly string[] = [
   'electric capital', 'coinfund', 'multicoin', 'multicoin capital', 'polychain', 'pantera', 'hashed',
   'dragonfly', 'sequoia', 'jump crypto', 'animoca', 'animoca brands', 'framework', 'placeholder vc',
   'draper', 'alameda research', 'three arrows capital', 'delphi digital', 'wintermute', 'galaxy digital',
+  'variant', 'variant fund', '1kx', 'standard crypto', 'hack vc', 'robot ventures', 'nascent',
+  'dwf labs', 'fabric ventures', 'blockchain founders capital', 'mechanism capital', 'maven 11',
+  'reciprocal ventures', 'cms holdings', 'spartan group', 'gumi cryptos', 'lemniscap',
 ];
 
 // Chain keyword atlas
@@ -137,17 +140,35 @@ export const FUNDRAISING_SOURCES: readonly FundraisingSource[] = [
   { name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', type: 'rss' },
   { name: 'Decrypt', url: 'https://decrypt.co/feed', type: 'rss' },
   { name: 'CryptoSlate', url: 'https://cryptoslate.com/feed/', type: 'rss' },
-  { name: 'Bitcoin.com', url: 'https://news.bitcoin.com/feed/', type: 'rss' },
+  { name: 'Bitcoin.com', url: 'https://news.bitcoin.com/feed/news', type: 'rss' },
   { name: 'The Defiant', url: 'https://thedefiant.io/feed', type: 'rss' },
-  // Airdrops trackers (to correlate post-funding user incentives)
-  { name: 'Airdrops.io', url: 'https://airdrops.io/feed/', type: 'rss' },
+
+  // Dedicated Fundraising/Deal Feeds
+  { name: 'The Block (Deals)', url: 'https://www.theblock.co/rss/category/crypto-ecosystem/funding', type: 'rss' },
+  { name: 'Cointelegraph (Funding)', url: 'https://cointelegraph.com/rss/tag/fundraising', type: 'rss' },
+  { name: 'Blockworks (Fundraise)', url: 'https://blockworks.co/tag/fundraise/feed', type: 'rss' },
+  { name: 'Bitcoin.com (Fundraising)', url: 'https://news.bitcoin.com/tag/fundraising/feed', type: 'rss' },
+  { name: 'DL News', url: 'https://www.dlnews.com/feed/rss/', type: 'rss' },
+  { name: 'Chainwire', url: 'https://chainwire.org/feed/', type: 'rss' },
+  { name: 'CryptoRank (News)', url: 'https://cryptorank.io/feed/news', type: 'rss' },
+
+  // VC Blogs & Insights (Direct RSS)
+  { name: 'a16z Crypto', url: 'https://a16zcrypto.com/feed/', type: 'rss' },
+  { name: 'Multicoin Capital', url: 'https://multicoin.capital/feed/', type: 'rss' },
+  { name: 'Pantera Capital', url: 'https://panteracapital.com/feed/', type: 'rss' },
+  { name: 'Coinbase Blog', url: 'https://blog.coinbase.com/feed', type: 'rss' },
+  { name: 'Dragonfly (Medium)', url: 'https://medium.com/feed/@dragonfly_xyz', type: 'rss' },
+  { name: 'Fabric Ventures (Medium)', url: 'https://medium.com/feed/@fabric-ventures', type: 'rss' },
+  { name: 'Blockchain Founders', url: 'https://blockchainfounders.capital/rss-feed/', type: 'rss' },
+
   // VC/Investor updates via Nitter (free RSS bridge; availability may vary)
-  { name: 'a16z crypto (X)', url: 'https://nitter.net/a16zcrypto/rss', type: 'nitter' },
   { name: 'Paradigm (X)', url: 'https://nitter.net/paradigm/rss', type: 'nitter' },
   { name: 'Binance Labs (X)', url: 'https://nitter.net/BinanceLabs/rss', type: 'nitter' },
   { name: 'Electric Capital (X)', url: 'https://nitter.net/electriccapital/rss', type: 'nitter' },
   { name: 'CoinFund (X)', url: 'https://nitter.net/coinfund_io/rss', type: 'nitter' },
-  { name: 'Multicoin (X)', url: 'https://nitter.net/multicoincap/rss', type: 'nitter' },
+  { name: 'Framework (X)', url: 'https://nitter.net/FrameworkVC/rss', type: 'nitter' },
+  { name: 'Variant (X)', url: 'https://nitter.net/variantfund/rss', type: 'nitter' },
+  { name: '1kx (X)', url: 'https://nitter.net/1kxnetwork/rss', type: 'nitter' },
 ];
 
 export function normalizeText(input: string | undefined | null): string {
@@ -166,6 +187,9 @@ export function detectFundingStage(text: string): string | undefined {
   if (lower.includes('series a')) return 'Series A';
   if (lower.includes('series b')) return 'Series B';
   if (lower.includes('series c')) return 'Series C';
+  if (lower.includes('strategic')) return 'Strategic';
+  if (lower.includes('bridge')) return 'Bridge';
+  if (lower.includes('extension')) return 'Extension';
   if (lower.includes('grant')) return 'Grant';
   if (lower.includes('private round')) return 'Private';
   if (lower.includes('public sale') || lower.includes('ido') || lower.includes('ieo') || lower.includes('ico')) return 'Public';
@@ -200,13 +224,49 @@ export function tagChains(text: string): { chains: ChainTag[]; tokenless: boolea
 // Extract a readable funding amount text if present (e.g., "$15M", "15 million")
 export function extractFundingAmount(text: string): string | undefined {
   const t = text;
-  // $15M, $15.5M, $120k, $1B
-  const moneySymbol = /\$\s?\d{1,3}(?:[,.]\d{3})*(?:\.\d+)?\s?(?:[KkMmBb])?/g;
-  const longForm = /\b\d+(?:\.\d+)?\s?(?:million|billion|thousand)\b/i;
-  const m1 = t.match(moneySymbol);
-  if (m1 && m1.length > 0) return m1[0];
+  // Enhanced regex to catch more patterns
+  // $15M, $15.5M, $120k, $1B, $10m - require word boundary for suffix
+  const moneySymbol = /\$\s?\d{1,3}(?:[,.]\d{3})*(?:\.\d+)?\s?(?:[KkMmBb]\b)/g;
+  // 15 million, 1.5 billion, $15 million
+  const longForm = /\$?\b\d+(?:\.\d+)?\s?(?:million|billion|thousand)\b/i;
+  // raises $10M, raised $5 million
+  const contextMatch = /(?:raises|raised|secured|funding|round of)\s+(\$?\d+(?:\.\d+)?\s?(?:[KkMmBb]|million|billion)\b)/i;
+
+  // Check long form first to avoid partial matches like "$15.5 m" from "$15.5 million"
   const m2 = t.match(longForm);
   if (m2 && m2.length > 0) return m2[0];
+
+  const m1 = t.match(moneySymbol);
+  if (m1 && m1.length > 0) return m1[0];
+
+  const m3 = t.match(contextMatch);
+  if (m3 && m3[1]) return m3[1];
+
+  return undefined;
+}
+
+// Extract valuation if present (e.g., "at a $100M valuation")
+export function extractValuation(text: string): string | undefined {
+  const t = text;
+  const valuationMatch = /(?:at a|valuation of)\s+(\$?\d+(?:\.\d+)?\s?(?:[KkMmBb]|million|billion)\b)/i;
+  const m = t.match(valuationMatch);
+  if (m && m[1]) return m[1];
+  return undefined;
+}
+
+// Extract lead investor (e.g., "led by a16z")
+export function extractLeadInvestor(text: string): string | undefined {
+  const t = text;
+  // Added |$ to allow end of string
+  const ledByMatch = /led by\s+([A-Za-z0-9\s&]+?)(?:,|\.|and|with|participat|$)/i;
+  const m = t.match(ledByMatch);
+  if (m && m[1]) {
+    const rawLead = m[1].trim();
+    // Clean up if it's too long or contains noise
+    if (rawLead.length < 40) {
+      return rawLead;
+    }
+  }
   return undefined;
 }
 

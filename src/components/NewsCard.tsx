@@ -36,7 +36,7 @@ const TagRow = styled.div`
   padding-right: 60px; /* Make space for sentiment badge */
 `;
 
-const Tag = styled.span<{ $variant?: 'chain' | 'tokenless' | 'category' }>`
+const Tag = styled.span<{ $variant?: 'chain' | 'tokenless' | 'category' | 'deal' }>`
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -57,6 +57,12 @@ const Tag = styled.span<{ $variant?: 'chain' | 'tokenless' | 'category' }>`
         color: #60a5fa;
         border-color: rgba(96, 165, 250, 0.45);
         background: linear-gradient(145deg, rgba(96,165,250,0.25), rgba(96,165,250,0.15));
+      `;
+    } else if (p.$variant === 'deal') {
+      return `
+        color: #fbbf24;
+        border-color: rgba(251, 191, 36, 0.45);
+        background: linear-gradient(145deg, rgba(251,191,36,0.25), rgba(251,191,36,0.15));
       `;
     } else {
       return `
@@ -333,8 +339,20 @@ const NewsCard: React.FC<NewsCardProps> = ({ article, index }) => {
         </SentimentBadge>
       )}
 
-      {((article.chains?.length ?? 0) > 0 || article.tokenless || (article.categories?.length ?? 0) > 0) && (
+      {((article.chains?.length ?? 0) > 0 || article.tokenless || (article.categories?.length ?? 0) > 0 || (article as any).fundingAmount || (article as any).fundingStage || (article as any).leadInvestor) && (
         <TagRow>
+          {(article as any).fundingAmount && (
+            <Tag $variant="deal">💰 {(article as any).fundingAmount}</Tag>
+          )}
+          {(article as any).fundingStage && (
+            <Tag $variant="deal">🌱 {(article as any).fundingStage}</Tag>
+          )}
+          {(article as any).leadInvestor && (
+            <Tag $variant="deal">🏆 Led by {(article as any).leadInvestor}</Tag>
+          )}
+          {(article as any).valuation && (
+            <Tag $variant="deal">💎 {(article as any).valuation} Val</Tag>
+          )}
           {article.chains?.map((c) => (
             <Tag key={c} $variant="chain">{c}</Tag>
           ))}

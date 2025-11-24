@@ -15,8 +15,12 @@ import {
   tagChains,
   detectFundingStage,
   extractFundingAmount,
+  extractValuation,
+  extractLeadInvestor,
   findInvestors,
 } from './fundraisingConfig';
+
+
 
 const Sentiment = require('sentiment');
 const stringSimilarity = require('string-similarity');
@@ -938,6 +942,8 @@ function setupIpcHandlers() {
     const chainInfo = tagChains(combined);
     const fundingStage = detectFundingStage(combined);
     const fundingAmount = extractFundingAmount(combined);
+    const valuation = extractValuation(combined);
+    const leadInvestor = extractLeadInvestor(combined);
     const investors = findInvestors(combined);
 
     const result = {
@@ -951,6 +957,8 @@ function setupIpcHandlers() {
       tokenless: chainInfo.tokenless,
       fundingStage,
       fundingAmount,
+      valuation,
+      leadInvestor,
       investors,
       // simple relevance score
       _score: (
@@ -958,6 +966,7 @@ function setupIpcHandlers() {
         (chainInfo.tokenless ? 2 : 0) +
         (fundingStage ? 1 : 0) +
         (fundingAmount ? 2 : 0) +
+        (leadInvestor ? 2 : 0) +
         (investors.length ? Math.min(2, investors.length) : 0)
       )
     };
@@ -967,6 +976,7 @@ function setupIpcHandlers() {
       tokenless: result.tokenless,
       stage: result.fundingStage,
       amount: result.fundingAmount,
+      lead: result.leadInvestor,
       investors: result.investors,
     });
 
