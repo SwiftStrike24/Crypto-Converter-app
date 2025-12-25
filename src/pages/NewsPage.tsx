@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState, ErrorInfo, useMemo } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
-import { AnimatePresence } from 'framer-motion';
 import { FiRefreshCw } from 'react-icons/fi';
+import { Virtuoso } from 'react-virtuoso';
 import NewsCard from '../components/NewsCard';
 import LiveTimeAgo from '../components/LiveTimeAgo';
 import WaveLoadingPlaceholder from '../components/WaveLoadingPlaceholder';
@@ -390,13 +390,17 @@ const ContentContainer = styled.div`
 
 const ScrollContainer = styled.div`
   flex: 1;
+  display: flex; /* Fix: use flexbox for children layout */
+  flex-direction: column;
   overflow-y: auto;
+  overflow-x: hidden; /* Fix: prevent unwanted horizontal scrollbar */
   padding-right: 8px;
   margin-right: -8px;
 
   /* Custom scrollbar styling to match TrendingTokensPage */
   &::-webkit-scrollbar {
     width: 8px;
+    height: 8px; /* Apply custom style to horizontal scrollbar if it triggers */
   }
 
   &::-webkit-scrollbar-track {
@@ -418,8 +422,35 @@ const ScrollContainer = styled.div`
 const NewsGrid = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
-  padding-bottom: 2rem;
+  flex: 1;
+  height: 100%;
+  min-height: 0; /* Important for flex children to enable scrolling */
+
+  /* Sleek Scrollbar Styling for Virtuoso List */
+  & ::-webkit-scrollbar {
+    width: 6px; /* Thinner for cleaner look */
+    height: 6px;
+  }
+
+  & ::-webkit-scrollbar-track {
+    background: transparent; /* Invisible track */
+  }
+
+  & ::-webkit-scrollbar-thumb {
+    background: rgba(139, 92, 246, 0.2); /* Subtle purple */
+    border-radius: 3px;
+    transition: background 0.2s ease;
+  }
+
+  & ::-webkit-scrollbar-thumb:hover {
+    background: rgba(139, 92, 246, 0.4); /* Darker on hover */
+  }
+
+  /* Force hide horizontal scrollbar visuals */
+  & ::-webkit-scrollbar:horizontal {
+    height: 0px;
+    display: none;
+  }
 `;
 
 const LoadingContainer = styled.div`
@@ -936,7 +967,8 @@ class NewsErrorBoundary extends React.Component<
 
 const NewsPage: React.FC = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'market' | 'fundraising' | 'tv' | 'stocks' | 'economic' | 'heatmap'>('market');
+  // Removed 'fundraising' from tab union - now unified into 'market'
+  const [activeTab, setActiveTab] = useState<'market' | 'tv' | 'stocks' | 'economic' | 'heatmap'>('market');
   const [selectedCountries, setSelectedCountries] = useState<Set<'us' | 'ca'>>(new Set(['us']));
   const [activeHeatmap, setActiveHeatmap] = useState<HeatmapType>('crypto');
   const [isTransitioning, setIsTransitioning] = useState(false);
@@ -946,6 +978,7 @@ const NewsPage: React.FC = () => {
   // Filter and Sort State
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [sortOption, setSortOption] = useState<'latest' | 'bullish' | 'bearish'>('latest');
+  const [showHighImpactOnly, setShowHighImpactOnly] = useState<boolean>(false);
 
   // Use preloaded news data from context
   const {
@@ -956,37 +989,32 @@ const NewsPage: React.FC = () => {
     fundraisingNews,
     isLoadingFundraising,
     fundraisingError,
-    fundraisingLastUpdated,
+    // fundraisingLastUpdated removed - unified view uses marketLastUpdated
     isInitializing,
     refreshMarketNews,
     refreshFundraisingNews,
   } = useNews();
 
   const handleRefresh = useCallback(async () => {
-    const loading = activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket;
-    if (!loading && activeTab !== 'tv' && activeTab !== 'stocks' && activeTab !== 'economic') {
+    const loading = isLoadingMarket || isLoadingFundraising;
+    if (!loading && activeTab !== 'tv' && activeTab !== 'stocks' && activeTab !== 'economic' && activeTab !== 'heatmap') {
       try {
-        if (activeTab === 'fundraising') {
-          await refreshFundraisingNews();
-        } else {
-          await refreshMarketNews();
-        }
+        // Refresh both feeds for the unified market tab
+        await Promise.allSettled([refreshMarketNews(), refreshFundraisingNews()]);
       } catch (error) {
         console.error('Error refreshing news:', error);
       }
     }
-  }, [activeTab, isLoadingFundraising, isLoadingMarket, refreshFundraisingNews, refreshMarketNews]);
+  }, [activeTab, isLoadingMarket, isLoadingFundraising, refreshMarketNews, refreshFundraisingNews]);
 
   const handleRetry = useCallback(async () => {
-    if (activeTab === 'fundraising') {
-      await refreshFundraisingNews();
-    } else if (activeTab === 'market') {
-      await refreshMarketNews();
+    if (activeTab === 'market') {
+      await Promise.allSettled([refreshMarketNews(), refreshFundraisingNews()]);
     }
-  }, [activeTab, refreshFundraisingNews, refreshMarketNews]);
+  }, [activeTab, refreshMarketNews, refreshFundraisingNews]);
 
   // Debounced tab switching to prevent crashes from rapid switching
-  const handleTabChange = useCallback((newTab: 'market' | 'fundraising' | 'tv' | 'stocks' | 'economic' | 'heatmap') => {
+  const handleTabChange = useCallback((newTab: 'market' | 'tv' | 'stocks' | 'economic' | 'heatmap') => {
     if (isTransitioning) {
       console.warn('Tab switch already in progress, ignoring rapid switch');
       return;
@@ -1057,16 +1085,22 @@ const NewsPage: React.FC = () => {
     };
   }, []);
 
-  // Filter and Sort Logic
+  // Filter and Sort Logic - UNIFIED FEED
   const displayedNews = useMemo(() => {
-    let news = activeTab === 'fundraising' ? fundraisingNews : marketNews;
+    // Merge market and fundraising news into a single array
+    let news = [...marketNews, ...fundraisingNews];
 
     // Filter by Category
     if (selectedCategory !== 'All') {
       news = news.filter(article => article.categories?.includes(selectedCategory));
     }
 
-    // Sort
+    // Filter by High Impact
+    if (showHighImpactOnly) {
+      news = news.filter(article => article.isHighImpact === true);
+    }
+
+    // Sort by publishedAt (newest first), then by sentiment if applicable
     return [...news].sort((a, b) => {
       if (sortOption === 'latest') {
         return new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime();
@@ -1077,9 +1111,10 @@ const NewsPage: React.FC = () => {
       }
       return 0;
     });
-  }, [activeTab, fundraisingNews, marketNews, selectedCategory, sortOption]);
+  }, [fundraisingNews, marketNews, selectedCategory, sortOption, showHighImpactOnly]);
 
-  const categories = ['All', 'Regulation', 'Market', 'Tech', 'DeFi', 'Security', 'NFT/Gaming'];
+  // Categories now include 'Fundraising' for unified filtering
+  const categories = ['All', 'Regulation', 'Market', 'Tech', 'DeFi', 'Security', 'NFT/Gaming', 'Fundraising'];
 
   return (
     <NewsErrorBoundary>
@@ -1092,15 +1127,15 @@ const NewsPage: React.FC = () => {
           <Title>
             📰 Market News
           </Title>
-          {activeTab !== 'tv' && (activeTab === 'fundraising' ? fundraisingLastUpdated : marketLastUpdated) && !(activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) && (
+          {activeTab !== 'tv' && marketLastUpdated && !(isLoadingMarket || isLoadingFundraising) && (
             <HeaderInfoContainer>
               <div>
                 <StatusText $isStale={false}>
-                  Last updated: <LiveTimeAgo date={(activeTab === 'fundraising' ? fundraisingLastUpdated : marketLastUpdated)!} />
+                  Last updated: <LiveTimeAgo date={marketLastUpdated} />
                 </StatusText>
               </div>
               <RefreshButton
-                $isLoading={activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket}
+                $isLoading={isLoadingMarket || isLoadingFundraising}
                 $isCompleteRefresh={false}
                 onClick={handleRefresh}
                 title="Refresh news data"
@@ -1120,13 +1155,7 @@ const NewsPage: React.FC = () => {
           >
             Market
           </TabButton>
-          <TabButton
-            $active={activeTab === 'fundraising'}
-            onClick={() => handleTabChange('fundraising')}
-            disabled={isTransitioning}
-          >
-            Fundraising
-          </TabButton>
+          {/* Fundraising tab removed - now unified into Market */}
           <TabButton
             $active={activeTab === 'tv'}
             onClick={() => handleTabChange('tv')}
@@ -1243,32 +1272,30 @@ const NewsPage: React.FC = () => {
                   isTransparent={true}
                 />
               </WidgetPanel>
-            ) : (activeTab === 'fundraising' ? isLoadingFundraising : isLoadingMarket) || isInitializing ? (
+            ) : (isLoadingMarket || isLoadingFundraising) || isInitializing ? (
               <LoadingContainer>
                 <WaveLoadingPlaceholder />
                 <LoadingText>
                   {isInitializing
                     ? 'Initializing news data...'
-                    : activeTab === 'fundraising'
-                      ? 'Loading latest fundraising news...'
-                      : 'Loading latest crypto news...'
+                    : 'Loading latest market intelligence...'
                   }
                 </LoadingText>
               </LoadingContainer>
-            ) : (activeTab === 'fundraising' ? fundraisingError : marketError) ? (
+            ) : (marketError || fundraisingError) ? (
               <ErrorContainer>
                 <ErrorMessage>Failed to Load News</ErrorMessage>
-                <ErrorDescription>{activeTab === 'fundraising' ? fundraisingError : marketError}</ErrorDescription>
+                <ErrorDescription>{marketError || fundraisingError}</ErrorDescription>
                 <RetryButton onClick={handleRetry}>
                   Try Again
                 </RetryButton>
               </ErrorContainer>
-            ) : (activeTab === 'fundraising' ? fundraisingNews.length === 0 : marketNews.length === 0) ? (
+            ) : (marketNews.length === 0 && fundraisingNews.length === 0) ? (
               <EmptyContainer>
                 <EmptyMessage>📰</EmptyMessage>
-                <EmptyMessage>No {activeTab === 'fundraising' ? 'Fundraising' : 'News'} Available</EmptyMessage>
+                <EmptyMessage>No News Available</EmptyMessage>
                 <EmptyDescription>
-                  No {activeTab === 'fundraising' ? 'fundraising' : 'cryptocurrency'} news articles are currently available.
+                  No market intelligence articles are currently available.
                   <br />
                   Please try again later.
                 </EmptyDescription>
@@ -1286,10 +1313,18 @@ const NewsPage: React.FC = () => {
                           key={cat}
                           $active={selectedCategory === cat}
                           onClick={() => setSelectedCategory(cat)}
+                          style={cat === 'Fundraising' ? { background: selectedCategory === cat ? 'rgba(251, 191, 36, 0.25)' : undefined, borderColor: selectedCategory === cat ? 'rgba(251, 191, 36, 0.6)' : undefined } : undefined}
                         >
-                          {cat}
+                          {cat === 'Fundraising' ? '💰 Fundraising' : cat}
                         </FilterPill>
                       ))}
+                      <FilterPill
+                        $active={showHighImpactOnly}
+                        onClick={() => setShowHighImpactOnly(!showHighImpactOnly)}
+                        style={{ marginLeft: 8, background: showHighImpactOnly ? 'rgba(251, 191, 36, 0.25)' : undefined, borderColor: showHighImpactOnly ? 'rgba(251, 191, 36, 0.6)' : undefined }}
+                      >
+                        🔥 High Impact
+                      </FilterPill>
                     </FilterGroup>
                     <SortSelect
                       value={sortOption}
@@ -1301,17 +1336,33 @@ const NewsPage: React.FC = () => {
                     </SortSelect>
                   </FilterContainer>
                 )}
-                <NewsGrid>
-                  <AnimatePresence>
-                    {displayedNews.map((article, index) => (
-                      <NewsCard
-                        key={`${article.url}-${article.publishedAt}`}
-                        article={article as any}
-                        index={index}
-                      />
-                    ))}
-                  </AnimatePresence>
-                </NewsGrid>
+                {displayedNews.length === 0 ? (
+                  <EmptyContainer>
+                    <EmptyMessage>No Matching News</EmptyMessage>
+                    <EmptyDescription>
+                      No articles match your current filters.
+                      <br />
+                      Try selecting "All" categories or disabling "High Impact".
+                    </EmptyDescription>
+                  </EmptyContainer>
+                ) : (
+                  <NewsGrid>
+                    <Virtuoso
+                      style={{ height: '100%', flex: 1, overflowX: 'hidden' }}
+                      data={displayedNews}
+                      overscan={1200} /* Increased for smoother fast scrolling */
+                      itemContent={(index, article) => (
+                        <div style={{ paddingBottom: '1rem' }}>
+                          <NewsCard
+                            key={`${article.url}-${article.publishedAt}`}
+                            article={article as any}
+                            index={index}
+                          />
+                        </div>
+                      )}
+                    />
+                  </NewsGrid>
+                )}
               </>
             )}
           </ScrollContainer>

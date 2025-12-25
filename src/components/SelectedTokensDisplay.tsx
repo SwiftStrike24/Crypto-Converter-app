@@ -1,14 +1,12 @@
 import React from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiX, FiCopy } from 'react-icons/fi';
+import { FiX } from 'react-icons/fi';
 import { ICryptoResult } from '../hooks/useSelectedTokens'; // Use hook interface
 
 // --- Styled Components (Moved from AddTokens.tsx) ---
 
-const SectionContainer = styled(motion.div)`
-  /* Optional: Add container animations if needed */
-`;
+// SectionContainer removed - unused
 
 const SectionHeader = styled.div`
   display: flex;
@@ -144,10 +142,10 @@ interface SelectedTokensDisplayProps {
 
 // --- Main Component ---
 
-export const SelectedTokensDisplay: React.FC<SelectedTokensDisplayProps> = ({ 
-  selectedCryptos, 
-  onRemoveToken, 
-  onClearAll 
+export const SelectedTokensDisplay: React.FC<SelectedTokensDisplayProps> = ({
+  selectedCryptos,
+  onRemoveToken,
+  onClearAll
 }) => {
   const hasSelection = selectedCryptos.size > 0;
 
@@ -157,8 +155,8 @@ export const SelectedTokensDisplay: React.FC<SelectedTokensDisplayProps> = ({
         <SectionTitle>
           Selected <TokenCount>{selectedCryptos.size}</TokenCount>
         </SectionTitle>
-        <ClearAllButton 
-          onClick={onClearAll} 
+        <ClearAllButton
+          onClick={onClearAll}
           disabled={!hasSelection}
           title="Clear all selected tokens"
           aria-label="Clear all selected tokens"
@@ -166,7 +164,7 @@ export const SelectedTokensDisplay: React.FC<SelectedTokensDisplayProps> = ({
           Clear All
         </ClearAllButton>
       </SectionHeader>
-      
+
       <SelectedTokensContainer>
         {!hasSelection ? (
           <EmptySelection>Tokens you select will appear here</EmptySelection>
@@ -180,20 +178,20 @@ export const SelectedTokensDisplay: React.FC<SelectedTokensDisplayProps> = ({
                 exit={{ opacity: 0, scale: 0.8, transition: { duration: 0.15 } }}
                 layout // Smooth transition when items are added/removed
               >
-                <img 
-                  src={crypto.image} 
-                  alt={crypto.name} 
-                  loading="lazy" 
-                  onError={(e) => { 
-                    (e.target as HTMLImageElement).src = `https://via.placeholder.com/20/3a3a3a/888?text=${crypto.symbol.charAt(0)}`; 
+                <img
+                  src={crypto.image}
+                  alt={crypto.name}
+                  loading="lazy"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = `https://via.placeholder.com/20/3a3a3a/888?text=${crypto.symbol.charAt(0)}`;
                   }}
                 />
                 <span className="token-symbol">{crypto.symbol}</span>
-                <button 
+                <button
                   className="remove-button"
-                  onClick={(e) => { 
+                  onClick={(e) => {
                     e.stopPropagation(); // Prevent potential parent clicks
-                    onRemoveToken(crypto.id); 
+                    onRemoveToken(crypto.id);
                   }}
                   title={`Remove ${crypto.symbol}`}
                   aria-label={`Remove ${crypto.symbol}`}

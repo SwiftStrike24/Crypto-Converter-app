@@ -296,7 +296,7 @@ const isValidImageUrl = (url: string): boolean => {
   }
 };
 
-const NewsCard: React.FC<NewsCardProps> = ({ article, index }) => {
+const NewsCard: React.FC<NewsCardProps> = React.memo(({ article, index }) => {
   const handleOpenArticle = (e: React.MouseEvent) => {
     e.stopPropagation();
 
@@ -315,23 +315,32 @@ const NewsCard: React.FC<NewsCardProps> = ({ article, index }) => {
     handleOpenArticle(e);
   };
 
+  // Optimization: Only stagger animation for the first few items
+  // Items appearing on scroll should appear almost instantly
+  const shouldStagger = index < 12;
+
   return (
     <CardWrapper
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{
         duration: 0.3,
-        delay: index * 0.05,
+        // Cap delay to avoid empty spaces during fast scroll (virtualization)
+        delay: shouldStagger ? index * 0.05 : 0,
         ease: [0.16, 1, 0.3, 1]
       }}
       whileHover={{
         scale: 1.02,
-        borderColor: 'rgba(139, 92, 246, 0.4)',
-        boxShadow: '0 8px 24px rgba(139, 92, 246, 0.15)',
+        borderColor: article.isHighImpact ? 'rgba(251, 191, 36, 0.6)' : 'rgba(139, 92, 246, 0.4)',
+        boxShadow: article.isHighImpact ? '0 8px 24px rgba(251, 191, 36, 0.25)' : '0 8px 24px rgba(139, 92, 246, 0.15)',
         transition: { duration: 0.2 }
       }}
       whileTap={{ scale: 0.98 }}
       onClick={handleCardClick}
+      style={article.isHighImpact ? {
+        borderColor: 'rgba(251, 191, 36, 0.4)',
+        boxShadow: '0 0 12px rgba(251, 191, 36, 0.2), inset 0 0 0 1px rgba(251, 191, 36, 0.1)'
+      } : undefined}
     >
       {article.sentiment && (
         <SentimentBadge $sentiment={article.sentiment}>
@@ -432,6 +441,6 @@ const NewsCard: React.FC<NewsCardProps> = ({ article, index }) => {
       </ArticleFooter>
     </CardWrapper>
   );
-};
+});
 
 export default NewsCard;

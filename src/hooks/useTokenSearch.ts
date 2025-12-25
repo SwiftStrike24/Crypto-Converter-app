@@ -12,11 +12,11 @@ export interface ICryptoResult {
   market_cap_rank?: number;
 }
 
-interface SearchCache {
-  query: string;
-  results: ICryptoResult[];
-  timestamp: number;
-}
+// interface SearchCache {
+//   query: string;
+//   results: ICryptoResult[];
+//   timestamp: number;
+// }
 
 export type ApiStatusType = 'available' | 'limited' | 'unavailable';
 
@@ -51,22 +51,22 @@ const SEARCH_API_CONFIG = {
 export function useTokenSearch() {
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState<ICryptoResult[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false); // setLoading removed - unused internally
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usingFallbackApi, setUsingFallbackApi] = useState(false);
-  const [currentProxyIndex, setCurrentProxyIndex] = useState(0);
+  // const [currentProxyIndex, setCurrentProxyIndex] = useState(0); // Unused (part of commented-out logic)
   const [apiStatus, setApiStatus] = useState<ApiStatusType>('available');
   const { isApiRateLimited } = useCrypto();
 
   // Refs for internal state and logic
-  const searchCache = useRef<Map<string, SearchCache>>(new Map());
+  // const searchCache = useRef<Map<string, SearchCache>>(new Map()); // Unused (part of commented-out logic)
   const searchAbortController = useRef<CancelTokenSource | null>(null);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef<number>(0);
-  const lastApiCall = useRef<number>(0);
+  // const lastApiCall = useRef<number>(0); // Unused
   const apiCallsThisMinute = useRef<number>(0);
-  const apiRateLimitResetTime = useRef<number>(0);
+  // const apiRateLimitResetTime = useRef<number>(0); // Unused
   const apiKeyRef = useRef<string | null>(null);
   const coinGeckoRecoveryTimer = useRef<NodeJS.Timeout | null>(null);
   const lastFallbackTime = useRef<number>(0);
@@ -94,7 +94,7 @@ export function useTokenSearch() {
 
     const rateLimitConfig = apiKeyRef.current ? API_CONFIG.COINGECKO_RATE_LIMIT.PRO_TIER : API_CONFIG.COINGECKO_RATE_LIMIT.FREE_TIER;
     const resetInterval = setInterval(() => { apiCallsThisMinute.current = 0; }, rateLimitConfig.COOLDOWN_PERIOD);
-    
+
     const recoveryInterval = setInterval(() => {
       if (usingFallbackApi && Date.now() - lastFallbackTime.current > 5 * 60 * 1000) {
         console.log('Attempting to recover CoinGecko API connection...');
@@ -111,7 +111,7 @@ export function useTokenSearch() {
   }, [usingFallbackApi]);
 
   // Clear results when search term is empty
-   useEffect(() => {
+  useEffect(() => {
     if (!searchTerm.trim()) {
       setResults([]);
       setError(null); // Clear errors when search is cleared
@@ -121,6 +121,8 @@ export function useTokenSearch() {
 
   // --- Helper Functions (Internal to Hook) --- 
 
+  // NOTE: Cache helpers commented out - not currently used but kept for future implementation
+  /*
   const getCachedResults = useCallback((query: string): ICryptoResult[] | null => {
     if (!query.trim()) return null;
     const cached = searchCache.current.get(query.toLowerCase());
@@ -145,7 +147,10 @@ export function useTokenSearch() {
       entriesToRemove.forEach(([key]) => searchCache.current.delete(key));
     }
   }, []);
+  */
 
+  // Unused helpers (commented out)
+  /*
   const convertCoinCapResults = useCallback((data: any[]): ICryptoResult[] => {
     if (!Array.isArray(data)) return [];
     return data.slice(0, 10).map(asset => {
@@ -159,7 +164,9 @@ export function useTokenSearch() {
       };
     }).filter(Boolean) as ICryptoResult[];
   }, []);
+  */
 
+  /*
   const isRateLimited = useCallback((): boolean => {
     const now = Date.now();
     if (apiRateLimitResetTime.current > 0) {
@@ -182,8 +189,11 @@ export function useTokenSearch() {
       console.log(`Rate limit reached, cooling down for ${Math.ceil(cooldownTime / 1000)}s`);
     }
   }, [apiKeyRef]);
+  */
 
-  const searchWithCoinGeckoApi = useCallback(async (query: string, signal: AbortSignal): Promise<ICryptoResult[]> => {
+  // NOTE: Alternative API search functions commented out - not currently used but kept for future implementation
+  /*
+  const _searchWithCoinGeckoApi = useCallback(async (query: string, signal: AbortSignal): Promise<ICryptoResult[]> => {
     if (isRateLimited()) throw new Error('Rate limit exceeded.');
 
     // Pro API attempt
@@ -196,15 +206,15 @@ export function useTokenSearch() {
         });
         trackApiCall();
         if (response.status === 200 && response.data?.coins) {
-           return response.data.coins.slice(0, 10).map((coin: any) => ({ /* mapping */ id: coin.id, symbol: coin.symbol.toUpperCase(), name: coin.name, image: coin.thumb || coin.large, market_cap_rank: coin.market_cap_rank || 9999 }));
+          return response.data.coins.slice(0, 10).map((coin: any) => ({ id: coin.id, symbol: coin.symbol.toUpperCase(), name: coin.name, image: coin.thumb || coin.large, market_cap_rank: coin.market_cap_rank || 9999 }));
         } else throw new Error('Invalid response from CoinGecko Pro API');
       } catch (error: any) {
         console.warn('CoinGecko Pro API failed:', error.message);
         if (axios.isAxiosError(error) && error.response?.status === 429) {
-            const retryAfter = error.response.headers['retry-after'];
-            const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : API_CONFIG.COINGECKO_RATE_LIMIT.PRO_TIER.COOLDOWN_PERIOD;
-            trackApiCall(waitTime);
-            throw new Error(`Rate limit exceeded. Retry after ${Math.ceil(waitTime / 1000)}s.`);
+          const retryAfter = error.response.headers['retry-after'];
+          const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : API_CONFIG.COINGECKO_RATE_LIMIT.PRO_TIER.COOLDOWN_PERIOD;
+          trackApiCall(waitTime);
+          throw new Error(`Rate limit exceeded. Retry after ${Math.ceil(waitTime / 1000)}s.`);
         }
         // Fall through to free tier/proxies if Pro fails for other reasons
       }
@@ -224,8 +234,8 @@ export function useTokenSearch() {
         const response = await axios.get(finalUrl, { headers, signal, timeout: 5000 });
         trackApiCall();
         setCurrentProxyIndex((proxyIdx + 1) % API_CONFIG.PROXY_URLS.length);
-         if (response.status === 200 && response.data?.coins) {
-            return response.data.coins.slice(0, 10).map((coin: any) => ({ /* mapping */ id: coin.id, symbol: coin.symbol.toUpperCase(), name: coin.name, image: coin.thumb || coin.large, market_cap_rank: coin.market_cap_rank || 9999 }));
+        if (response.status === 200 && response.data?.coins) {
+          return response.data.coins.slice(0, 10).map((coin: any) => ({ id: coin.id, symbol: coin.symbol.toUpperCase(), name: coin.name, image: coin.thumb || coin.large, market_cap_rank: coin.market_cap_rank || 9999 }));
         } else throw new Error('Invalid response from CoinGecko');
       } catch (error: any) {
         console.warn(`CoinGecko API attempt via ${targetUrl} failed:`, error.message);
@@ -242,7 +252,7 @@ export function useTokenSearch() {
     throw lastError || new Error('All CoinGecko API attempts failed');
   }, [isRateLimited, apiKeyRef, currentProxyIndex, trackApiCall]);
 
-  const searchWithFallbackApi = useCallback(async (query: string, signal: AbortSignal): Promise<ICryptoResult[]> => {
+  const _searchWithFallbackApi = useCallback(async (query: string, signal: AbortSignal): Promise<ICryptoResult[]> => {
     try {
       const response = await axios.get(`${API_CONFIG.BACKUP_API_URL}/assets`, {
         params: { search: query, limit: 10 },
@@ -255,6 +265,7 @@ export function useTokenSearch() {
       throw new Error('Both primary and fallback APIs failed');
     }
   }, [convertCoinCapResults]);
+  */
 
   // --- Main Search Logic --- 
 

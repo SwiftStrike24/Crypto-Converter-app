@@ -75,9 +75,9 @@ const BackButton = styled.button`
 `;
 
 const BackIcon = () => (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
-      <path d="M19 12H5M12 19l-7-7 7-7"/>
-    </svg>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+    <path d="M19 12H5M12 19l-7-7 7-7" />
+  </svg>
 );
 
 // New styled components for status indicators
@@ -216,7 +216,7 @@ const itemVariants = {
     opacity: 1,
     y: 0,
     transition: {
-      type: 'spring',
+      type: 'spring' as const,
       stiffness: 300,
       damping: 24,
     },
@@ -236,23 +236,23 @@ const TrendingTokensPage: React.FC = () => {
     try {
       setError(null);
       setIsLoading(true);
-      
+
       const result = await trendingService.fetchTrendingTokens();
       setTokens(result.data);
       setUsingStaleData(result.fromCache && (result.cacheAge || 0) > 5 * 60 * 1000);
-      
+
       if (!result.fromCache) {
         setLastUpdated(new Date());
       } else if (result.cacheAge) {
         // If using cache, set last updated to when the cache was created
         setLastUpdated(new Date(Date.now() - result.cacheAge));
       }
-      
+
       if (result.fromCache && result.cacheAge) {
         const ageMinutes = Math.round(result.cacheAge / (60 * 1000));
         console.log(`📊 [TRENDING_PAGE] Using ${result.fromCache ? 'cached' : 'fresh'} data (${ageMinutes}m old)`);
       }
-      
+
     } catch (err) {
       // Check if we have any stale cache as last resort
       const cacheStatus = trendingService.getCacheStatus();
@@ -313,7 +313,7 @@ const TrendingTokensPage: React.FC = () => {
       <ContentGrid>
         {isLoading ? (
           <LoadingContainer>
-             <WaveLoadingPlaceholder width="200px" height="40px" />
+            <WaveLoadingPlaceholder width="200px" height="40px" />
           </LoadingContainer>
         ) : error && tokens.length === 0 ? (
           <ErrorMessage>

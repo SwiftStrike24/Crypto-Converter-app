@@ -38,16 +38,48 @@ const NEWS_SOURCES = [
   { name: 'Bitcoin.com', url: 'https://news.bitcoin.com/feed/' },
   { name: 'Daily Hodl', url: 'https://dailyhodl.com/feed/' },
   { name: 'BeInCrypto', url: 'https://beincrypto.com/feed/' },
+  // New high-quality sources added Dec 2025
+  { name: 'NewsBTC', url: 'https://www.newsbtc.com/feed/' },
+  { name: 'CryptoBriefing', url: 'https://cryptobriefing.com/feed/' },
+  { name: 'Bitcoin Magazine', url: 'https://bitcoinmagazine.com/.rss/full/' },
 ];
 
 const NEWS_CATEGORIES = {
-  'Regulation': ['sec', 'regulation', 'law', 'court', 'ban', 'tax', 'legal', 'compliance', 'gensler', 'senate', 'congress', 'approval', 'sue', 'lawsuit', 'settlement'],
-  'Market': ['price', 'rally', 'crash', 'bull', 'bear', 'ath', 'market', 'trading', 'analysis', 'forecast', 'prediction', 'etf', 'volume', 'liquidity', 'launch', 'listing'],
-  'Tech': ['upgrade', 'fork', 'mainnet', 'developer', 'bug', 'vulnerability', 'protocol', 'consensus', 'node', 'hashrate', 'difficulty'],
+  'Regulation': ['sec', 'regulation', 'law', 'court', 'ban', 'tax', 'legal', 'compliance', 'gensler', 'senate', 'congress', 'approval', 'sue', 'lawsuit', 'settlement', 'gary', 'fud', 'executive order', 'treasury'],
+  'Market': ['price', 'rally', 'crash', 'bull', 'bear', 'ath', 'market', 'trading', 'analysis', 'forecast', 'prediction', 'etf', 'volume', 'liquidity', 'launch', 'listing', 'pump', 'dump', 'whale'],
+  'Tech': ['upgrade', 'fork', 'mainnet', 'developer', 'bug', 'vulnerability', 'protocol', 'consensus', 'node', 'hashrate', 'difficulty', 'release', 'github', 'commit', 'v2', 'beta', 'testnet', 'layer 2', 'l2'],
   'DeFi': ['dex', 'yield', 'swap', 'liquidity', 'tvl', 'farming', 'staking', 'lending', 'borrowing', 'curve', 'uniswap', 'aave', 'maker', 'compound'],
   'Security': ['hack', 'exploit', 'scam', 'phishing', 'stolen', 'attack', 'breach', 'security', 'audit', 'vulnerability', 'drain'],
   'NFT/Gaming': ['nft', 'metaverse', 'gaming', 'play-to-earn', 'gamefi', 'collection', 'mint', 'avatar', 'opensea', 'blur'],
 };
+
+// Noise filter keywords - articles containing these in title/summary are hidden
+const NOISE_KEYWORDS = ['sponsored', 'press release', 'partner content', 'guest post', 'advertisement', 'paid promotion', 'promoted'];
+
+// Filter out noise/spam articles
+function isNoiseArticle(title: string, summary: string): boolean {
+  const combinedText = (title + ' ' + summary).toLowerCase();
+
+  // Check for noise keywords
+  if (NOISE_KEYWORDS.some(keyword => combinedText.includes(keyword))) {
+    console.log(`[NOISE_FILTER] Filtered out: "${title.substring(0, 60)}..." (contains noise keyword)`);
+    return true;
+  }
+
+  // Filter out very short titles (likely junk)
+  if (title.length < 20) {
+    console.log(`[NOISE_FILTER] Filtered out: "${title}" (title too short)`);
+    return true;
+  }
+
+  // Filter out generic/empty content
+  if (!summary && title.split(' ').length < 5) {
+    console.log(`[NOISE_FILTER] Filtered out: "${title}" (no summary and generic title)`);
+    return true;
+  }
+
+  return false;
+}
 
 // --- News Helper Functions ---
 
@@ -85,6 +117,7 @@ interface EnrichedArticle {
   sentimentScore: number;
   categories: string[];
   relatedSources: string[];
+  isHighImpact: boolean; // True if sentiment score >= 3 or <= -3
 }
 
 
@@ -774,29 +807,34 @@ function setupIpcHandlers() {
 
       for (const result of results) {
         if (result.status === 'fulfilled' && result.value.success && Array.isArray(result.value.data)) {
-          const enrichedBatch = result.value.data.map((item: any) => {
-            const sentimentResult = analyzeSentiment(item.title + ' ' + item.summary);
-            const categories = tagArticle(item.title + ' ' + item.summary);
+          const enrichedBatch = result.value.data
+            // Apply noise filter first
+            .filter((item: any) => !isNoiseArticle(item.title || '', item.summary || ''))
+            .map((item: any) => {
+              const sentimentResult = analyzeSentiment(item.title + ' ' + item.summary);
+              const categories = tagArticle(item.title + ' ' + item.summary);
+              const isHighImpact = sentimentResult.score >= 3 || sentimentResult.score <= -3;
 
-            return {
-              title: item.title,
-              source: item.source,
-              publishedAt: item.publishedAt,
-              summary: item.summary,
-              url: item.url,
-              imageUrl: item.imageUrl,
-              sentiment: sentimentResult.label,
-              sentimentScore: sentimentResult.score,
-              categories: categories,
-              relatedSources: []
-            } as EnrichedArticle;
-          });
+              return {
+                title: item.title,
+                source: item.source,
+                publishedAt: item.publishedAt,
+                summary: item.summary,
+                url: item.url,
+                imageUrl: item.imageUrl,
+                sentiment: sentimentResult.label,
+                sentimentScore: sentimentResult.score,
+                categories: categories,
+                relatedSources: [],
+                isHighImpact: isHighImpact
+              } as EnrichedArticle;
+            });
 
           allArticles.push(...enrichedBatch);
         }
       }
 
-      // Deduplication Logic
+      // Deduplication Logic (Enhanced with lower threshold + summary check)
       const uniqueArticles: EnrichedArticle[] = [];
 
       // Sort by date first (newest first) to prioritize recent news as "primary"
@@ -813,15 +851,29 @@ function setupIpcHandlers() {
             break;
           }
 
-          // 2. Check Title Similarity
-          const similarity = stringSimilarity.compareTwoStrings(article.title, uniqueArticle.title);
-          if (similarity > 0.6) { // 60% similarity threshold
+          // 2. Check Title Similarity (lowered threshold to 0.45 for more aggressive dedup)
+          const titleSimilarity = stringSimilarity.compareTwoStrings(article.title, uniqueArticle.title);
+
+          // High similarity - definitely a duplicate
+          if (titleSimilarity > 0.45) {
             isDuplicate = true;
             // Add this source to the "related sources" of the primary article
             if (!uniqueArticle.relatedSources.includes(article.source) && article.source !== uniqueArticle.source) {
               uniqueArticle.relatedSources.push(article.source);
             }
             break;
+          }
+
+          // Medium similarity (0.3-0.45) - check summary for confirmation
+          if (titleSimilarity > 0.3 && article.summary && uniqueArticle.summary) {
+            const summarySimilarity = stringSimilarity.compareTwoStrings(article.summary, uniqueArticle.summary);
+            if (summarySimilarity > 0.6) {
+              isDuplicate = true;
+              if (!uniqueArticle.relatedSources.includes(article.source) && article.source !== uniqueArticle.source) {
+                uniqueArticle.relatedSources.push(article.source);
+              }
+              break;
+            }
           }
         }
 

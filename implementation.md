@@ -518,3 +518,43 @@ Transformed the news feed into a premium market intelligence tool with AI-driven
     *   **Dynamic Filtering**: Filter pills allow users to view news by specific categories (e.g., "Regulation only").
     *   **Robust Image Extraction**: Improved logic to extract high-quality images from RSS enclosures, media tags, and content bodies, with a fallback placeholder.
     *   **Performance**: Used `useMemo` for efficient client-side filtering and sorting of the enriched article set.
+
+### Phase 10: News Feed v2.5.1 - Noise-Free Intelligence (Dec 2025)
+Further enhanced the news feed for maximum signal-to-noise ratio and better market intelligence:
+
+*   **Expanded Source Network (v2)**:
+    *   Added **NewsBTC**, **CryptoBriefing**, and **Bitcoin Magazine** for comprehensive coverage.
+    *   Total sources now: 12 high-quality RSS feeds.
+*   **Noise Filter Engine**:
+    *   Filters out articles containing keywords: "sponsored", "press release", "partner content", "guest post", "advertisement", "paid promotion", "promoted".
+    *   Filters out articles with very short titles (<20 chars) or generic content.
+    *   Logs filtered articles to console for transparency.
+*   **Enhanced Deduplication**:
+    *   Lowered title similarity threshold from 0.6 to **0.45** for aggressive duplicate removal.
+    *   Added **secondary summary-based similarity check**: Articles with 30-45% title similarity are checked for summary similarity (>60%) to confirm duplicates.
+    *   Result: Significantly cleaner feed with fewer repeated headlines.
+*   **Enhanced Category Tagging**:
+    *   **Regulation**: Added "gary", "fud", "executive order", "treasury".
+    *   **Market**: Added "pump", "dump", "whale".
+    *   **Tech**: Added "release", "github", "commit", "v2", "beta", "testnet", "layer 2", "l2".
+*   **High Impact Feature**:
+    *   `isHighImpact` flag added to `EnrichedArticle` interface. True when sentiment score >= 3 or <= -3.
+    *   **UI Filter**: New "🔥 High Impact" filter pill in NewsPage.tsx allows users to view only high-sentiment news.
+    *   **Visual Enhancement**: High-impact cards have a golden glow border effect to stand out.
+
+### Phase 11: Unified News Feed & Virtualization (v2.6.0)
+Streamlined the news experience by merging "Market" and "Fundraising" tabs into a single, high-performance "Market" intelligence feed.
+
+*   **Feed Unification**:
+    *   Removed the separate "Fundraising" tab from the UI.
+    *   All fundraising articles are now injected with a "Fundraising" category in `NewsContext.tsx` during fetch.
+    *   `displayedNews` memoization in `NewsPage.tsx` now merges `marketNews` and `fundraisingNews` into a single array, sorted by `publishedAt` (newest first).
+    *   Added "💰 Fundraising" to the category filter pills, allowing users to isolate investment-related news within the unified view.
+*   **Virtualization Engine**:
+    *   Integrated `react-virtuoso` library for high-performance list rendering.
+    *   Replaced manual `.map()` iteration with `<Virtuoso>` component, ensuring smooth 60fps scrolling even with hundreds of combined articles.
+    *   This significantly reduces DOM node count at any given time, improving memory usage and responsiveness.
+*   **UI/UX Polish**:
+    *   The "Fundraising" filter pill has a distinct golden styling to visually distinguish it.
+    *   Loading and error states now reflect the combined loading/error state of both data sources.
+    *   Refresh button now triggers parallel refresh of both market and fundraising feeds.

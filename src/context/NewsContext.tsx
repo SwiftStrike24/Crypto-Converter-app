@@ -88,9 +88,14 @@ export const NewsProvider: React.FC<NewsProviderProps> = ({ children }) => {
       const result: FundraisingFetchResult = await fundraisingService.fetchFundraising(force);
 
       if (Array.isArray(result.data)) {
-        setFundraisingNews(result.data);
+        // Inject 'Fundraising' category for unified feed filtering
+        const enrichedData = result.data.map(article => ({
+          ...article,
+          categories: [...(article.categories || []), 'Fundraising'],
+        }));
+        setFundraisingNews(enrichedData);
         setFundraisingLastUpdated(new Date());
-        console.log(`[NEWS_CONTEXT] Fundraising news loaded: ${result.data.length} articles`);
+        console.log(`[NEWS_CONTEXT] Fundraising news loaded: ${enrichedData.length} articles (with category injection)`);
       } else {
         setFundraisingError('No fundraising news available');
       }

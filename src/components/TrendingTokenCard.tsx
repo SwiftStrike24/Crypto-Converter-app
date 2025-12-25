@@ -90,7 +90,7 @@ const cardVariants = {
     borderColor: 'rgba(139, 92, 246, 0.5)',
     boxShadow: '0 12px 24px rgba(0, 0, 0, 0.15), 0 0 30px rgba(139, 92, 246, 0.25)',
     transition: {
-      type: 'spring',
+      type: 'spring' as const,
       stiffness: 300,
       damping: 20,
       mass: 0.8,
@@ -100,7 +100,7 @@ const cardVariants = {
     scale: 0.98,
     y: -2,
     transition: {
-      type: 'spring',
+      type: 'spring' as const,
       stiffness: 400,
       damping: 25,
     },
@@ -117,7 +117,7 @@ const TrendingTokenCard: React.FC<TrendingTokenCardProps> = ({ token }) => {
 
   const handleClick = () => {
     console.log(`🔥 [TRENDING_CARD_CLICK] User clicked trending token: ${token.symbol} (${token.id}). Using addTemporaryToken for session-only viewing.`);
-    
+
     // Add the token temporarily for chart viewing (does not persist to user's collection)
     addTemporaryToken({
       symbol: token.symbol.toUpperCase(),
@@ -125,7 +125,7 @@ const TrendingTokenCard: React.FC<TrendingTokenCardProps> = ({ token }) => {
       name: token.name,
       image: token.image
     });
-    
+
     navigate('/chart', {
       state: {
         cryptoId: token.symbol.toUpperCase(),

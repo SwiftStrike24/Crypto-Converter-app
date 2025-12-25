@@ -13,6 +13,7 @@ export interface NewsArticle {
   sentimentScore?: number;
   categories?: string[];
   relatedSources?: string[];
+  isHighImpact?: boolean; // True if sentiment score >= 3 or <= -3
   // Optional metadata (used by fundraising view)
   chains?: string[];
   tokenless?: boolean;
@@ -64,7 +65,6 @@ class NewsService {
         if (response.results && Array.isArray(response.results)) {
           response.results.forEach((result: any) => {
             if (result.success && result.data) {
-              // Process and normalize the data from main process
               const normalizedArticles = result.data.map((item: any): NewsArticle => ({
                 title: item.title || 'Untitled',
                 source: item.source,
@@ -76,6 +76,7 @@ class NewsService {
                 sentimentScore: item.sentimentScore,
                 categories: item.categories,
                 relatedSources: item.relatedSources,
+                isHighImpact: item.isHighImpact,
                 // Preserve fundraising fields if present
                 chains: item.chains,
                 tokenless: item.tokenless,

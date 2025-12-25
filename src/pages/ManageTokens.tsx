@@ -291,7 +291,7 @@ const DialogActions = styled.div`
   gap: 12px;
 `;
 
-const DialogButton = styled(motion.button)<{ variant?: 'danger' | 'cancel' }>`
+const DialogButton = styled(motion.button) <{ variant?: 'danger' | 'cancel' }>`
   padding: 10px 18px;
   border-radius: 10px;
   border: 1px solid;
@@ -300,28 +300,28 @@ const DialogButton = styled(motion.button)<{ variant?: 'danger' | 'cancel' }>`
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.05);
 
-  background: ${props => props.variant === 'danger' 
-    ? 'linear-gradient(145deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.25))' 
+  background: ${props => props.variant === 'danger'
+    ? 'linear-gradient(145deg, rgba(239, 68, 68, 0.2), rgba(220, 38, 38, 0.25))'
     : 'linear-gradient(145deg, rgba(75, 85, 99, 0.2), rgba(55, 65, 81, 0.25))'};
   
-  color: ${props => props.variant === 'danger' 
-    ? '#fca5a5' 
+  color: ${props => props.variant === 'danger'
+    ? '#fca5a5'
     : '#d1d5db'};
 
-  border-color: ${props => props.variant === 'danger' 
-    ? 'rgba(239, 68, 68, 0.3)' 
+  border-color: ${props => props.variant === 'danger'
+    ? 'rgba(239, 68, 68, 0.3)'
     : 'rgba(75, 85, 99, 0.3)'};
 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: 0 4px 10px ${props => props.variant === 'danger' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(0,0,0,0.2)'};
-    background: ${props => props.variant === 'danger' 
-      ? 'linear-gradient(145deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.35))' 
-      : 'linear-gradient(145deg, rgba(75, 85, 99, 0.3), rgba(55, 65, 81, 0.35))'};
+    background: ${props => props.variant === 'danger'
+    ? 'linear-gradient(145deg, rgba(239, 68, 68, 0.3), rgba(220, 38, 38, 0.35))'
+    : 'linear-gradient(145deg, rgba(75, 85, 99, 0.3), rgba(55, 65, 81, 0.35))'};
     color: ${props => props.variant === 'danger' ? '#fecaca' : '#fff'};
-    border-color: ${props => props.variant === 'danger' 
-      ? 'rgba(239, 68, 68, 0.5)' 
-      : 'rgba(75, 85, 99, 0.5)'};
+    border-color: ${props => props.variant === 'danger'
+    ? 'rgba(239, 68, 68, 0.5)'
+    : 'rgba(75, 85, 99, 0.5)'};
   }
   
   &:active:not(:disabled) {
@@ -385,20 +385,20 @@ const listVariants = {
 
 const itemVariants = {
   initial: { y: 20, opacity: 0 },
-  animate: { y: 0, opacity: 1, transition: { type: 'spring', stiffness: 300, damping: 24 } },
+  animate: { y: 0, opacity: 1, transition: { type: 'spring' as const, stiffness: 300, damping: 24 } },
   exit: { y: -20, opacity: 0, transition: { duration: 0.2 } }
 };
 
 // Special animation for newly added tokens
 const newItemVariants = {
   initial: { y: 20, opacity: 0, scale: 0.9 },
-  animate: { 
-    y: 0, 
-    opacity: 1, 
+  animate: {
+    y: 0,
+    opacity: 1,
     scale: 1,
-    transition: { 
-      type: 'spring', 
-      stiffness: 400, 
+    transition: {
+      type: 'spring' as const,
+      stiffness: 400,
       damping: 20
     }
   },
@@ -412,7 +412,7 @@ const buttonVariants = {
 
 const dialogVariants = {
   initial: { opacity: 0, scale: 0.9 },
-  animate: { opacity: 1, scale: 1, transition: { type: 'spring', stiffness: 300, damping: 30 } },
+  animate: { opacity: 1, scale: 1, transition: { type: 'spring' as const, stiffness: 300, damping: 30 } },
   exit: { opacity: 0, scale: 0.9, transition: { duration: 0.2 } }
 };
 
@@ -449,18 +449,18 @@ const StyledTokenFallbackIcon = styled.div`
 
 const ManageTokens: React.FC = () => {
   const navigate = useNavigate();
-  const { 
-    availableCryptos, 
-    getCryptoId, 
-    deleteCrypto, 
+  const {
+    availableCryptos,
+    getCryptoId,
+    deleteCrypto,
     tokenMetadata // Get tokenMetadata from context
-  } = useCrypto(); 
+  } = useCrypto();
   const defaultTokens = new Set(DEFAULT_TOKEN_SYMBOLS);
   const [confirmDialog, setConfirmDialog] = useState(false);
   const [newlyAddedTokens, setNewlyAddedTokens] = useState<Set<string>>(new Set());
 
   const customTokens = availableCryptos.filter(symbol => !defaultTokens.has(symbol));
-  
+
   console.log(`📋 [MANAGE_TOKENS_RENDER] Displaying ${customTokens.length} custom tokens:`, customTokens.join(', '));
 
   useEffect(() => {
@@ -521,11 +521,11 @@ const ManageTokens: React.FC = () => {
       });
     }
   };
-  
+
   const handleClearAll = () => {
     setConfirmDialog(true);
   };
-  
+
   const confirmClearAll = () => {
     customTokens.forEach(symbol => {
       deleteCrypto(symbol);
@@ -533,7 +533,7 @@ const ManageTokens: React.FC = () => {
     setConfirmDialog(false);
     setNewlyAddedTokens(new Set());
   };
-  
+
   const isNewlyAdded = useCallback((symbol: string): boolean => {
     return newlyAddedTokens.has(symbol);
   }, [newlyAddedTokens]);
@@ -548,9 +548,9 @@ const ManageTokens: React.FC = () => {
       fallback.style.display = 'flex';
     }
   };
-  
+
   return (
-    <PageContainer 
+    <PageContainer
       initial="initial"
       animate="animate"
       exit="exit"
@@ -593,7 +593,7 @@ const ManageTokens: React.FC = () => {
                   // Get crypto ID and image URL
                   const id = getCryptoId(symbol);
                   const imageUrl = id ? tokenMetadata[id]?.image : null;
-                  
+
                   return (
                     <TokenItem
                       key={`token-${symbol}-${isNewlyAdded(symbol) ? 'new' : 'existing'}`}
@@ -603,11 +603,11 @@ const ManageTokens: React.FC = () => {
                       animate="animate"
                       exit="exit"
                       style={{
-                        boxShadow: isNewlyAdded(symbol) 
-                          ? '0 0 0 1px rgba(139, 92, 246, 0.3), 0 4px 12px rgba(139, 92, 246, 0.15)' 
+                        boxShadow: isNewlyAdded(symbol)
+                          ? '0 0 0 1px rgba(139, 92, 246, 0.3), 0 4px 12px rgba(139, 92, 246, 0.15)'
                           : undefined,
-                        borderColor: isNewlyAdded(symbol) 
-                          ? 'rgba(139, 92, 246, 0.2)' 
+                        borderColor: isNewlyAdded(symbol)
+                          ? 'rgba(139, 92, 246, 0.2)'
                           : undefined
                       }}
                     >
@@ -615,14 +615,14 @@ const ManageTokens: React.FC = () => {
                       <IconContainer>
                         {imageUrl ? (
                           <>
-                            <StyledTokenIcon 
-                              src={imageUrl} 
+                            <StyledTokenIcon
+                              src={imageUrl}
                               alt={`${symbol} icon`}
-                              onError={handleImageError} 
+                              onError={handleImageError}
                             />
                             {/* Hidden fallback for error case */}
-                            <StyledTokenFallbackIcon 
-                              className="fallback-icon" 
+                            <StyledTokenFallbackIcon
+                              className="fallback-icon"
                               style={{ display: 'none', position: 'absolute', top: 0, left: 0 }}
                             >
                               {symbol.charAt(0).toUpperCase()}
@@ -634,7 +634,7 @@ const ManageTokens: React.FC = () => {
                           </StyledTokenFallbackIcon>
                         )}
                       </IconContainer>
-                      
+
                       {/* Info Section */}
                       <TokenInfo>
                         <div className="token-symbol">
@@ -645,7 +645,7 @@ const ManageTokens: React.FC = () => {
                         </div>
                         <div className="token-id">{id || 'Loading...'}</div>
                       </TokenInfo>
-                      
+
                       {/* Delete Button */}
                       <DeleteButton
                         onClick={() => handleDeleteToken(symbol)}
@@ -674,7 +674,7 @@ const ManageTokens: React.FC = () => {
         </CustomTokensList>
         <DefaultTokensDisplay />
       </TokensContainer>
-      
+
       <AnimatePresence>
         {confirmDialog && (
           <ConfirmDialog
@@ -689,14 +689,14 @@ const ManageTokens: React.FC = () => {
                 Are you sure you want to remove all custom tokens? This action cannot be undone.
               </DialogMessage>
               <DialogActions>
-                <DialogButton 
+                <DialogButton
                   onClick={() => setConfirmDialog(false)}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
                   Cancel
                 </DialogButton>
-                <DialogButton 
+                <DialogButton
                   variant="danger"
                   onClick={confirmClearAll}
                   whileHover={{ scale: 1.05 }}

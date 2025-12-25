@@ -17,8 +17,8 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
       try {
         const u = new URL(url);
         console.log(`[UPDATER] Download host: ${u.host}`);
-      } catch {}
-      
+      } catch { }
+
       // Determine the file extension from the filename or default to .exe
       let extension = '.exe'; // Default fallback
       if (fileName) {
@@ -32,10 +32,10 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
       // Create a temporary file path in the app's user data directory
       const downloadPath = join(app.getPath('temp'), `CryptoVertX-Update-${Date.now()}${extension}`);
       console.log(`Downloading to: ${downloadPath}`);
-      
+
       // Configurable timeouts/retries
       const CONNECT_TIMEOUT_MS = 30_000;           // initial connect timeout
-      const RESPONSE_HEADER_TIMEOUT_MS = 60_000;   // header wait timeout
+      // const RESPONSE_HEADER_TIMEOUT_MS = 60_000;   // header wait timeout (unused - axios doesn't have separate header timeout)
       const OVERALL_REQUEST_TIMEOUT_MS = 10 * 60_000; // 10 minutes per request
       const MAX_RETRIES = 3;
       const RETRY_BACKOFF_MS = 2_000;
@@ -183,7 +183,7 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
         });
         throw new Error('Downloaded file is incomplete or corrupted.');
       }
-      
+
       // Complete 100%
       mainWindow.webContents.send('download-progress', {
         progress: 100,
@@ -192,32 +192,32 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
         speed: 0,
         eta: 0
       });
-      
+
       return downloadPath;
     } catch (error) {
       console.error('Error downloading update:', error);
       throw new Error(`Download failed: ${(error as Error).message}`);
     }
   });
-  
+
   // Set up listener for download progress
   ipcMain.on('download-progress-subscribe', (event) => {
     const sender = event.sender;
-    
+
     // We'll use IPC for progress updates instead of direct webContents events
     console.log('Setting up progress handler');
-    
+
     // Clean up when the sender is destroyed
     sender.on('destroyed', () => {
       console.log('Cleaning up progress handler');
     });
   });
-  
+
   // Handle install update request
   ipcMain.handle('install-update', async (_event, filePath: string) => {
     try {
       console.log(`Launching installer from: ${filePath}`);
-      
+
       // Verify the file still exists before attempting to launch
       try {
         const fileStats = await stat(filePath);
@@ -229,7 +229,7 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
         console.error('Installer file verification failed:', fileError);
         throw new Error('Installer file not found or corrupted. Please download the update again.');
       }
-      
+
       // Set the flag for post-update notification
       const flagPath = join(app.getPath('userData'), 'update.flag');
       try {
@@ -245,7 +245,7 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
 
       if (errorMessage) {
         console.error(`Failed to launch installer: ${errorMessage}`);
-        
+
         // Clean up the flag immediately on failure
         try {
           unlink(flagPath, (err) => {
@@ -254,28 +254,28 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
         } catch (cleanupError) {
           console.error('Error during flag cleanup:', cleanupError);
         }
-        
+
         // Handle the specific "Failed to open path" case - this is user cancellation
         if (errorMessage === 'Failed to open path') {
           console.log('User cancelled installation (UAC denial or similar)');
           throw new Error('Installation was cancelled. Click "Install & Restart" to try again, or run the installer manually.');
         }
-        
+
         // Provide more specific error messages based on the failure type for other errors
         let userFriendlyMessage = '';
-        if (errorMessage.toLowerCase().includes('access') || 
-            errorMessage.toLowerCase().includes('denied') ||
-            errorMessage.toLowerCase().includes('permission')) {
+        if (errorMessage.toLowerCase().includes('access') ||
+          errorMessage.toLowerCase().includes('denied') ||
+          errorMessage.toLowerCase().includes('permission')) {
           userFriendlyMessage = 'Installation was cancelled or access was denied. You can try again or run the installer manually.';
         } else if (errorMessage.toLowerCase().includes('not found')) {
           userFriendlyMessage = 'Installer file not found. Please download the update again.';
         } else {
           userFriendlyMessage = `Failed to launch installer: ${errorMessage}. You can try again or run the installer manually.`;
         }
-        
+
         throw new Error(userFriendlyMessage);
       }
-      
+
       // If launch is successful, quit the app to allow installation to proceed.
       // A short delay gives the installer window time to appear before the main app disappears.
       console.log('Installer launched successfully. Quitting app in 500ms...');
@@ -283,12 +283,12 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
         console.log('Quitting application for installer...');
         app.quit();
       }, 500);
-      
+
       return { success: true };
 
     } catch (error) {
       console.error('Error during installation process:', error);
-      
+
       // Ensure flag cleanup on any error
       const flagPath = join(app.getPath('userData'), 'update.flag');
       try {
@@ -300,28 +300,28 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
       } catch (cleanupError) {
         console.error('Error during flag cleanup in catch block:', cleanupError);
       }
-      
+
       // Re-throw the error preserving the specific user-friendly message
       const errorMessage = (error as Error).message;
-      
+
       // Check if this is already a user-friendly cancellation message
       if (errorMessage.includes('Installation was cancelled')) {
         console.log('Re-throwing cancellation error as-is');
         throw error; // Re-throw cancellation errors without modification
       }
-      
+
       // For other user-friendly messages, preserve them
-      if (errorMessage.includes('try again') || 
-          errorMessage.includes('manually') ||
-          errorMessage.includes('download')) {
+      if (errorMessage.includes('try again') ||
+        errorMessage.includes('manually') ||
+        errorMessage.includes('download')) {
         throw error; // Re-throw user-friendly errors as-is
       }
-      
+
       // Only wrap technical/internal errors
       throw new Error(`Installation failed: ${errorMessage}`);
     }
   });
-  
+
   // Handle show notification request
   ipcMain.on('show-notification', (_event, options: { title: string, body: string }) => {
     try {
