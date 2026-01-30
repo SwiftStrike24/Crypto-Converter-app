@@ -68,7 +68,6 @@ export function useTokenSearch() {
   const apiCallsThisMinute = useRef<number>(0);
   // const apiRateLimitResetTime = useRef<number>(0); // Unused
   const apiKeyRef = useRef<string | null>(null);
-  const coinGeckoRecoveryTimer = useRef<NodeJS.Timeout | null>(null);
   const lastFallbackTime = useRef<number>(0);
 
   // --- Effects --- 
@@ -105,7 +104,6 @@ export function useTokenSearch() {
     return () => {
       clearInterval(resetInterval);
       clearInterval(recoveryInterval);
-      if (coinGeckoRecoveryTimer.current) clearTimeout(coinGeckoRecoveryTimer.current);
       searchAbortController.current?.cancel();
     };
   }, [usingFallbackApi]);

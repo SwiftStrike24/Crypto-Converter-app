@@ -4,7 +4,6 @@ import { useCrypto } from '../context/CryptoContext';
 import { ICON_CACHE_STORAGE_PREFIX, RATE_LIMIT_UI_MESSAGE } from '../constants/cryptoConstants';
 import { FiBarChart, FiRefreshCw } from 'react-icons/fi';
 import { useNavigate } from 'react-router-dom';
-import { ipcRenderer } from 'electron';
 import WaveLoadingPlaceholder from './WaveLoadingPlaceholder';
 import { FaMagnifyingGlassChart, FaFire, FaNewspaper } from 'react-icons/fa6';
 import { isStablecoin, getStablecoinTargetFiat } from '../utils/stablecoinDetection';
@@ -624,7 +623,6 @@ const Converter: React.FC<ConverterProps> = ({
   const [cryptoDropdownOpen, setCryptoDropdownOpen] = useState(false);
   const [fiatDropdownOpen, setFiatDropdownOpen] = useState(false);
   const [cryptoSearchTerm, setCryptoSearchTerm] = useState('');
-  const [preloadedIcons, setPreloadedIcons] = useState<Set<string>>(new Set());
   const [cryptoDropdownStyle, setCryptoDropdownStyle] = useState<CSSProperties>({});
   const [fiatDropdownStyle, setFiatDropdownStyle] = useState<CSSProperties>({});
   const [showWaveInResultBox, setShowWaveInResultBox] = useState(false);
@@ -640,14 +638,7 @@ const Converter: React.FC<ConverterProps> = ({
   const fiatInputRef = useRef<HTMLInputElement>(null);
   const converterWaveStartTimeRef = useRef<number | null>(null); // Ref for start time
   
-  // Track icon fetch attempts to avoid repeated requests
-  const iconFetchAttempts = useRef<Record<string, number>>({});
-  
-  // Add a ref to track icon update intervals
-  const iconUpdateInterval = useRef<NodeJS.Timeout | null>(null);
-  const lastIconCheck = useRef<number>(0);
-  const missingIconsCount = useRef<number>(0);
-  const iconUpdateAttempts = useRef<Record<string, number>>({});
+  // Icon repair is handled centrally in CryptoContext
   
   const { 
     prices, 
@@ -656,7 +647,6 @@ const Converter: React.FC<ConverterProps> = ({
     tokenMetadata, 
     getCryptoId, 
     updatePrices,
-    checkAndUpdateMissingIcons,
     setTokenMetadata,
     isCoinGeckoRateLimitedGlobal,
     getCoinGeckoRetryAfterSeconds,
@@ -706,50 +696,6 @@ const Converter: React.FC<ConverterProps> = ({
     (filteredCryptos.length - endIndex) * itemHeight
   );
   
-  // Enhanced function to check for missing icons
-  const checkMissingIcons = async () => {
-    try {
-      // Don't check too frequently
-      const now = Date.now();
-      if (now - lastIconCheck.current < 30000) { // 30 seconds minimum between checks
-        return;
-      }
-      
-      lastIconCheck.current = now;
-      
-      // Check for missing icons
-      const count = await checkAndUpdateMissingIcons();
-      missingIconsCount.current = count;
-      
-      // If we found missing icons, schedule another check soon
-      if (count > 0) {
-        console.log(`📉 Found ${count} tokens with missing icons, scheduling another check`);
-        // Schedule another check in 10 seconds
-        setTimeout(checkMissingIcons, 10000);
-      }
-    } catch (error) {
-      console.error('Error checking for missing icons:', error);
-    }
-  };
-  
-  // Enhanced useEffect for icon checking
-  useEffect(() => {
-    // Initial check for missing icons
-    checkMissingIcons();
-    
-    // Set up periodic checks for missing icons
-    iconUpdateInterval.current = setInterval(() => {
-      checkMissingIcons();
-    }, 2 * 60 * 1000); // Check every 2 minutes
-    
-    return () => {
-      // Clean up interval on unmount
-      if (iconUpdateInterval.current) {
-        clearInterval(iconUpdateInterval.current);
-      }
-    };
-  }, []);
-
   // Close dropdowns when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -805,7 +751,7 @@ const Converter: React.FC<ConverterProps> = ({
       setSelectedCrypto(availableCryptos[0]);
       onCryptoChange(availableCryptos[0]);
     }
-  }, [selectedCrypto, selectedFiat, availableCryptos]);
+  }, [availableCryptos, onCryptoChange, selectedCrypto]);
 
   // Listen for token update events to immediately refresh dropdown
   useEffect(() => {
@@ -821,70 +767,36 @@ const Converter: React.FC<ConverterProps> = ({
       
       // Force a re-render of the dropdown items
       setVisibleStartIndex(0);
-      
-      // Pre-load icons for new tokens
-      if (e.detail?.tokens && Array.isArray(e.detail.tokens)) {
-        e.detail.tokens.forEach((symbol: string) => {
-          // Add to preloaded set to trigger background loading
-          setPreloadedIcons(prev => new Set([...prev, symbol]));
-        });
-      }
-    };
-    
-    const handleMetadataUpdated = () => {
-      // Force a refresh of token metadata in the dropdown
-      setPreloadedIcons(prev => new Set([...prev]));
     };
 
     // Add event listeners for token updates
     window.addEventListener('cryptoTokensUpdated', handleTokensUpdated as EventListener);
-    window.addEventListener('cryptoMetadataUpdated', handleMetadataUpdated);
     
     return () => {
       window.removeEventListener('cryptoTokensUpdated', handleTokensUpdated as EventListener);
-      window.removeEventListener('cryptoMetadataUpdated', handleMetadataUpdated);
     };
   }, []);
 
-  // Check for missing icons when component mounts and when available cryptos change
+  // Ensure dropdown reflects latest options when available cryptos change
   useEffect(() => {
-    // Check for missing icons on mount and when available cryptos change
-    const checkMissingIcons = async () => {
-      // Only run if we have cryptos available
-      if (availableCryptos.length > 0) {
-        await checkAndUpdateMissingIcons();
-      }
-    };
-    
-    // Run the check
-    checkMissingIcons();
-    
-    // Set up a periodic check for missing icons (every 10 minutes)
-    const iconCheckInterval = setInterval(() => {
-      checkMissingIcons();
-    }, 10 * 60 * 1000);
-    
-    // Ensure dropdown reflects latest options when available cryptos change
     if (selectedCrypto && !availableCryptos.includes(selectedCrypto)) {
       setSelectedCrypto(availableCryptos[0]);
       onCryptoChange(availableCryptos[0]);
     }
-    
-    return () => {
-      clearInterval(iconCheckInterval);
-    };
-  }, [availableCryptos, checkAndUpdateMissingIcons, onCryptoChange, selectedCrypto]);
+  }, [availableCryptos, onCryptoChange, selectedCrypto]);
 
   // Show loading states when rate limited, but only if no cached price exists
   useEffect(() => {
     if (!isCoinGeckoRateLimitedGlobal) return;
-    const hasPrice = hasUsablePrice(selectedCrypto, selectedFiat);
+    const fiatKey = selectedFiat.toLowerCase();
+    const priceObj = prices[selectedCrypto]?.[fiatKey];
+    const hasPrice = priceObj?.price !== null && priceObj?.price !== undefined;
     if (!hasPrice && !showWaveInResultBox) {
       console.log(`[CONVERTER_WAVE] API rate limited. No cached price; showing wave for ${selectedCrypto}/${selectedFiat}.`);
       setShowWaveInResultBox(true);
       converterWaveStartTimeRef.current = Date.now();
     }
-  }, [isCoinGeckoRateLimitedGlobal, selectedCrypto, selectedFiat, showWaveInResultBox]);
+  }, [isCoinGeckoRateLimitedGlobal, prices, selectedCrypto, selectedFiat, showWaveInResultBox]);
 
   // Stablecoin detection and auto-switch to CAD
   useEffect(() => {
@@ -899,13 +811,12 @@ const Converter: React.FC<ConverterProps> = ({
         return;
       }
 
-      try {
-        // Get detailed metadata for stablecoin detection
-        const coinDetails = await getCoinDetails(cryptoId);
-        const priceInUsd = prices[selectedCrypto]?.usd?.price;
-        
-        // Check if it's a stablecoin
-        const isStablecoinToken = isStablecoin(coinDetails, selectedCrypto, priceInUsd);
+        try {
+          // Get detailed metadata for stablecoin detection
+          const coinDetails = await getCoinDetails(cryptoId);
+          
+          // Check if it's a stablecoin
+          const isStablecoinToken = isStablecoin(coinDetails, selectedCrypto);
         
         if (isStablecoinToken) {
           // Get the appropriate target fiat for this stablecoin
@@ -924,8 +835,7 @@ const Converter: React.FC<ConverterProps> = ({
         console.error(`🔴 [STABLECOIN_CHECK] Error checking stablecoin status for ${selectedCrypto}:`, error);
         
         // Fallback: use symbol-based detection
-        const priceInUsd = prices[selectedCrypto]?.usd?.price;
-        const isStablecoinBySymbol = isStablecoin(null, selectedCrypto, priceInUsd);
+        const isStablecoinBySymbol = isStablecoin(null, selectedCrypto);
         if (isStablecoinBySymbol && selectedFiat !== 'CAD' && !userManuallySetFiat) {
           console.log(`🪙 [STABLECOIN_FALLBACK] Using symbol-based detection for ${selectedCrypto}, switching to CAD`);
           setSelectedFiat('CAD');
@@ -1305,25 +1215,6 @@ const Converter: React.FC<ConverterProps> = ({
       return cachedIcon;
     }
     
-    // If we don't have an icon but we have an ID, trigger an immediate background fetch
-    if (id) {
-      // Debounce the fetch to avoid multiple requests for the same token
-      const now = Date.now();
-      const lastFetchAttempt = iconFetchAttempts.current[normalizedSymbol] || 0;
-      
-      // Only attempt to fetch if we haven't tried in the last minute (reduced from 2 minutes for more responsiveness)
-      if (now - lastFetchAttempt > 60 * 1000) {
-        iconFetchAttempts.current[normalizedSymbol] = now;
-        iconUpdateAttempts.current[normalizedSymbol] = (iconUpdateAttempts.current[normalizedSymbol] || 0) + 1;
-        
-        // Trigger an immediate background fetch for this token's metadata
-        setTimeout(() => {
-          // Use the checkAndUpdateMissingIcons function from context
-          checkMissingIcons();
-        }, 10); // Reduced from 100ms to 10ms for faster updates
-      }
-    }
-    
     return null;
   };
 
@@ -1361,18 +1252,7 @@ const Converter: React.FC<ConverterProps> = ({
       console.error('Error creating fallback icon:', error);
     }
     
-    // Trigger a background fetch for this token's icon
-    const normalizedSymbol = symbol.toUpperCase();
-    const now = Date.now();
-    const lastFetchAttempt = iconFetchAttempts.current[normalizedSymbol] || 0;
-    
-    // Only attempt to fetch if we haven't tried in the last minute
-    if (now - lastFetchAttempt > 60 * 1000) {
-      iconFetchAttempts.current[normalizedSymbol] = now;
-      
-      // Schedule an immediate check for missing icons
-      setTimeout(checkMissingIcons, 100);
-    }
+    // Icon repair is handled centrally in CryptoContext
   };
 
   const handleCopy = async () => {
@@ -1397,7 +1277,9 @@ const Converter: React.FC<ConverterProps> = ({
     if (id) {
       const url = `https://www.coingecko.com/en/coins/${id}`;
       console.log('Opening CoinGecko link in-app:', url);
-      ipcRenderer.send('open-link-in-app', url);
+      if (typeof window.cryptovertx?.links?.openInApp === 'function') {
+        window.cryptovertx.links.openInApp(url);
+      }
     } else {
       console.warn('Cannot open CoinGecko link: Could not find ID for', selectedCrypto);
     }
@@ -1616,10 +1498,6 @@ const Converter: React.FC<ConverterProps> = ({
                   className="token-icon"
                   onError={(e) => handleImageError(e, selectedCrypto)}
                   loading="lazy"
-                  onLoad={() => {
-                    // Mark as successfully loaded
-                    setPreloadedIcons(prev => new Set([...prev, selectedCrypto]));
-                  }}
                 />
                 <TokenFallbackIcon 
                   className="token-fallback-icon" 
@@ -1633,19 +1511,6 @@ const Converter: React.FC<ConverterProps> = ({
                 <TokenFallbackIcon className="token-fallback-icon">
                   {selectedCrypto.charAt(0)}
                 </TokenFallbackIcon>
-                {(() => {
-                  const id = getCryptoId(selectedCrypto);
-                  if (id && !preloadedIcons.has(selectedCrypto)) {
-                    // Schedule an immediate check for this token's icon
-                    setTimeout(() => {
-                      // Mark as attempted
-                      setPreloadedIcons(prev => new Set([...prev, selectedCrypto]));
-                      // Try to fetch the icon with high priority
-                      checkMissingIcons();
-                    }, 10); // Reduced from 100ms to 10ms for faster updates
-                  }
-                  return null;
-                })()}
               </>
             )}
             <span className="token-text">{selectedCrypto}</span>
@@ -1683,10 +1548,6 @@ const Converter: React.FC<ConverterProps> = ({
                           className="token-icon"
                           onError={(e) => handleImageError(e, crypto)}
                           loading="lazy"
-                          onLoad={() => {
-                            // Mark as successfully loaded
-                            setPreloadedIcons(prev => new Set([...prev, crypto]));
-                          }}
                         />
                         <TokenFallbackIcon 
                           className="token-fallback-icon" 
@@ -1700,30 +1561,6 @@ const Converter: React.FC<ConverterProps> = ({
                         <TokenFallbackIcon className="token-fallback-icon">
                           {crypto.charAt(0)}
                         </TokenFallbackIcon>
-                        {(() => {
-                          // Check if we've already tried to load this icon
-                          const hasAttempted = preloadedIcons.has(crypto);
-                          const id = getCryptoId(crypto);
-                          
-                          // If we haven't tried or it's been a while since our last attempt
-                          if (id && (!hasAttempted || 
-                              (iconUpdateAttempts.current[crypto] || 0) < 3)) {
-                            
-                            // Increment attempt counter
-                            iconUpdateAttempts.current[crypto] = 
-                              (iconUpdateAttempts.current[crypto] || 0) + 1;
-                            
-                            // Mark as attempted
-                            setPreloadedIcons(prev => new Set([...prev, crypto]));
-                            
-                            // Schedule an immediate check for this token's icon
-                            setTimeout(() => {
-                              // Try to fetch the icon with higher priority
-                              checkMissingIcons();
-                            }, 10); // Reduced from 100ms to 10ms for faster updates
-                          }
-                          return null;
-                        })()}
                       </>
                     )}
                     <span>{crypto}</span>

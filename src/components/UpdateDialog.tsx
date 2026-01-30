@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FiDownload, FiCheck, FiX, FiRefreshCw, FiArrowRight } from 'react-icons/fi';
-import { downloadUpdate, installUpdate } from '../services/updateService';
 
 const Overlay = styled(motion.div)`
   position: fixed;
@@ -400,19 +399,46 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
     setProgressData({ progress: 0 });
 
     try {
-      const filePath = await downloadUpdate(updateInfo.downloadUrl, (progressInfo: number | ProgressData) => {
-        if (typeof progressInfo === 'number') {
-          // Legacy format - just a number
-          setDownloadProgress(progressInfo);
-          setProgressData({ progress: progressInfo });
-        } else {
-          // Enhanced format - object with additional data
-          setDownloadProgress(progressInfo.progress);
-          setProgressData(progressInfo);
+      if (!window.cryptovertx?.updates?.download || !window.cryptovertx?.events?.onUpdateDownloadProgress) {
+        throw new Error('Update download is not available');
+      }
+
+      // Accept either a raw key (latest/...) or a URL containing ?key=
+      let downloadKey = '';
+      if (updateInfo.downloadUrl.startsWith('latest/')) {
+        downloadKey = updateInfo.downloadUrl;
+      } else {
+        try {
+          const parsed = new URL(updateInfo.downloadUrl);
+          downloadKey = parsed.searchParams.get('key') || '';
+        } catch {
+          downloadKey = '';
         }
-      }, updateInfo.fileName);
-      setDownloadedFilePath(filePath);
-      setUpdateState('downloaded');
+      }
+
+      if (!downloadKey) {
+        throw new Error('Invalid download key');
+      }
+
+      const unsubscribe = window.cryptovertx.events.onUpdateDownloadProgress((payload: ProgressData) => {
+        setDownloadProgress(payload.progress);
+        setProgressData(payload);
+      });
+
+      try {
+        const result = await window.cryptovertx.updates.download(downloadKey);
+        if (!result?.filePath) {
+          throw new Error('Download completed but no file path was returned');
+        }
+        setDownloadedFilePath(result.filePath);
+        setUpdateState('downloaded');
+      } finally {
+        try {
+          unsubscribe();
+        } catch {
+          // ignore
+        }
+      }
     } catch (err) {
       const error = err as Error;
       console.error('Download error:', error.message);
@@ -425,7 +451,14 @@ const UpdateDialog: React.FC<UpdateDialogProps> = ({ isOpen, onClose, updateInfo
     setUpdateState('installing');
     setErrorMessage('');
     try {
-      await installUpdate(downloadedFilePath);
+      if (!window.cryptovertx?.updates?.install) {
+        throw new Error('Update install is not available');
+      }
+
+      const result = await window.cryptovertx.updates.install(downloadedFilePath);
+      if (!result?.success) {
+        throw new Error(result?.error || 'Installation failed');
+      }
       // On success, the application will quit, so no further state change is needed.
     } catch (err) {
       const error = err as Error;

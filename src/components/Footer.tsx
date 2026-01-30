@@ -1,6 +1,5 @@
 import React from 'react';
 import styled from 'styled-components';
-import { ipcRenderer } from 'electron'; // Import ipcRenderer
 // Import package.json for version
 import packageJson from '../../package.json';
 
@@ -44,8 +43,10 @@ const VersionText = styled.span`
 
 const Footer: React.FC = () => {
   const handleOpenLinkInApp = (url: string) => {
-    // Use ipcRenderer.send for one-way messages
-    ipcRenderer.send('open-link-in-app', url);
+    // Use preload API to open links
+    if (typeof window.cryptovertx?.links?.openInApp === 'function') {
+      window.cryptovertx.links.openInApp(url);
+    }
   };
 
   return (
@@ -61,4 +62,4 @@ const Footer: React.FC = () => {
   );
 };
 
-export default Footer; 
+export default Footer;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, memo } from 'react';
+import { useEffect, useMemo, useRef, useState, memo } from 'react';
 import styled from 'styled-components';
 
 // Heatmap widget configuration types
@@ -175,7 +175,7 @@ function TradingViewHeatmapWidget({
   const safetyTimeoutRef = useRef<number | null>(null);
   const hasMarkedLoadedRef = useRef<boolean>(false);
 
-  const config = HEATMAP_CONFIGS[type];
+  const config = useMemo(() => HEATMAP_CONFIGS[type], [type]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -213,7 +213,9 @@ function TradingViewHeatmapWidget({
           observerRef.current.disconnect();
           observerRef.current = null;
         }
-      } catch {}
+      } catch {
+        // ignore
+      }
       if (pollIntervalRef.current) {
         window.clearInterval(pollIntervalRef.current);
         pollIntervalRef.current = null;
@@ -260,7 +262,9 @@ function TradingViewHeatmapWidget({
         // Observe DOM changes to detect when TradingView injects the widget
         try {
           observerRef.current?.disconnect();
-        } catch {}
+        } catch {
+          // ignore
+        }
         observerRef.current = new MutationObserver(() => {
           const hasWidget = inner.querySelector('iframe, .tradingview-widget-container__widget');
           if (hasWidget) {
@@ -354,7 +358,7 @@ function TradingViewHeatmapWidget({
       isCancelled = true;
       cleanup();
     };
-  }, [type, height, isTransparent]);
+  }, [config, height, isTransparent, type]);
 
   if (error.current) {
     return (

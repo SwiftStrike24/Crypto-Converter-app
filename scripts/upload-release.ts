@@ -113,7 +113,7 @@ async function prunePrefixKeepOnlyLatest(client: S3Client, bucket: string, prefi
     let continuationToken: string | undefined = undefined;
     const keysToDelete: string[] = [];
 
-    while (true) {
+    do {
       const listResp = await client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: continuationToken }));
       const contents = listResp.Contents || [];
       for (const obj of contents) {
@@ -121,9 +121,8 @@ async function prunePrefixKeepOnlyLatest(client: S3Client, bucket: string, prefi
         if (!key || key === keepKey) continue;
         keysToDelete.push(key);
       }
-      if (!listResp.IsTruncated) break;
-      continuationToken = listResp.NextContinuationToken;
-    }
+      continuationToken = listResp.IsTruncated ? listResp.NextContinuationToken : undefined;
+    } while (continuationToken);
 
     if (keysToDelete.length === 0) {
       spinner.succeed(pc.green('No old artifacts to prune.'));

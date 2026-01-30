@@ -1,5 +1,4 @@
 import { getCachedData, setCachedData } from './crypto/cryptoCacheService';
-import { ipcRenderer } from 'electron';
 import type { NewsFetchResult, NewsArticle } from './newsService';
 
 export interface FundraisingArticle extends NewsArticle {
@@ -41,9 +40,34 @@ class FundraisingService {
     }
 
     try {
-      const response = await ipcRenderer.invoke('fetch-fundraising-news', normalizedFilters);
+      // Use preload API to fetch fundraising news
+      if (typeof window.cryptovertx?.news?.fetchFundraising !== 'function') {
+        console.warn('[FUNDRAISING_SERVICE] Preload API not available');
+        return { data: [], fromCache: false };
+      }
+
+      const response = await window.cryptovertx.news.fetchFundraising(normalizedFilters, force);
       if (response && response.success && Array.isArray(response.data)) {
-        const articles: FundraisingArticle[] = response.data;
+        const articles: FundraisingArticle[] = (response.data as any[]).map((item: any): FundraisingArticle => ({
+          title: item?.title || 'Untitled',
+          source: item?.source || item?._source || 'Unknown',
+          publishedAt: item?.publishedAt || new Date().toISOString(),
+          summary: item?.summary || '',
+          url: item?.url || item?.link || '',
+          imageUrl: item?.imageUrl,
+          sentiment: item?.sentiment,
+          sentimentScore: item?.sentimentScore,
+          categories: item?.categories,
+          relatedSources: item?.relatedSources,
+          isHighImpact: item?.isHighImpact,
+          chains: item?.chains,
+          tokenless: item?.tokenless,
+          fundingStage: item?.fundingStage,
+          fundingAmount: item?.fundingAmount,
+          valuation: item?.valuation,
+          leadInvestor: item?.leadInvestor,
+          investors: item?.investors,
+        }));
         setCachedData(CACHE_KEY, articles, CACHE_DURATION);
         return { data: articles, fromCache: false };
       }

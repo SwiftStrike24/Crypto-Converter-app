@@ -254,30 +254,9 @@ const TrendingTokensPage: React.FC = () => {
       }
 
     } catch (err) {
-      // Check if we have any stale cache as last resort
-      const cacheStatus = trendingService.getCacheStatus();
-      if (cacheStatus.hasCache) {
-        console.log('🔄 [TRENDING_PAGE] API failed, attempting to use any available cache');
-        // Try one more time to get stale data
-        try {
-          const staleCacheKey = `cryptovertx-cache-trending-tokens`;
-          const itemStr = localStorage.getItem(staleCacheKey);
-          if (itemStr) {
-            const cacheEntry = JSON.parse(itemStr);
-            setTokens(cacheEntry.data);
-            setUsingStaleData(true);
-            setLastUpdated(new Date(cacheEntry.timestamp));
-            setError('Using cached data - unable to fetch fresh trending tokens');
-            console.log('📊 [TRENDING_PAGE] Successfully loaded stale cache as fallback');
-          }
-        } catch (cacheErr) {
-          setError('Unable to fetch trending tokens and no cached data available');
-          console.error('❌ [TRENDING_PAGE] Complete failure - no API and no cache:', err);
-        }
-      } else {
-        setError('Unable to fetch trending tokens. Please check your connection and try again.');
-        console.error('❌ [TRENDING_PAGE] API failed and no cache available:', err);
-      }
+      const message = err instanceof Error ? err.message : 'Unable to fetch trending tokens.';
+      setError(message);
+      console.error('❌ [TRENDING_PAGE] Failed to fetch trending tokens:', err);
     } finally {
       setIsLoading(false);
     }

@@ -30,6 +30,26 @@ export default defineConfig(({ mode }) => ({
             reportCompressedSize: false
           }
         }
+      },
+      {
+        // Preload script - runs in isolated context with contextBridge
+        entry: 'src/electron/preload.ts',
+        vite: {
+          build: {
+            outDir: 'dist-electron',
+            sourcemap: false,
+            minify: 'esbuild',
+            rollupOptions: {
+              external: ['electron'],
+              output: {
+                // Ensure stable, non-hashed filename for preload
+                entryFileNames: 'preload.js'
+              }
+            },
+            target: 'esnext',
+            reportCompressedSize: false
+          }
+        }
       }
     ]),
     renderer()

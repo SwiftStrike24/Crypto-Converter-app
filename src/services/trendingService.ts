@@ -1,5 +1,5 @@
 import { fetchTrendingEndpointData, fetchCoinMarkets, RequestPriority } from './crypto/cryptoApiService';
-import { getCachedData, setCachedData } from './crypto/cryptoCacheService';
+import { getCachedDataFresh, getCachedDataAllowStale, setCachedData } from './crypto/cryptoCacheService';
 
 export interface ITrendingToken {
   id: string;
@@ -23,7 +23,7 @@ const STALE_CACHE_MAX_AGE = 30 * 60 * 1000; // 30 minutes (for fallback)
 
 class TrendingService {
   async fetchTrendingTokens(): Promise<TrendingFetchResult> {
-    const cached = getCachedData<ITrendingToken[]>(CACHE_KEY);
+    const cached = getCachedDataFresh<ITrendingToken[]>(CACHE_KEY);
     
     // Return fresh cache if available
     if (cached) {
@@ -31,7 +31,7 @@ class TrendingService {
       return {
         data: cached.data,
         fromCache: true,
-        cacheAge: Date.now() - cached.timestamp
+        cacheAge: cached.ageMs
       };
     }
 
@@ -78,26 +78,18 @@ class TrendingService {
 
   private async handleApiFailure(): Promise<TrendingFetchResult> {
     // Try to get stale cache data (up to 30 minutes old)
-    const staleCacheKey = `cryptovertx-cache-${CACHE_KEY}`;
-    try {
-      const itemStr = localStorage.getItem(staleCacheKey);
-      if (itemStr) {
-        const cacheEntry = JSON.parse(itemStr);
-        const cacheAge = Date.now() - cacheEntry.timestamp;
-        
-        if (cacheAge <= STALE_CACHE_MAX_AGE) {
-          console.log(`🔄 [TRENDING_STALE_CACHE] Using stale cache data (${Math.round(cacheAge / 1000)}s old) as fallback`);
-          return {
-            data: cacheEntry.data,
-            fromCache: true,
-            cacheAge
-          };
-        } else {
-          console.warn(`⚠️ [TRENDING_STALE_CACHE_TOO_OLD] Stale cache is too old (${Math.round(cacheAge / 1000)}s), not using`);
-        }
-      }
-    } catch (cacheError) {
-      console.error('🔴 [TRENDING_STALE_CACHE_ERROR] Error reading stale cache:', cacheError);
+    const cached = getCachedDataAllowStale<ITrendingToken[]>(CACHE_KEY);
+    if (cached && cached.ageMs <= STALE_CACHE_MAX_AGE) {
+      console.log(`🔄 [TRENDING_STALE_CACHE] Using stale cache data (${Math.round(cached.ageMs / 1000)}s old) as fallback`);
+      return {
+        data: cached.data,
+        fromCache: true,
+        cacheAge: cached.ageMs,
+      };
+    }
+
+    if (cached) {
+      console.warn(`⚠️ [TRENDING_STALE_CACHE_TOO_OLD] Stale cache is too old (${Math.round(cached.ageMs / 1000)}s), not using`);
     }
 
     // If no stale cache available, return empty array with error indicator
@@ -107,20 +99,13 @@ class TrendingService {
 
   // Method to get cache status for UI indicators
   getCacheStatus(): { hasCache: boolean; cacheAge: number | null; isStale: boolean } {
-    try {
-      const staleCacheKey = `cryptovertx-cache-${CACHE_KEY}`;
-      const itemStr = localStorage.getItem(staleCacheKey);
-      if (itemStr) {
-        const cacheEntry = JSON.parse(itemStr);
-        const cacheAge = Date.now() - cacheEntry.timestamp;
-        return {
-          hasCache: true,
-          cacheAge,
-          isStale: cacheAge > CACHE_DURATION
-        };
-      }
-    } catch (error) {
-      console.error('Error checking cache status:', error);
+    const cached = getCachedDataAllowStale<ITrendingToken[]>(CACHE_KEY);
+    if (cached) {
+      return {
+        hasCache: true,
+        cacheAge: cached.ageMs,
+        isStale: cached.isStale,
+      };
     }
     
     return { hasCache: false, cacheAge: null, isStale: false };

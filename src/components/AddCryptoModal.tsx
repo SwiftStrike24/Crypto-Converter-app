@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import styled from 'styled-components';
 import { useCrypto } from '../context/CryptoContext';
 import { searchCoinGecko, RequestPriority } from '../services/crypto/cryptoApiService'; // Import optimized search
@@ -324,19 +324,12 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
   
   const lastSearchTime = useRef<number>(0);
   const retryCount = useRef<number>(0);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  const searchCryptos = async (query: string) => {
+  const searchCryptos = useCallback(async (query: string) => {
     if (!query.trim()) {
       setResults([]);
       setError(null);
       setLoading(false); // Ensure loading is false if query is cleared
       return;
-    }
-
-    // Clear previous timeout if any
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
     }
 
     // Check global rate limit state from the service first
@@ -384,11 +377,11 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [getRetrySecondsFromContext, isCoinGeckoRateLimitedGlobal]);
 
-  const debouncedSearch = useCallback(
-    debounce((term: string) => searchCryptos(term), SEARCH_DEBOUNCE_DELAY),
-    []
+  const debouncedSearch = useMemo(
+    () => debounce((term: string) => void searchCryptos(term), SEARCH_DEBOUNCE_DELAY),
+    [searchCryptos]
   );
 
   useEffect(() => {
@@ -397,9 +390,6 @@ const AddCryptoModal: React.FC<AddCryptoModalProps> = ({ isOpen, onClose }) => {
     }
     return () => {
       debouncedSearch.cancel();
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
     };
   }, [searchTerm, debouncedSearch, isOpen]);
 

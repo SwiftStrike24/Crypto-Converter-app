@@ -9,8 +9,34 @@ export interface CachedDataWithTimestamp<T> {
   timestamp: number;
 }
 
+export interface CacheReadResult<T> {
+  data: T;
+  timestamp: number;
+  expiry: number;
+  ageMs: number;
+  isStale: boolean;
+}
+
 function getFullCacheKey(key: string): string {
   return `cryptovertx-cache-${key}`;
+}
+
+function safeParseCacheEntry<T>(raw: string | null, fullKey: string): CacheEntry<T> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as CacheEntry<T>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (typeof parsed.timestamp !== 'number' || typeof parsed.expiry !== 'number') return null;
+    return parsed;
+  } catch (error) {
+    console.error(`[CryptoCacheService] Error parsing cache for key "${fullKey}":`, error);
+    try {
+      localStorage.removeItem(fullKey);
+    } catch {
+      // ignore
+    }
+    return null;
+  }
 }
 
 export function setCachedData<T>(key: string, data: T, durationMs: number): void {
@@ -29,26 +55,72 @@ export function setCachedData<T>(key: string, data: T, durationMs: number): void
   }
 }
 
-export function getCachedData<T>(key: string): CachedDataWithTimestamp<T> | null {
+/**
+ * Returns cached data only if it is still fresh (not expired).
+ * Important: this does NOT evict expired entries, so stale fallback remains possible.
+ */
+export function getCachedDataFresh<T>(key: string): CacheReadResult<T> | null {
   const fullKey = getFullCacheKey(key);
-  try {
-    const itemStr = localStorage.getItem(fullKey);
-    if (!itemStr) {
-      return null;
-    }
-    const cacheEntry: CacheEntry<T> = JSON.parse(itemStr);
-    const now = Date.now();
+  const entry = safeParseCacheEntry<T>(localStorage.getItem(fullKey), fullKey);
+  if (!entry) return null;
 
-    if (now > cacheEntry.expiry) {
-      localStorage.removeItem(fullKey);
-      return null;
-    }
-    return { data: cacheEntry.data, timestamp: cacheEntry.timestamp };
-  } catch (error) {
-    console.error(`[CryptoCacheService] Error getting cache for key "${key}":`, error);
-    localStorage.removeItem(fullKey);
+  const now = Date.now();
+  if (now > entry.expiry) {
     return null;
   }
+
+  return {
+    data: entry.data,
+    timestamp: entry.timestamp,
+    expiry: entry.expiry,
+    ageMs: now - entry.timestamp,
+    isStale: false,
+  };
+}
+
+/**
+ * Returns cached data even if it is expired.
+ */
+export function getCachedDataAllowStale<T>(key: string): CacheReadResult<T> | null {
+  const fullKey = getFullCacheKey(key);
+  const entry = safeParseCacheEntry<T>(localStorage.getItem(fullKey), fullKey);
+  if (!entry) return null;
+
+  const now = Date.now();
+  return {
+    data: entry.data,
+    timestamp: entry.timestamp,
+    expiry: entry.expiry,
+    ageMs: now - entry.timestamp,
+    isStale: now > entry.expiry,
+  };
+}
+
+// Backward-compatible helper: returns only fresh cache (no eviction)
+export function getCachedData<T>(key: string): CachedDataWithTimestamp<T> | null {
+  const fresh = getCachedDataFresh<T>(key);
+  if (!fresh) return null;
+  return { data: fresh.data, timestamp: fresh.timestamp };
+}
+
+/**
+ * Explicitly prunes a cache entry if it's older than maxAgeMs.
+ * Returns true if an entry was removed.
+ */
+export function pruneCacheKey(key: string, maxAgeMs: number): boolean {
+  const fullKey = getFullCacheKey(key);
+  const entry = safeParseCacheEntry<unknown>(localStorage.getItem(fullKey), fullKey);
+  if (!entry) return false;
+  const now = Date.now();
+  if (now - entry.timestamp > maxAgeMs) {
+    try {
+      localStorage.removeItem(fullKey);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
 }
 
 export function removeCachedData(key: string): void {

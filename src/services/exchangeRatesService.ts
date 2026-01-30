@@ -46,8 +46,21 @@ export async function getExchangeRates(): Promise<CachedRates> {
 
   try {
     // Get API key from environment variables or use the provided one
-    const appId = import.meta.env.VITE_OPEN_EXCHANGE_RATES_APP_ID || 
-                  '25c17f7922c34d4a8b7814af456962ed'; // Fallback to provided key
+    const appId = import.meta.env.VITE_OPEN_EXCHANGE_RATES_APP_ID as string | undefined;
+    if (!appId) {
+      // If no key is configured, fall back to cached (even if expired) or hardcoded values.
+      if (cachedData) {
+        return JSON.parse(cachedData);
+      }
+      return {
+        rates: {
+          CAD: 1.38,
+          EUR: 0.87,
+        },
+        timestamp: Math.floor(Date.now() / 1000),
+        lastFetched: Date.now(),
+      };
+    }
     
     // Fetch fresh data
     const response = await axios.get<OpenExchangeRatesResponse>(

@@ -33,7 +33,7 @@ import {
   getCoinGeckoRetryAfterSeconds,
   RequestPriority,
   getApiPerformanceMetrics,
-  getPublicApiStatus,
+  onPublicApiStatusChange,
 } from '../services/crypto/cryptoApiService'; // Corrected path
 import {
   getCachedData,
@@ -142,6 +142,28 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const [tokenMetadata, setTokenMetadata] = useState<Record<string, any>>({});
   const [coinDetailsCache, setCoinDetailsCache] = useState<Record<string, CoinDetailedMetadata>>({});
+
+  const tokenMetadataRef = useRef(tokenMetadata);
+  useEffect(() => {
+    tokenMetadataRef.current = tokenMetadata;
+  }, [tokenMetadata]);
+
+  const cryptoIdsRef = useRef(cryptoIds);
+  useEffect(() => {
+    cryptoIdsRef.current = cryptoIds;
+  }, [cryptoIds]);
+
+  const fetchTokenMetadataRef = useRef<(specificTokens?: string[], priority?: RequestPriority) => Promise<void>>(
+    async () => {}
+  );
+
+  const processRemainingMetadataChunksRef = useRef<(
+    chunks: string[][],
+    existingMetadata: Record<string, any>,
+    priority: RequestPriority
+  ) => Promise<void>>(async () => {});
+
+  const serveCacheForSymbolsRef = useRef<(symbols: string[], batchId: number) => string[]>(() => []);
 
   const metadataRequestCount = useRef<number>(0);
 
@@ -288,17 +310,17 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         console.log('[PRELOAD] Starting pre-load of popular token metadata.'); // Logging
         const defaultTokenIds = Object.values(DEFAULT_CRYPTO_IDS);
         const missingDefaultTokens = defaultTokenIds.filter(id =>
-          !tokenMetadata[id]
+          !tokenMetadataRef.current[id]
         );
 
         const popularTokenIds = POPULAR_TOKEN_IDS_TO_PRELOAD.filter(id =>
-          !Object.values(cryptoIds).includes(id) && !defaultTokenIds.includes(id)
+          !Object.values(cryptoIdsRef.current).includes(id) && !defaultTokenIds.includes(id)
         );
 
         const tokensToFetch = [...missingDefaultTokens, ...popularTokenIds];
 
         if (tokensToFetch.length > 0) {
-          fetchTokenMetadata(tokensToFetch, RequestPriority.LOW); // Pass LOW priority for preloading
+          void fetchTokenMetadataRef.current(tokensToFetch, RequestPriority.LOW); // Pass LOW priority for preloading
         }
         console.log('[PRELOAD] Completed pre-load of popular token metadata. (Async fetch initiated if needed)'); // Logging
       }, 1000);
@@ -321,21 +343,23 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const idIconCacheKey = `${ICON_CACHE_STORAGE_PREFIX}id-${id.toLowerCase()}`;
         localStorage.setItem(idIconCacheKey, imageUrl);
 
-        if (!tokenMetadata[id]?.image) {
-          setTokenMetadata(prev => ({
+        setTokenMetadata((prev) => {
+          const existing = prev[id];
+          if (existing?.image) return prev;
+          return {
             ...prev,
             [id]: {
-              ...(prev[id] || {}),
+              ...(existing || {}),
               image: imageUrl,
-              symbol: symbol.toUpperCase()
-            }
-          }));
-        }
+              symbol: symbol.toUpperCase(),
+            },
+          };
+        });
       }
     } catch (error) {
       console.error('Error caching token icon:', error);
     }
-  }, [getCryptoId, tokenMetadata]);
+  }, [getCryptoId]);
 
   const ensureAllIconsCached = useCallback(() => {
     const tokensToCheck = Object.keys(cryptoIds);
@@ -363,6 +387,11 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     });
   }, [cryptoIds, getCryptoId, tokenMetadata]);
+
+  const ensureAllIconsCachedRef = useRef(ensureAllIconsCached);
+  useEffect(() => {
+    ensureAllIconsCachedRef.current = ensureAllIconsCached;
+  }, [ensureAllIconsCached]);
 
   const checkAndUpdateMissingIcons = useCallback(async () => {
     const tokensToCheck = Object.keys(cryptoIds);
@@ -405,7 +434,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // Try to fetch using the search API first for better results
       try {
-        for (const symbol of missingIconSymbols) {
+        for (const symbol of [...missingIconSymbols]) {
           // Skip if we're rate limited
           if (isCoinGeckoApiRateLimited()) { // Updated to use service's rate limit check
             break;
@@ -441,7 +470,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               }
 
               // Remove from missing list
-              const index = missingIconSymbols.indexOf(cryptoIds[symbol]);
+              const index = missingIconSymbols.indexOf(symbol);
               if (index > -1) {
                 missingIconSymbols.splice(index, 1);
               }
@@ -458,7 +487,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // For any remaining tokens, use the regular fetch method
       if (missingIconSymbols.length > 0) {
-        await fetchTokenMetadata(missingIconSymbols, RequestPriority.LOW);
+        await fetchTokenMetadataRef.current(missingIconSymbols, RequestPriority.LOW);
       }
     }
 
@@ -595,7 +624,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           // Process remaining chunks with intelligent spacing
           if (chunks.length > 1 && metadataRequestCount.current < MAX_METADATA_REQUESTS_PER_SESSION_LIMIT) { // Updated variable name
             setTimeout(() => {
-              processRemainingMetadataChunks(chunks.slice(1), newMetadata, priority); // Pass priority
+              void processRemainingMetadataChunksRef.current(chunks.slice(1), newMetadata, priority); // Pass priority
             }, API_CONFIG.COINGECKO.REQUEST_SPACING * 12); // TODO: Review if this specific timing logic moves to service or hook
           }
         } catch (error) {
@@ -606,7 +635,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           // Process remaining chunks with an intelligent backoff
           if (chunks.length > 1 && metadataRequestCount.current < MAX_METADATA_REQUESTS_PER_SESSION_LIMIT) { // Updated variable name
             setTimeout(() => {
-              processRemainingMetadataChunks(chunks.slice(1), newMetadata, priority); // Pass priority
+              void processRemainingMetadataChunksRef.current(chunks.slice(1), newMetadata, priority); // Pass priority
             }, API_CONFIG.COINGECKO.REQUEST_SPACING * 15); // Longer delay after error
           }
         }
@@ -614,10 +643,14 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (error) {
       console.error('Error in fetchTokenMetadata:', error);
     }
-  }, [cryptoIds, tokenMetadata, cacheTokenIcon]);
+  }, [cacheTokenIcon, cryptoIds, exchangeRates, getCachedPrices, setCachePrices, tokenMetadata]);
+
+  useEffect(() => {
+    fetchTokenMetadataRef.current = fetchTokenMetadata;
+  }, [fetchTokenMetadata]);
 
   // Enhanced function to process remaining metadata chunks with intelligent spacing
-  const processRemainingMetadataChunks = async (
+  const processRemainingMetadataChunks = useCallback(async (
     chunks: string[][],
     existingMetadata: Record<string, any>,
     priority: RequestPriority // Added priority
@@ -674,42 +707,11 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         await new Promise(resolve => setTimeout(resolve, errorBackoff));
       }
     }
-  };
+  }, [cacheTokenIcon]);
 
-  // Smart retry function that tries different API providers
-  // const fetchWithSmartRetry = async (url: string, config: any): Promise<any> => { ... MOVED TO SERVICE ... };
-
-  // Updated error handling with smart fallback system to remove unused apiName parameter
-  const handleApiError = useCallback((err: any) => {
-    let retryDelay = API_RETRY_DELAY;
-
-    if (axios.isAxiosError(err)) {
-      // Silently handle rate limit errors without showing to user
-      if (err.response?.status === 429) {
-        retryDelay = MIN_API_INTERVAL * 2;
-        // Set the global rate limit state when we encounter a 429
-        setIsCoinGeckoRateLimitedGlobal(true);
-
-        // Set a timeout to reset the rate limit state after the cooldown period
-        setTimeout(() => {
-          setIsCoinGeckoRateLimitedGlobal(false);
-        }, COINGECKO_RATE_LIMIT_COOLDOWN);
-
-        // apiStatus.current.providerIndex = (apiStatus.current.providerIndex + 1) % apiStatus.current.activeProviders.length; // Service handles this
-      } else if (err.code === 'ECONNABORTED') {
-        retryDelay = API_RETRY_DELAY;
-        // apiStatus.current.providerIndex = (apiStatus.current.providerIndex + 1) % apiStatus.current.activeProviders.length; // Service handles this
-      }
-    }
-
-    // Use memoized getCachedPrices
-    const cached = getCachedPrices();
-    if (cached) {
-      setPrices(cached);
-    }
-
-    return retryDelay;
-  }, [getCachedPrices]);
+  useEffect(() => {
+    processRemainingMetadataChunksRef.current = processRemainingMetadataChunks;
+  }, [processRemainingMetadataChunks]);
 
   // Enhanced batch processing with smart API selection and cache-first strategy
   const processBatchRequests = useCallback(async () => {
@@ -734,7 +736,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const retrySeconds = getCoinGeckoRetryAfterSeconds();
       setIsCoinGeckoRateLimitedGlobal(true);
       const allPendingSymbols = Array.from(requestQueue.current.pendingSymbols);
-      serveCacheForSymbols(allPendingSymbols, batchId);
+      serveCacheForSymbolsRef.current(allPendingSymbols, batchId);
 
       updateTimeout.current = setTimeout(() => {
         setIsCoinGeckoRateLimitedGlobal(false);
@@ -808,7 +810,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             isFromWorker = true;
           }
 
-          const newMetadata = { ...tokenMetadata };
+          const newMetadata = { ...tokenMetadataRef.current };
           marketsDataResponse.forEach((token: any) => {
             if (token.id) {
               newMetadata[token.id] = {
@@ -829,7 +831,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       } catch (marketsError) {
         console.warn(`🟠 [FALLBACK_MARKETS] Failed to fetch from /coins/markets: ${marketsError}`);
-        serveCacheForSymbols(symbolsToProcess, batchId);
+        serveCacheForSymbolsRef.current(symbolsToProcess, batchId);
 
         if (axios.isAxiosError(marketsError) && marketsError.response?.status === 429) {
           setIsCoinGeckoRateLimitedGlobal(true);
@@ -946,7 +948,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
       requestQueue.current.lastProcessed = Date.now();
     }
-  }, [getCryptoId, getEstimatedPrice, getCachedPrices, setCachePrices, handleApiError, exchangeRates, isCoinGeckoRateLimitedGlobal]);
+  }, [cacheTokenIcon, exchangeRates, getCachedPrices, getCryptoId, getEstimatedPrice, isCoinGeckoRateLimitedGlobal, setCachePrices]);
 
   // Helper function to serve cache for symbols immediately
   const serveCacheForSymbols = useCallback((symbols: string[], batchId: number): string[] => {
@@ -974,6 +976,10 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     return cacheServedSymbols;
   }, [prices, getCachedPrices]);
+
+  useEffect(() => {
+    serveCacheForSymbolsRef.current = serveCacheForSymbols;
+  }, [serveCacheForSymbols]);
 
   // Enhanced queuePriceUpdate with priority handling
   const queuePriceUpdate = useCallback((symbols: string[], highPriority: boolean = false) => {
@@ -1111,7 +1117,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // If metadata fetch fails, it might still be in pending. Queue a general price update as a fallback.
       queuePriceUpdate([upperSymbol], true);
     });
-  }, [cryptoIds, queuePriceUpdate, fetchTokenMetadata, getCachedPrices, setCachePrices, getEstimatedPrice, exchangeRates]);
+  }, [cryptoIds, fetchTokenMetadata, getEstimatedPrice, isPending, queuePriceUpdate]);
 
   // Enhanced addCryptos with instantaneous updates and no loading indicators
   const addCryptos = useCallback(async (tokens: { symbol: string; id: string }[]) => {
@@ -1290,7 +1296,7 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.log('[ADD_CRYPTOS_COMPLETE] All added tokens had prices resolved via initial fetch or recent cache. No further price queue needed.');
     }
 
-  }, [cryptoIds, prices, tokenMetadata, queuePriceUpdate, fetchTokenMetadata, getEstimatedPrice, exchangeRates, getCachedPrices, setCachePrices, cacheTokenIcon, isPending]);
+  }, [cryptoIds, prices, tokenMetadata, queuePriceUpdate, getEstimatedPrice, exchangeRates, setCachePrices, cacheTokenIcon, isPending]);
 
   const deleteCrypto = useCallback((symbol: string) => {
     // Don't allow deletion of default tokens
@@ -1327,11 +1333,12 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Main fetch on mount; polling handled separately
   useEffect(() => {
+    const queue = requestQueue.current;
     updatePrices(true);
     return () => {
       clearUpdateTimeout();
-      if (requestQueue.current.batchTimer) {
-        clearTimeout(requestQueue.current.batchTimer);
+      if (queue.batchTimer) {
+        clearTimeout(queue.batchTimer);
       }
     };
   }, [updatePrices]);
@@ -1362,16 +1369,15 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     };
 
-    let ipc: any = null;
-    try {
-      ipc = (window as any).require?.('electron')?.ipcRenderer || null;
-    } catch {
-      ipc = null;
-    }
+    // Use the new preload API for window focus/blur events
+    let cleanupFocus: (() => void) | null = null;
+    let cleanupBlur: (() => void) | null = null;
 
-    if (ipc) {
-      ipc.on('window-focused', handleFocus);
-      ipc.on('window-blurred', handleBlur);
+    if (typeof window.cryptovertx?.events?.onWindowFocused === 'function') {
+      cleanupFocus = window.cryptovertx.events.onWindowFocused(handleFocus);
+    }
+    if (typeof window.cryptovertx?.events?.onWindowBlurred === 'function') {
+      cleanupBlur = window.cryptovertx.events.onWindowBlurred(handleBlur);
     }
 
     window.addEventListener('online', handleFocus);
@@ -1384,10 +1390,8 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     return () => {
-      if (ipc) {
-        ipc.removeListener?.('window-focused', handleFocus);
-        ipc.removeListener?.('window-blurred', handleBlur);
-      }
+      if (cleanupFocus) cleanupFocus();
+      if (cleanupBlur) cleanupBlur();
       window.removeEventListener('online', handleFocus);
       window.removeEventListener('offline', handleBlur);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -1396,41 +1400,53 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Intelligent polling that respects app focus/online status
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
+    if (!isAppActive || !navigator.onLine) {
+      return;
+    }
 
-    const poll = () => {
-      if (isAppActive && navigator.onLine) {
-        console.log('[Intelligent Polling] App is active, fetching prices.');
-        updatePrices(false);
-      } else {
-        console.log('[Intelligent Polling] App inactive or offline, skipping poll.');
-      }
-    };
-
-    intervalId = setInterval(poll, 45 * 1000);
+    const intervalId = setInterval(() => {
+      updatePrices(false);
+    }, 45 * 1000);
 
     return () => {
-      if (intervalId) clearInterval(intervalId);
+      clearInterval(intervalId);
     };
   }, [isAppActive, updatePrices]);
 
-  // Immediate refresh when the app becomes active
+  // Immediate refresh when the app becomes active (run only on transition to active)
+  const lastUpdatedRef = useRef<Date | null>(null);
   useEffect(() => {
-    if (isAppActive && navigator.onLine) {
-      const now = Date.now();
-      const lastUpdate = lastUpdated ? lastUpdated.getTime() : 0;
-      const timeSinceLastUpdate = now - lastUpdate;
-      const STALENESS_THRESHOLD = 15000; // 15 seconds
+    lastUpdatedRef.current = lastUpdated;
+  }, [lastUpdated]);
 
-      // Only force update if data is stale or never updated
-      if (timeSinceLastUpdate > STALENESS_THRESHOLD) {
-        console.log(`[Focus Refresh] App gained focus and data is stale (${Math.round(timeSinceLastUpdate / 1000)}s ago). Triggering immediate update.`);
-        updatePrices(true);
-      } else {
-        console.log(`[Focus Refresh] App gained focus but data is fresh (${Math.round(timeSinceLastUpdate / 1000)}s ago). Skipping force update.`);
-      }
+  const wasAppActiveRef = useRef(false);
+  useEffect(() => {
+    if (!isAppActive || !navigator.onLine) {
+      wasAppActiveRef.current = false;
+      return;
     }
-  }, [isAppActive, updatePrices, lastUpdated]);
+
+    if (wasAppActiveRef.current) return;
+    wasAppActiveRef.current = true;
+
+    const now = Date.now();
+    const lastUpdateMs = lastUpdatedRef.current?.getTime();
+    const STALENESS_THRESHOLD = 15_000; // 15 seconds
+
+    if (!lastUpdateMs) {
+      console.log('[Focus Refresh] App gained focus and has no prior update. Triggering immediate update.');
+      updatePrices(true);
+      return;
+    }
+
+    const ageMs = now - lastUpdateMs;
+    if (ageMs > STALENESS_THRESHOLD) {
+      console.log(`[Focus Refresh] App gained focus and data is stale (${Math.round(ageMs / 1000)}s ago). Triggering immediate update.`);
+      updatePrices(true);
+    } else {
+      console.log(`[Focus Refresh] App gained focus but data is fresh (${Math.round(ageMs / 1000)}s ago). Skipping force update.`);
+    }
+  }, [isAppActive, updatePrices]);
 
   // Preload default token icons
   const preloadDefaultTokenIcons = useCallback(async () => {
@@ -1478,33 +1494,87 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (error) {
       console.error('Error preloading default token icons:', error);
     }
-  }, [tokenMetadata]);
+  }, [cacheTokenIcon, tokenMetadata]);
 
   // Call preloadDefaultTokenIcons on app startup
   useEffect(() => {
     preloadDefaultTokenIcons();
   }, [preloadDefaultTokenIcons]);
 
-  // Set up periodic checks for missing icons
+  // Set up periodic checks for missing icons (single scheduler)
+  const checkAndUpdateMissingIconsRef = useRef(checkAndUpdateMissingIcons);
   useEffect(() => {
-    // Initial check for missing icons
-    const initialCheck = async () => {
-      // Wait a bit after initial load to avoid overwhelming the app startup
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      await checkAndUpdateMissingIcons();
-    };
+    checkAndUpdateMissingIconsRef.current = checkAndUpdateMissingIcons;
+  }, [checkAndUpdateMissingIcons]);
 
-    initialCheck();
+  const iconCheckIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const iconCheckRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const iconCheckRetryCountRef = useRef(0);
+  const iconCheckRunningRef = useRef(false);
 
-    // Set up periodic checks (every 30 minutes)
-    const iconCheckInterval = setInterval(async () => {
-      await checkAndUpdateMissingIcons();
-    }, 30 * 60 * 1000);
+  const runIconCheck = useCallback(async (reason: 'initial' | 'interval' | 'retry' | 'tokensChanged') => {
+    if (iconCheckRunningRef.current) return;
+    iconCheckRunningRef.current = true;
+
+    try {
+      const remaining = await checkAndUpdateMissingIconsRef.current();
+
+      if (remaining > 0) {
+        // Bounded fast retries when missing icons are detected
+        if (iconCheckRetryCountRef.current < 3) {
+          iconCheckRetryCountRef.current += 1;
+          const retryDelayMs = 15_000 * iconCheckRetryCountRef.current; // 15s, 30s, 45s
+          console.log(`[ICON_CACHE] ${reason}: ${remaining} missing icons; retry in ${retryDelayMs / 1000}s`);
+
+          if (iconCheckRetryTimeoutRef.current) {
+            clearTimeout(iconCheckRetryTimeoutRef.current);
+          }
+          iconCheckRetryTimeoutRef.current = setTimeout(() => {
+            void runIconCheck('retry');
+          }, retryDelayMs);
+        }
+      } else {
+        iconCheckRetryCountRef.current = 0;
+      }
+    } catch (error) {
+      console.warn('[ICON_CACHE] Icon check failed:', error);
+    } finally {
+      iconCheckRunningRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    const initialTimeout = setTimeout(() => {
+      void runIconCheck('initial');
+    }, 5000);
+
+    iconCheckIntervalRef.current = setInterval(() => {
+      void runIconCheck('interval');
+    }, 20 * 60 * 1000);
 
     return () => {
-      clearInterval(iconCheckInterval);
+      clearTimeout(initialTimeout);
+      if (iconCheckIntervalRef.current) clearInterval(iconCheckIntervalRef.current);
+      if (iconCheckRetryTimeoutRef.current) clearTimeout(iconCheckRetryTimeoutRef.current);
     };
-  }, []);
+  }, [runIconCheck]);
+
+  // Trigger an icon check shortly after tokens change (debounced)
+  const iconCheckTokensTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    if (iconCheckTokensTimeoutRef.current) {
+      clearTimeout(iconCheckTokensTimeoutRef.current);
+    }
+    iconCheckTokensTimeoutRef.current = setTimeout(() => {
+      void runIconCheck('tokensChanged');
+    }, 1000);
+
+    return () => {
+      if (iconCheckTokensTimeoutRef.current) {
+        clearTimeout(iconCheckTokensTimeoutRef.current);
+      }
+    };
+  }, [cryptoIds, runIconCheck]);
 
   // Initial setup useEffect
   useEffect(() => {
@@ -1515,12 +1585,12 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return () => {
       clearUpdateTimeout();
     };
-  }, []);
+  }, [getCachedPrices]);
 
   // Set up event listener for beforeunload to ensure all icons are cached
   useEffect(() => {
     const handleBeforeUnload = () => {
-      ensureAllIconsCached();
+      ensureAllIconsCachedRef.current();
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -1530,18 +1600,13 @@ export const CryptoProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, []);
 
-  // NEW: Effect to periodically sync API status with the context
+  // NEW: Event-driven sync of API status (no polling)
   useEffect(() => {
-    const syncApiStatus = () => {
-      const status = getPublicApiStatus();
+    const unsubscribe = onPublicApiStatusChange((status) => {
       setIsCoinGeckoRateLimitedGlobal(status.isRateLimited);
       setIsUsingApiFallback(status.isUsingAnonymousFallback);
-    };
-
-    const interval = setInterval(syncApiStatus, 2000); // Sync every 2 seconds
-    syncApiStatus(); // Initial sync
-
-    return () => clearInterval(interval);
+    });
+    return unsubscribe;
   }, []);
 
   // Function to check if a specific API is currently rate-limited

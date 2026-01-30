@@ -1,9 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { NewsArticle } from '../services/newsService';
 import LiveTimeAgo from './LiveTimeAgo';
-import { ipcRenderer } from 'electron';
 
 const CardWrapper = styled(motion.div)`
   position: relative;
@@ -297,12 +296,16 @@ const isValidImageUrl = (url: string): boolean => {
 };
 
 const NewsCard: React.FC<NewsCardProps> = React.memo(({ article, index }) => {
+  const [imageError, setImageError] = useState(false);
+
   const handleOpenArticle = (e: React.MouseEvent) => {
     e.stopPropagation();
 
     try {
       console.log('Opening news article in-app:', article.url);
-      ipcRenderer.send('open-link-in-app', article.url);
+      if (typeof window.cryptovertx?.links?.openInApp === 'function') {
+        window.cryptovertx.links.openInApp(article.url);
+      }
     } catch (error) {
       console.error('Failed to open article in internal browser:', error);
       // Fallback to external browser
@@ -373,40 +376,13 @@ const NewsCard: React.FC<NewsCardProps> = React.memo(({ article, index }) => {
       )}
 
       <ArticleHeader>
-        {article.imageUrl && isValidImageUrl(article.imageUrl) ? (
+        {!imageError && article.imageUrl && isValidImageUrl(article.imageUrl) ? (
           <ArticleImage
             src={article.imageUrl}
             alt={article.title}
-            onError={(e) => {
-              // Hide image on load error and show placeholder
-              const target = e.currentTarget as HTMLImageElement;
-              const parent = target.parentElement;
-              if (parent) {
-                target.style.display = 'none';
-                // Create placeholder if it doesn't exist
-                if (!parent.querySelector('.image-placeholder')) {
-                  const placeholder = document.createElement('div');
-                  placeholder.className = 'image-placeholder';
-                  placeholder.textContent = '📰';
-                  placeholder.style.cssText = `
-                    width: 60px;
-                    height: 60px;
-                    border-radius: 8px;
-                    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.05));
-                    border: 1px solid rgba(139, 92, 246, 0.2);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 1.5rem;
-                  `;
-                  parent.appendChild(placeholder);
-                }
-              }
-            }}
-            onLoad={() => {
-              // Image loaded successfully, remove any placeholder
-              const target = document.currentScript?.parentElement?.querySelector('.image-placeholder');
-              if (target) target.remove();
+            onError={() => {
+              // Use React state to handle image error
+              setImageError(true);
             }}
           />
         ) : (

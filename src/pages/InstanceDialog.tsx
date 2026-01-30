@@ -2,7 +2,6 @@ import React from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { FiAlertTriangle } from 'react-icons/fi';
-import { ipcRenderer } from 'electron';
 
 const PageContainer = styled(motion.div)`
   height: 100vh;
@@ -123,7 +122,11 @@ const InstanceDialog: React.FC = () => {
           Another instance of CryptoVertX is open. You can restart the application from here if needed.
         </DialogMessage>
         <RestartButton
-          onClick={() => ipcRenderer.send('instance-dialog-restart')}
+          onClick={() => {
+            if (typeof window.cryptovertx?.app?.quit === 'function') {
+              window.cryptovertx.app.quit();
+            }
+          }}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >

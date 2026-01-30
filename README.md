@@ -219,17 +219,18 @@ This application uses environment variables for configuration. To set up your en
 2. Fill in your API keys and credentials in the `.env` file:
    - `VITE_COINGECKO_API_KEY`: Your CoinGecko API key
    - `VITE_CRYPTOCOMPARE_API_KEY`: Your CryptoCompare API key
-   - `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`: Your Cloudflare R2 credentials (for update service)
-   - Other configuration variables as needed
+    - `VITE_OPEN_EXCHANGE_RATES_APP_ID`: Your Open Exchange Rates App ID (optional; improves FX accuracy)
+    - `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`: Only needed for release upload scripts (not required to run the app)
+    - Other configuration variables as needed
 
 3. Never commit your `.env` file to version control. It's already added to `.gitignore`.
 
 ## Security Notes
 
-- API keys and credentials are loaded from environment variables and passed to the renderer process securely.
-- No hardcoded credentials are used in the application.
-- For production builds, ensure all environment variables are properly set in your build environment.
-- When distributing the application, use a secure method to provide the necessary credentials.
+- The renderer runs without Node.js integration and interacts with the main process via a narrow preload API.
+- Update downloads are executed by the main process from validated `latest/` keys; the renderer does not provide arbitrary URLs.
+- No hardcoded credentials are shipped in `src/`.
+- For production builds, provide any required API keys via your build environment (never commit `.env`).
 
 ## 🤝 Contributing
 

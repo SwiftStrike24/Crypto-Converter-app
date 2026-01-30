@@ -945,7 +945,7 @@ class NewsErrorBoundary extends React.Component<
                 Try Again
               </TryAgainButton>
             </ButtonContainer>
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+            {import.meta.env.DEV && this.state.error && (
               <ErrorDetails>
                 <ErrorSummary>
                   Error Details (Development)
@@ -994,6 +994,8 @@ const NewsPage: React.FC = () => {
     refreshMarketNews,
     refreshFundraisingNews,
   } = useNews();
+
+  const hasAnyNews = marketNews.length > 0 || fundraisingNews.length > 0;
 
   const handleRefresh = useCallback(async () => {
     const loading = isLoadingMarket || isLoadingFundraising;
@@ -1272,7 +1274,7 @@ const NewsPage: React.FC = () => {
                   isTransparent={true}
                 />
               </WidgetPanel>
-            ) : (isLoadingMarket || isLoadingFundraising) || isInitializing ? (
+            ) : (!hasAnyNews && ((isLoadingMarket || isLoadingFundraising) || isInitializing)) ? (
               <LoadingContainer>
                 <WaveLoadingPlaceholder />
                 <LoadingText>

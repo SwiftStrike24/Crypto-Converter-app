@@ -263,6 +263,17 @@ const _TechnicalAnalysisPage: React.FC = () => {
     currency: 'USD'
   };
 
+  // Check if required state is missing
+  const isMissingState = !location.state?.cryptoId || !location.state?.currency;
+
+  // Navigate back if missing required state (hook must be at top level)
+  React.useEffect(() => {
+    if (isMissingState) {
+      console.error('TechnicalAnalysisPage: Missing cryptoId or currency in location state.');
+      navigate(-1);
+    }
+  }, [isMissingState, navigate]);
+
   // Function to handle back navigation based on where we came from
   const handleBackNavigation = () => {
     if (from === 'trending') {
@@ -272,11 +283,8 @@ const _TechnicalAnalysisPage: React.FC = () => {
     }
   };
 
-  // Add location state check
-  if (!location.state?.cryptoId || !location.state?.currency) {
-    console.error('🚨 TechnicalAnalysisPage: Missing cryptoId or currency in location state.');
-    // Navigate back or show error immediately
-    React.useEffect(() => { navigate(-1); }, [navigate]);
+  // Show error UI while navigating away
+  if (isMissingState) {
     return (
         <PageContainer>
             <Header>

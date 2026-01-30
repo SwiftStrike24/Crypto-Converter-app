@@ -1,21 +1,19 @@
-import { ipcRenderer } from 'electron';
-
-// For main window - handle restart requests
-ipcRenderer.on('request-hard-restart', () => {
-  ipcRenderer.send('restart-request');
-});
-
-// Handle instance dialog restart
-ipcRenderer.on('instance-dialog-restart', () => {
-  ipcRenderer.send('instance-dialog-restart');
-});
+/**
+ * Restart handler for CryptoVertX
+ * Handles restart button in instance dialog
+ * 
+ * Note: This file is mostly for legacy support. The instance dialog
+ * should use React components and the preload API directly.
+ */
 
 document.addEventListener('DOMContentLoaded', () => {
   const restartButton = document.getElementById('restart-btn');
   if (restartButton) {
     restartButton.addEventListener('click', () => {
-      // Send restart request and wait briefly before closing
-      ipcRenderer.send('instance-dialog-restart');
+      // Use the preload API to quit (which triggers restart logic)
+      if (typeof window.cryptovertx?.app?.quit === 'function') {
+        window.cryptovertx.app.quit();
+      }
       setTimeout(() => {
         window.close();
       }, 500);

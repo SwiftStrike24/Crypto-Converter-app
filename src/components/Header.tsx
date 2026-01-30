@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import styled, { css } from 'styled-components';
 import { GiPowerButton } from "react-icons/gi";
@@ -8,7 +8,6 @@ import { FiTrash2 } from "react-icons/fi";
 import { useCrypto } from '../context/CryptoContext';
 import AddCryptoModal from './AddCryptoModal';
 import UpdateDialog from './UpdateDialog';
-import { checkForUpdates } from '../services/updateService';
 import RangeBar from './RangeBar';
 import WaveLoadingPlaceholder from './WaveLoadingPlaceholder';
 import { RATE_LIMIT_UI_MESSAGE } from '../constants/cryptoConstants';
@@ -728,12 +727,12 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   const updateHoverTooltipRef = useRef<HTMLDivElement>(null);
   const quitTooltipRef = useRef<HTMLDivElement>(null);
 
-  const tooltipRefs: Record<string, React.RefObject<HTMLDivElement>> = {
-      add: addTooltipRef,
-      manage: manageTooltipRef,
-      update: updateHoverTooltipRef,
-      quit: quitTooltipRef
-  };
+  const tooltipRefs = useMemo<Record<string, React.RefObject<HTMLDivElement>>>(() => ({
+    add: addTooltipRef,
+    manage: manageTooltipRef,
+    update: updateHoverTooltipRef,
+    quit: quitTooltipRef,
+  }), []);
 
   // Debounce timer ref
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -961,8 +960,9 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
   };
 
   const handleQuit = () => {
-    const { ipcRenderer } = window.require('electron');
-    ipcRenderer.send('quit-app');
+    if (typeof window.cryptovertx?.app?.quit === 'function') {
+      window.cryptovertx.app.quit();
+    }
   };
 
   const handleCheckUpdate = async () => {
@@ -971,10 +971,28 @@ const Header: React.FC<HeaderProps> = ({ selectedCrypto, selectedFiat }) => {
     console.log('🔄 [Animation State] Click: Update Button -> Checking started');
     try {
       setIsCheckingUpdate(true);
-      const result = await checkForUpdates();
+      if (typeof window.cryptovertx?.updates?.check !== 'function') {
+        throw new Error('Update system is not available');
+      }
+
+      const result = await window.cryptovertx.updates.check();
+      if (result?.error) {
+        throw new Error(result.error);
+      }
       
       if (result.hasUpdate) {
-        setUpdateInfo(result);
+        if (!result.downloadKey) {
+          throw new Error('Update available but no download key was provided');
+        }
+
+        const downloadUrl = `https://cryptovertx.com/api/download?key=${encodeURIComponent(result.downloadKey)}`;
+        setUpdateInfo({
+          currentVersion: result.currentVersion,
+          latestVersion: result.latestVersion,
+          downloadUrl,
+          fileName: result.fileName || result.downloadKey.split('/').pop() || '',
+          fileSize: result.fileSize || 0,
+        });
         setIsUpdateDialogOpen(true);
         console.log('🔄 [Animation State] Checking Finished: Update found');
       } else {

@@ -1,8 +1,11 @@
-import { ipcRenderer } from 'electron';
+/**
+ * Instance handler for CryptoVertX
+ * Handles window focus/blur events and instance dialog display
+ */
 
 export function initInstanceHandler() {
   // Handle dev mode port conflicts
-  if (process.env.NODE_ENV === 'development') {
+  if (import.meta.env.DEV) {
     console.log('Checking for dev server port conflicts...');
     const checkPort = setInterval(() => {
       fetch('http://localhost:5173')
@@ -18,24 +21,16 @@ export function initInstanceHandler() {
     }, 1000);
   }
 
-  // Handle instance dialog display
-  ipcRenderer.on('show-instance-dialog', () => {
-    console.log('Showing instance dialog...');
-    window.location.hash = '/instance-dialog';
-  });
+  // Subscribe to window focus/blur events via preload API
+  if (typeof window.cryptovertx?.events?.onWindowFocused === 'function') {
+    window.cryptovertx.events.onWindowFocused(() => {
+      document.body.classList.remove('window-blur');
+    });
+  }
 
-  // Handle restart requests
-  ipcRenderer.on('request-hard-restart', () => {
-    console.log('Handling restart request...');
-    ipcRenderer.send('restart-request');
-  });
-
-  // Handle window focus events
-  ipcRenderer.on('window-focused', () => {
-    document.body.classList.remove('window-blur');
-  });
-
-  ipcRenderer.on('window-blurred', () => {
-    document.body.classList.add('window-blur');
-  });
+  if (typeof window.cryptovertx?.events?.onWindowBlurred === 'function') {
+    window.cryptovertx.events.onWindowBlurred(() => {
+      document.body.classList.add('window-blur');
+    });
+  }
 }

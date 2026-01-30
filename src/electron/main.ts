@@ -281,20 +281,7 @@ app.on('second-instance', () => {
   createDialogWindow();
 });
 
-// Handle IPC events for instance management
-ipcMain.on('restart-request', () => {
-  cleanupAndExit(true);
-});
-
-ipcMain.on('instance-dialog-restart', () => {
-  cleanupAndExit(true);
-});
-
-// Handle quit request from renderer
-ipcMain.on('quit-app', () => {
-  isQuitting = true;
-  cleanupAndExit(false);
-});
+// Legacy IPC events (restart/quit) were removed; renderer uses preload API.
 
 // Handle app relaunch event
 app.on('activate', () => {
@@ -329,8 +316,10 @@ function createDialogWindow() {
     transparent: false,
     backgroundColor: '#121212',
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
     x: Math.round(workArea.x + (workArea.width - 450) / 2),
     y: Math.round(workArea.y + (workArea.height - 250) / 2),
@@ -350,16 +339,23 @@ function createDialogWindow() {
 
   if (!VITE_DEV_SERVER_URL) {
     dialogWindow.webContents.on('did-finish-load', () => {
-      dialogWindow?.webContents.send('navigate-to', '/instance-dialog');
+      dialogWindow?.webContents.send('cryptovertx:nav:navigate', { path: '/instance-dialog' });
     });
   }
 
-  // Robust fallback if initial load fails (e.g., incorrect URL hashing)
-  dialogWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-    console.error(`[INSTANCE_DIALOG] Failed to load URL: ${validatedURL} code=${errorCode} desc=${errorDescription}`);
+  // Robust fallback if initial load fails (main-frame only; ignore aborted subframe loads)
+  dialogWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    // -3 is ERR_ABORTED (common during rapid navigations / widget subframes)
+    if (!isMainFrame || errorCode === -3) return;
+
+    console.error(`[INSTANCE_DIALOG] Main-frame failed to load URL: ${validatedURL} code=${errorCode} desc=${errorDescription}`);
+
+    // In dev, prefer keeping the dev server URL; don't fall back to potentially stale dist.
+    if (VITE_DEV_SERVER_URL) return;
+
     const indexPath = path.join(DIST_PATH, 'index.html');
-    dialogWindow?.loadFile(indexPath).then(() => {
-      dialogWindow?.webContents.send('navigate-to', '/instance-dialog');
+    void dialogWindow?.loadFile(indexPath).then(() => {
+      dialogWindow?.webContents.send('cryptovertx:nav:navigate', { path: '/instance-dialog' });
     }).catch((e) => {
       console.error('[INSTANCE_DIALOG] Fallback loadFile failed:', e);
     });
@@ -389,12 +385,12 @@ app.whenReady().then(() => {
     if (mainWindow.isVisible()) {
       mainWindow.hide();
       // Send blur event when hidden by hotkey
-      mainWindow.webContents.send('window-blurred');
+      mainWindow.webContents.send('cryptovertx:window:blurred');
     } else {
       mainWindow.show();
       mainWindow.focus();
       // Send focus event immediately on show
-      mainWindow.webContents.send('window-focused');
+      mainWindow.webContents.send('cryptovertx:window:focused');
     }
   };
 
@@ -434,25 +430,15 @@ try {
 // Ensure environment variables are available
 const ENV_VARS = {
   NODE_ENV: process.env.NODE_ENV || 'production',
-  CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || 'a29e1fcdd07785579dd54acb5378348a',
-  R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || '7f4477e05cdf9d71385da15bad012fb9',
-  R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '4f43905f8d806110e6f3a548f294b71ae86b2cadb7218532d3113c960ddce1b7',
-  R2_ENDPOINT: process.env.R2_ENDPOINT || 'https://a29e1fcdd07785579dd54acb5378348a.r2.cloudflarestorage.com',
-  R2_PUBLIC_URL: process.env.R2_PUBLIC_URL || 'https://pub-a29e1fcdd07785579dd54acb5378348a.r2.dev',
-  R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || 'cryptoconverter-downloads',
   APP_VERSION: appVersion || app.getVersion() || process.env.npm_package_version || '',
   API_BASE_URL: process.env.API_BASE_URL || 'https://cryptovertx.com/api'
 };
 
 // Log environment variables for debugging (excluding secrets)
 console.log('Main process environment variables loaded:', {
-  CLOUDFLARE_ACCOUNT_ID: ENV_VARS.CLOUDFLARE_ACCOUNT_ID ? 'Set' : 'Not Set',
-  R2_ACCESS_KEY_ID: ENV_VARS.R2_ACCESS_KEY_ID ? 'Set' : 'Not Set',
-  R2_SECRET_ACCESS_KEY: ENV_VARS.R2_SECRET_ACCESS_KEY ? 'Set' : 'Not Set',
-  R2_ENDPOINT: ENV_VARS.R2_ENDPOINT,
-  R2_PUBLIC_URL: ENV_VARS.R2_PUBLIC_URL,
-  R2_BUCKET_NAME: ENV_VARS.R2_BUCKET_NAME,
-  API_BASE_URL: ENV_VARS.API_BASE_URL
+  NODE_ENV: ENV_VARS.NODE_ENV,
+  APP_VERSION: ENV_VARS.APP_VERSION,
+  API_BASE_URL: ENV_VARS.API_BASE_URL,
 });
 
 function createWindow() {
@@ -465,10 +451,12 @@ function createWindow() {
     transparent: false,
     show: false,
     webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
       webSecurity: true,
       backgroundThrottling: false,
+      preload: path.join(__dirname, 'preload.js'),
     },
     x: Math.round(workArea.x + (workArea.width - 400) / 2),
     y: Math.round(workArea.y + (workArea.height - 300) / 2),
@@ -492,51 +480,20 @@ function createWindow() {
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);
 
-    // In development, set environment variables after page load
+    // In development, check update flag after page load
     mainWindow.webContents.on('did-finish-load', () => {
-      if (mainWindow) {
-        // Inject both the environment variables and a global app version
-        mainWindow.webContents.executeJavaScript(`
-          window.electron = window.electron || {};
-          window.electron.env = ${JSON.stringify(ENV_VARS)};
-          
-          // Add app version as a global variable too
-          window.__APP_VERSION__ = "${ENV_VARS.APP_VERSION}";
-          
-          // Add package.json version as another source
-          window.__PACKAGE_JSON_VERSION__ = "${appVersion || ENV_VARS.APP_VERSION}";
-          
-          // Set document title to include version
-          document.title = "CryptoVertX v${ENV_VARS.APP_VERSION}";
-          
-          console.log('Development mode: App version set to:', window.__APP_VERSION__);
-          console.log('Package.json version:', window.__PACKAGE_JSON_VERSION__);
-          console.log('R2 environment variables loaded (dev mode):', {
-            hasCloudflareId: !!window.electron.env.CLOUDFLARE_ACCOUNT_ID,
-            hasAccessKeyId: !!window.electron.env.R2_ACCESS_KEY_ID,
-            hasSecretKey: !!window.electron.env.R2_SECRET_ACCESS_KEY,
-            endpoint: window.electron.env.R2_ENDPOINT || "(using default)",
-            publicUrl: window.electron.env.R2_PUBLIC_URL || "(using default)",
-            bucketName: window.electron.env.R2_BUCKET_NAME || "(using default)",
-            apiBaseUrl: window.electron.env.API_BASE_URL || "(using default)"
-          });
-        `).then(() => {
-          console.log('Environment variables set in development mode');
-        }).catch(err => {
-          console.error('Error setting environment variables in development:', err);
-        });
+      if (!mainWindow) return;
 
-        // Check for update flag
-        try {
-          const updateFlagPath = path.join(app.getPath('userData'), 'update.flag');
-          if (fs.existsSync(updateFlagPath)) {
-            mainWindow.webContents.send('update-successful');
-            fs.unlinkSync(updateFlagPath);
-            console.log('Update successful flag found and processed.');
-          }
-        } catch (error) {
-          console.error('Error handling update flag:', error);
+      // Check for update flag
+      try {
+        const updateFlagPath = path.join(app.getPath('userData'), 'update.flag');
+        if (fs.existsSync(updateFlagPath)) {
+          mainWindow.webContents.send('cryptovertx:updates:successful');
+          fs.unlinkSync(updateFlagPath);
+          console.log('Update successful flag found and processed.');
         }
+      } catch (error) {
+        console.error('Error handling update flag:', error);
       }
     });
   } else {
@@ -544,56 +501,21 @@ function createWindow() {
     mainWindow.loadFile(indexPath);
 
     mainWindow.webContents.on('did-finish-load', () => {
-      // Pass environment variables to renderer process
-      if (mainWindow) {
-        // In production, use multiple approaches to set the version
-        mainWindow.webContents.executeJavaScript(`
-          // Set up electron environment
-          window.electron = window.electron || {};
-          window.electron.env = ${JSON.stringify(ENV_VARS)};
-          
-          // Add app version directly to window as a backup method
-          window.__APP_VERSION__ = "${ENV_VARS.APP_VERSION}";
-          
-          // Add package.json version as another source
-          window.__PACKAGE_JSON_VERSION__ = "${appVersion || ENV_VARS.APP_VERSION}";
-          
-          // Set document title to include version
-          document.title = "CryptoVertX v${ENV_VARS.APP_VERSION}";
-          
-          // Log what we're using
-          console.log('Production mode: App version set to:', window.__APP_VERSION__);
-          console.log('Package.json version:', window.__PACKAGE_JSON_VERSION__);
-          console.log('R2 environment variables loaded (production):', {
-            hasCloudflareId: !!window.electron.env.CLOUDFLARE_ACCOUNT_ID,
-            hasAccessKeyId: !!window.electron.env.R2_ACCESS_KEY_ID,
-            hasSecretKey: !!window.electron.env.R2_SECRET_ACCESS_KEY,
-            endpoint: window.electron.env.R2_ENDPOINT || "(using default)",
-            publicUrl: window.electron.env.R2_PUBLIC_URL || "(using default)",
-            bucketName: window.electron.env.R2_BUCKET_NAME || "(using default)",
-            apiBaseUrl: window.electron.env.API_BASE_URL || "(using default)"
-          });
-        `).then(() => {
-          // Navigate to home page after setting environment variables
-          mainWindow?.webContents.send('navigate-to', '/');
-          console.log('Environment variables set and navigation triggered');
-        }).catch(err => {
-          console.error('Error setting environment variables:', err);
-          // Still try to navigate even if setting env vars fails
-          mainWindow?.webContents.send('navigate-to', '/');
-        });
+      if (!mainWindow) return;
 
-        // Check for update flag
-        try {
-          const updateFlagPath = path.join(app.getPath('userData'), 'update.flag');
-          if (fs.existsSync(updateFlagPath)) {
-            mainWindow.webContents.send('update-successful');
-            fs.unlinkSync(updateFlagPath);
-            console.log('Update successful flag found and processed.');
-          }
-        } catch (error) {
-          console.error('Error handling update flag:', error);
+      // Ensure renderer is on the expected initial route
+      mainWindow.webContents.send('cryptovertx:nav:navigate', { path: '/' });
+
+      // Check for update flag
+      try {
+        const updateFlagPath = path.join(app.getPath('userData'), 'update.flag');
+        if (fs.existsSync(updateFlagPath)) {
+          mainWindow.webContents.send('cryptovertx:updates:successful');
+          fs.unlinkSync(updateFlagPath);
+          console.log('Update successful flag found and processed.');
         }
+      } catch (error) {
+        console.error('Error handling update flag:', error);
       }
     });
   }
@@ -614,17 +536,32 @@ function createWindow() {
   });
 
   mainWindow.on('focus', () => {
-    mainWindow?.webContents.send('window-focused');
+    mainWindow?.webContents.send('cryptovertx:window:focused');
   });
 
   mainWindow.on('blur', () => {
-    mainWindow?.webContents.send('window-blurred');
+    mainWindow?.webContents.send('cryptovertx:window:blurred');
   });
 
-  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
-    console.error('Failed to load:', errorCode, errorDescription);
+  // Important: did-fail-load fires for subframes too. Only recover for main-frame failures.
+  // Also ignore ERR_ABORTED (-3), which is expected during rapid navigations / widget loads.
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) return;
+
+    console.error('[MAIN_WINDOW] Main-frame failed to load:', {
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isDev: Boolean(VITE_DEV_SERVER_URL),
+    });
+
+    // In dev, do not fall back to dist (can be stale / mismatched) - let user restart dev server.
+    if (VITE_DEV_SERVER_URL) return;
+
     const indexPath = path.join(DIST_PATH, 'index.html');
-    mainWindow?.loadFile(indexPath);
+    void mainWindow?.loadFile(indexPath).catch((e) => {
+      console.error('[MAIN_WINDOW] Fallback loadFile failed:', e);
+    });
   });
 
   // Intercept new window requests to customize them
@@ -656,34 +593,14 @@ function createWindow() {
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
+          sandbox: true,
+          webSecurity: true,
         },
         icon: getIconPath(),
       },
     };
   });
 
-  // Add IPC handler for window resizing
-  ipcMain.on('set-window-size', (_, { width, height, isFullScreen }) => {
-    if (!mainWindow) return;
-
-    const { workArea } = screen.getPrimaryDisplay();
-    const x = Math.round(workArea.x + (workArea.width - width) / 2);
-    const y = Math.round(workArea.y + (workArea.height - height) / 2);
-
-    mainWindow.setMinimumSize(400, 300);
-    mainWindow.setBounds({
-      x,
-      y,
-      width,
-      height
-    }, true);
-
-    // Update window properties based on isFullScreen while keeping the window non-resizable
-    mainWindow.setResizable(false);
-    mainWindow.setMaximizable(false);
-    mainWindow.setAlwaysOnTop(!isFullScreen);
-    mainWindow.setSkipTaskbar(!isFullScreen);
-  });
 }
 
 // App lifecycle events
@@ -711,64 +628,106 @@ app.on('activate', () => {
 
 // Set up IPC handlers
 function setupIpcHandlers() {
-  // Handle get-app-version request
-  ipcMain.handle('get-app-version', () => {
-    // Try multiple sources for the most accurate version
+  // ============================================================================
+  // NEW NAMESPACED IPC HANDLERS (cryptovertx:*)
+  // ============================================================================
+
+  // --- App lifecycle ---
+  ipcMain.on('cryptovertx:app:quit', () => {
+    isQuitting = true;
+    cleanupAndExit(false);
+  });
+
+  ipcMain.handle('cryptovertx:app:getVersion', () => {
     const packageVersion = app.getVersion();
     const envVersion = process.env.APP_VERSION;
-    // Prefer env version if set, otherwise use package.json version
-    return envVersion || packageVersion || 'unknown';
+    return envVersion || packageVersion || appVersion || 'unknown';
   });
 
-  // Handle get-env-vars request
-  ipcMain.handle('get-env-vars', () => {
-    // Get the most up-to-date version info
-    const currentAppVersion = appVersion || app.getVersion() || process.env.npm_package_version || '';
+  // --- Window management ---
+  ipcMain.on('cryptovertx:window:setSize', (_, payload) => {
+    if (!mainWindow) return;
+    const { width, height, isFullScreen } = payload;
 
-    // Create a safe object with only the environment variables we want to expose
-    const safeEnv = {
-      CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || '',
-      R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || '',
-      R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '',
-      R2_ENDPOINT: process.env.R2_ENDPOINT || '',
-      R2_PUBLIC_URL: process.env.R2_PUBLIC_URL || '',
-      R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || 'cryptoconverter-downloads',
-      APP_VERSION: currentAppVersion,
-      NODE_ENV: process.env.NODE_ENV || 'production'
-    };
+    const { workArea } = screen.getPrimaryDisplay();
+    const x = Math.round(workArea.x + (workArea.width - width) / 2);
+    const y = Math.round(workArea.y + (workArea.height - height) / 2);
 
-    console.log('Providing environment variables via IPC');
-    return safeEnv;
+    mainWindow.setMinimumSize(400, 300);
+    mainWindow.setBounds({ x, y, width, height }, true);
+    mainWindow.setResizable(false);
+    mainWindow.setMaximizable(false);
+    mainWindow.setAlwaysOnTop(!isFullScreen);
+    mainWindow.setSkipTaskbar(!isFullScreen);
   });
 
-  // Handle quit-app request
-  ipcMain.on('quit-app', () => {
-    app.quit();
+  // --- Link handling ---
+  ipcMain.on('cryptovertx:links:openInApp', (_event, payload) => {
+    const { url } = payload;
+    if (!url || typeof url !== 'string') return;
+    
+    // Check if this is a CoinGecko URL (use singleton pattern)
+    const isCoinGeckoUrl = url.includes('coingecko.com');
+
+    if (isCoinGeckoUrl) {
+      if (coingeckoWindow && !coingeckoWindow.isDestroyed()) {
+        const normalizeUrl = (inputUrl: string): string => {
+          try {
+            const parsed = new URL(inputUrl);
+            return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/$/, '')}`;
+          } catch (e) {
+            return inputUrl;
+          }
+        };
+
+        const currentURL = coingeckoWindow.webContents.getURL();
+        const normalizedCurrentURL = normalizeUrl(currentURL);
+        const normalizedRequestedURL = normalizeUrl(url);
+
+        if (normalizedCurrentURL !== normalizedRequestedURL) {
+          coingeckoWindow.loadURL(url);
+        }
+
+        if (coingeckoWindow.isMinimized()) {
+          coingeckoWindow.restore();
+        }
+        coingeckoWindow.focus();
+      } else {
+        const newWindow = createInternalBrowserWindow(url);
+        if (newWindow) {
+          coingeckoWindow = newWindow;
+        }
+      }
+    } else {
+      createInternalBrowserWindow(url);
+    }
   });
 
-  // Handle opening external links securely
-  ipcMain.handle('open-external-link', async (_event, url) => {
+  ipcMain.handle('cryptovertx:links:openExternal', async (_event, payload) => {
+    const { url } = payload;
+    if (!url || typeof url !== 'string') {
+      return { success: false, error: 'Invalid URL' };
+    }
     try {
       await shell.openExternal(url);
       return { success: true };
     } catch (error) {
-      console.error('Failed to open external link:', url, error);
-      const message = error instanceof Error ? error.message : 'Unknown error opening link';
+      const message = error instanceof Error ? error.message : 'Unknown error';
       return { success: false, error: message };
     }
   });
 
-  // Handle fetching news data from main process to avoid CSP issues
-  ipcMain.handle('fetch-news-data', async (_event, _clientSources) => {
+  // --- News fetching ---
+  ipcMain.handle('cryptovertx:news:fetchMarket', async (_event, _payload) => {
     try {
-      console.log('[MAIN_PROCESS] Fetching news data from expanded source network');
+      console.log('[MAIN_PROCESS] Fetching market news via new IPC channel');
 
-      // Use server-side defined sources instead of client-provided ones for security and consistency
       const sourcesToFetch = NEWS_SOURCES;
 
       const fetchPromises = sourcesToFetch.map(async (source) => {
         try {
-          console.log(`[MAIN_PROCESS] Fetching from ${source.name}: ${source.url}`);
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
           const response = await fetch(source.url, {
             method: 'GET',
@@ -776,7 +735,10 @@ function setupIpcHandlers() {
               'Accept': 'application/rss+xml, application/xml, text/xml',
               'User-Agent': 'CryptoVertX/1.0 (RSS Reader)'
             },
+            signal: controller.signal,
           });
+
+          clearTimeout(timeoutId);
 
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -802,13 +764,11 @@ function setupIpcHandlers() {
 
       const results = await Promise.allSettled(fetchPromises);
 
-      // Aggregate all articles
-      let allArticles: EnrichedArticle[] = [];
+      const allArticles: EnrichedArticle[] = [];
 
       for (const result of results) {
         if (result.status === 'fulfilled' && result.value.success && Array.isArray(result.value.data)) {
           const enrichedBatch = result.value.data
-            // Apply noise filter first
             .filter((item: any) => !isNoiseArticle(item.title || '', item.summary || ''))
             .map((item: any) => {
               const sentimentResult = analyzeSentiment(item.title + ' ' + item.summary);
@@ -834,73 +794,40 @@ function setupIpcHandlers() {
         }
       }
 
-      // Deduplication Logic (Enhanced with lower threshold + summary check)
+      // Deduplicate
       const uniqueArticles: EnrichedArticle[] = [];
-
-      // Sort by date first (newest first) to prioritize recent news as "primary"
       allArticles.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 
       for (const article of allArticles) {
         let isDuplicate = false;
-
-        // Check against already accepted unique articles
         for (const uniqueArticle of uniqueArticles) {
-          // 1. Check URL exact match
           if (article.url === uniqueArticle.url) {
             isDuplicate = true;
             break;
           }
-
-          // 2. Check Title Similarity (lowered threshold to 0.45 for more aggressive dedup)
           const titleSimilarity = stringSimilarity.compareTwoStrings(article.title, uniqueArticle.title);
-
-          // High similarity - definitely a duplicate
           if (titleSimilarity > 0.45) {
             isDuplicate = true;
-            // Add this source to the "related sources" of the primary article
             if (!uniqueArticle.relatedSources.includes(article.source) && article.source !== uniqueArticle.source) {
               uniqueArticle.relatedSources.push(article.source);
             }
             break;
           }
-
-          // Medium similarity (0.3-0.45) - check summary for confirmation
-          if (titleSimilarity > 0.3 && article.summary && uniqueArticle.summary) {
-            const summarySimilarity = stringSimilarity.compareTwoStrings(article.summary, uniqueArticle.summary);
-            if (summarySimilarity > 0.6) {
-              isDuplicate = true;
-              if (!uniqueArticle.relatedSources.includes(article.source) && article.source !== uniqueArticle.source) {
-                uniqueArticle.relatedSources.push(article.source);
-              }
-              break;
-            }
-          }
         }
-
         if (!isDuplicate) {
           uniqueArticles.push(article);
         }
       }
 
-      console.log(`[MAIN_PROCESS] Fetched ${allArticles.length} total articles, deduplicated to ${uniqueArticles.length}`);
-
-      // Wrap in the expected result format for the renderer
-      // We return a single "success" result containing all aggregated data
-      // The renderer expects an array of results, so we'll wrap our aggregated list in a single success object
-      // OR we can modify the renderer to handle a flat list. 
-      // To maintain backward compatibility with the renderer's loop:
-      // response.results.forEach((result: any) => { ... })
-      // We will return a single "synthetic" result object containing all our processed data.
-
       return {
         success: true,
+        data: uniqueArticles,
         results: [{
           success: true,
           source: 'Aggregated News Engine',
           data: uniqueArticles
         }]
       };
-
     } catch (error) {
       console.error('[MAIN_PROCESS] Critical error during news fetch:', error);
       return {
@@ -910,31 +837,34 @@ function setupIpcHandlers() {
     }
   });
 
-  // Fetch fundraising-focused news with chain tagging and tokenless detection
-  ipcMain.handle('fetch-fundraising-news', async (_event, payload: { chains?: string[] }) => {
-    const selectedChains: string[] = Array.isArray(payload?.chains) ? payload!.chains : [];
-    console.log('[FUNDRAISING] Start fetch. Selected chains:', selectedChains);
+  ipcMain.handle('cryptovertx:news:fetchFundraising', async (_event, payload) => {
+    const selectedChains: string[] = Array.isArray(payload?.filters?.chains) ? payload.filters.chains : [];
+    console.log('[FUNDRAISING] Start fetch via new IPC. Selected chains:', selectedChains);
 
     try {
       const fetches = FUNDRAISING_SOURCES.map(async (source) => {
         try {
-          console.log(`[FUNDRAISING] Fetching ${source.type || 'rss'} from ${source.name}: ${source.url}`);
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
           const response = await fetch(source.url, {
             method: 'GET',
             headers: {
               'Accept': 'application/rss+xml, application/xml, text/xml',
               'User-Agent': 'CryptoVertX/1.0 (Fundraising Aggregator)'
             },
+            signal: controller.signal,
           });
+
+          clearTimeout(timeoutId);
+
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
           const xmlText = await response.text();
           const items = await parseRSSWithFeedparser(xmlText, source.name);
-          console.log(`[FUNDRAISING] Parsed ${items.length} items from ${source.name}`);
           return { ok: true as const, source: source.name, items };
         } catch (err) {
-          console.warn(`[FUNDRAISING] Source failed ${source.name}:`, err);
           return { ok: false as const, source: source.name, error: err instanceof Error ? err.message : 'Unknown error' };
         }
       });
@@ -942,31 +872,20 @@ function setupIpcHandlers() {
       const settled = await Promise.allSettled(fetches);
       const results = settled.map((r) => (r.status === 'fulfilled' ? r.value : { ok: false, source: 'unknown', error: 'rejected' }));
 
-      // Flatten items, apply fundraising filter, chain tagging, and selection filter
       const allArticles = results
         .filter((r: any) => r.ok && Array.isArray(r.items))
         .flatMap((r: any) => r.items.map((item: any) => ({ ...item, _source: r.source })));
-
-      console.log(`[FUNDRAISING] Total raw items: ${allArticles.length}`);
 
       const filtered = allArticles
         .map((article: any) => enhanceFundraisingArticle(article))
         .filter((a) => a !== null) as any[];
 
-      console.log(`[FUNDRAISING] After fundraising keyword filter: ${filtered.length}`);
-
       const filteredByChain = selectedChains.length
         ? filtered.filter((a) => (a.chains || []).some((c: string) => selectedChains.includes(c)))
         : filtered;
 
-      console.log(`[FUNDRAISING] After chain selection filter: ${filteredByChain.length}`);
-
-      // Sort newest first
       filteredByChain.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-
-      // Cap to 60 to keep UI snappy
       const limited = filteredByChain.slice(0, 60);
-      console.log(`[FUNDRAISING] Returning ${limited.length} articles`);
 
       return { success: true, data: limited };
     } catch (error) {
@@ -974,6 +893,8 @@ function setupIpcHandlers() {
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
+
+
 
   function isLikelyFundraisingText(text: string): boolean {
     const t = text.toLowerCase();
@@ -1101,6 +1022,19 @@ function setupIpcHandlers() {
   }
 
   // Intelligent lede extraction function
+  function normalizeHtmlField(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (value == null) return '';
+    try {
+      // Buffers and other objects should not crash the parser; fall back to string.
+      const v: any = value;
+      if (typeof v?.toString === 'function') return String(v.toString());
+    } catch {
+      // ignore
+    }
+    return '';
+  }
+
   function extractFullLede(item: any): string {
     // Priority order for extracting the lede/summary:
     // 1. description (usually the article summary/lede)
@@ -1109,23 +1043,35 @@ function setupIpcHandlers() {
     // 4. content (Atom feeds)
 
     if (item.description) {
-      console.log(`[LEDE_EXTRACTION] Using description field (${item.description.length} chars)`);
-      return extractLedeFromContent(item.description);
+      const description = normalizeHtmlField(item.description);
+      if (description) {
+        console.log(`[LEDE_EXTRACTION] Using description field (${description.length} chars)`);
+        return extractLedeFromContent(description);
+      }
     }
 
     if (item.summary) {
-      console.log(`[LEDE_EXTRACTION] Using summary field (${item.summary.length} chars)`);
-      return extractLedeFromContent(item.summary);
+      const summary = normalizeHtmlField(item.summary);
+      if (summary) {
+        console.log(`[LEDE_EXTRACTION] Using summary field (${summary.length} chars)`);
+        return extractLedeFromContent(summary);
+      }
     }
 
     if (item['content:encoded']) {
-      console.log(`[LEDE_EXTRACTION] Extracting lede from content:encoded`);
-      return extractLedeFromContent(item['content:encoded']);
+      const encoded = normalizeHtmlField(item['content:encoded']);
+      if (encoded) {
+        console.log('[LEDE_EXTRACTION] Extracting lede from content:encoded');
+        return extractLedeFromContent(encoded);
+      }
     }
 
     if (item.content) {
-      console.log(`[LEDE_EXTRACTION] Using content field (${item.content.length} chars)`);
-      return extractLedeFromContent(item.content);
+      const content = normalizeHtmlField(item.content);
+      if (content) {
+        console.log(`[LEDE_EXTRACTION] Using content field (${content.length} chars)`);
+        return extractLedeFromContent(content);
+      }
     }
 
     console.log(`[LEDE_EXTRACTION] No summary content found for item`);
@@ -1223,7 +1169,9 @@ function setupIpcHandlers() {
     }
 
     // 3. Extract from description or content using regex
-    const contentFields = [item.description, item['content:encoded'], item.content, item.summary].filter(Boolean);
+    const contentFields = [item.description, item['content:encoded'], item.content, item.summary]
+      .map(normalizeHtmlField)
+      .filter((v) => Boolean(v));
 
     for (const content of contentFields) {
       const imgMatch = content.match(/<img[^>]+src="([^"]+)"/i);
@@ -1234,7 +1182,8 @@ function setupIpcHandlers() {
 
     // 4. For CoinDesk specifically, check content:encoded for images
     if (sourceName.includes('CoinDesk') && item['content:encoded']) {
-      const contentMatch = item['content:encoded'].match(/<img[^>]+src="([^"]+)"/i);
+      const encoded = normalizeHtmlField(item['content:encoded']);
+      const contentMatch = encoded.match(/<img[^>]+src="([^"]+)"/i);
       if (contentMatch && isValidImageUrl(contentMatch[1])) {
         return contentMatch[1];
       }
@@ -1306,60 +1255,7 @@ function setupIpcHandlers() {
     }
   }
 
-  // Handle opening links INTERNALLY
-  ipcMain.on('open-link-in-app', (_event, url) => {
-    // Check if this is a CoinGecko URL (use singleton pattern)
-    const isCoinGeckoUrl = url.includes('coingecko.com');
-
-    if (isCoinGeckoUrl) {
-      // Use singleton pattern for CoinGecko URLs
-      if (coingeckoWindow && !coingeckoWindow.isDestroyed()) {
-        const normalizeUrl = (inputUrl: string): string => {
-          try {
-            const parsed = new URL(inputUrl);
-            // Rebuild without hash and search, remove trailing slash from pathname
-            return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/$/, '')}`;
-          } catch (e) {
-            console.warn('Failed to normalize URL:', inputUrl, e);
-            return inputUrl; // Return original if parsing fails
-          }
-        };
-
-        const currentURL = coingeckoWindow.webContents.getURL();
-        const normalizedCurrentURL = normalizeUrl(currentURL);
-        const normalizedRequestedURL = normalizeUrl(url);
-
-        console.log(`CoinGecko window open. Normalized Current: ${normalizedCurrentURL}, Normalized Req: ${normalizedRequestedURL}`);
-
-        // ONLY load URL if normalized URLs are different
-        if (normalizedCurrentURL !== normalizedRequestedURL) {
-          console.log('Loading new URL into existing CoinGecko window.');
-          coingeckoWindow.loadURL(url);
-        } else {
-          console.log('Requested URL is the same as current. Focusing window only.');
-          // DO NOTHING here except focus/restore below
-        }
-
-        // Always focus and restore if minimized
-        if (coingeckoWindow.isMinimized()) {
-          coingeckoWindow.restore();
-        }
-        coingeckoWindow.focus();
-
-      } else {
-        console.log('Creating new CoinGecko window.');
-        // Create a new window and store the reference ONLY if creation succeeds
-        const newWindow = createInternalBrowserWindow(url);
-        if (newWindow) { // Check if window creation succeeded
-          coingeckoWindow = newWindow;
-        }
-      }
-    } else {
-      // For non-CoinGecko URLs (like news articles), always create a new window
-      console.log('Creating new browser window for:', url);
-      createInternalBrowserWindow(url);
-    }
-  });
+  // (legacy open-link-in-app handler removed)
 }
 
 // Ensure external links use dark theme where supported (e.g., TradingView)
@@ -1401,7 +1297,7 @@ function createInternalBrowserWindow(url: string) {
     webPreferences: {
       nodeIntegration: false, // Disable Node.js integration for external content
       contextIsolation: true, // Enable context isolation (recommended)
-      sandbox: false, // Sandboxing can add complexity, disable for now unless needed
+      sandbox: true,
       webSecurity: true,
       plugins: false, // Disable plugins
       devTools: IS_DEV // Only enable DevTools in development
@@ -1438,39 +1334,3 @@ function createInternalBrowserWindow(url: string) {
 
   return newWindow;
 }
-
-// Initialize handlers and global event listeners
-setupIpcHandlers();
-
-// Global logging for window creation to diagnose unexpected window creation
-app.on('web-contents-created', (_event, contents) => {
-  console.log(`New web-contents created: ${contents.getType()}`);
-  if (contents.getType() === 'window') {
-    console.log(`New window web-contents created`);
-  }
-});
-
-app.on('browser-window-created', (_event, window) => {
-  const title = window.getTitle();
-  const url = window.webContents.getURL();
-  console.log(`New BrowserWindow created with title: "${title}"`);
-  console.log(`Window webContents URL: "${url}"`);
-
-  // Add stack trace to identify what's creating unexpected windows
-  if (!title && !url) {
-    console.error('UNEXPECTED EMPTY WINDOW CREATED! Stack trace:');
-    console.trace();
-  }
-
-  // Monitor this window's URL changes to catch 404s
-  window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-    console.error(`BrowserWindow failed to load URL: ${validatedURL}`);
-    console.error(`Error code: ${errorCode}, Description: ${errorDescription}`);
-    if (errorCode === -6) { // FILE_NOT_FOUND
-      console.error('This appears to be the 404 window! Closing it...');
-      if (!window.isDestroyed()) {
-        window.close();
-      }
-    }
-  });
-});

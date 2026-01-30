@@ -1,5 +1,4 @@
-import { getCachedData, setCachedData } from './crypto/cryptoCacheService';
-import { ipcRenderer } from 'electron';
+import { getCachedDataFresh, getCachedDataAllowStale, setCachedData } from './crypto/cryptoCacheService';
 
 export interface NewsArticle {
   title: string;
@@ -31,23 +30,19 @@ const CACHE_KEY = 'market-news';
 const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 const STALE_CACHE_MAX_AGE = 60 * 60 * 1000; // 1 hour (for fallback)
 
-// RSS sources are now defined in the main process for security and consistency
-// We pass an empty array or dummy to the IPC call as it ignores the argument now
-const RSS_SOURCES: any[] = [];
-
 class NewsService {
   async fetchNews(force: boolean = false): Promise<NewsFetchResult> {
     console.log('[NEWS_SERVICE] Starting news fetch', { force });
 
     // If not forced, try to serve from cache first
     if (!force) {
-      const cached = getCachedData<NewsArticle[]>(CACHE_KEY);
+      const cached = getCachedDataFresh<NewsArticle[]>(CACHE_KEY);
       if (cached) {
         console.log('[NEWS_SERVICE] Serving from cache');
         return {
           data: cached.data,
           fromCache: true,
-          cacheAge: Date.now() - cached.timestamp
+          cacheAge: cached.ageMs
         };
       }
     }
@@ -55,8 +50,13 @@ class NewsService {
     try {
       console.log('[NEWS_SERVICE] Fetching fresh news data');
 
-      // Use IPC to fetch news from main process
-      const response = await ipcRenderer.invoke('fetch-news-data', RSS_SOURCES);
+      // Use preload API to fetch news from main process
+      if (typeof window.cryptovertx?.news?.fetchMarket !== 'function') {
+        console.warn('[NEWS_SERVICE] Preload API not available');
+        return await this.handleApiFailure();
+      }
+
+      const response = await window.cryptovertx.news.fetchMarket(force);
 
       if (response && response.success) {
         const allArticles: NewsArticle[] = [];
@@ -134,26 +134,18 @@ class NewsService {
 
   private async handleApiFailure(): Promise<NewsFetchResult> {
     // Try to get stale cache data (up to 1 hour old)
-    const staleCacheKey = `cryptovertx-cache-${CACHE_KEY}`;
-    try {
-      const itemStr = localStorage.getItem(staleCacheKey);
-      if (itemStr) {
-        const cacheEntry = JSON.parse(itemStr);
-        const cacheAge = Date.now() - cacheEntry.timestamp;
+    const cached = getCachedDataAllowStale<NewsArticle[]>(CACHE_KEY);
+    if (cached && cached.ageMs <= STALE_CACHE_MAX_AGE) {
+      console.log(`[NEWS_STALE_CACHE] Using stale cache data (${Math.round(cached.ageMs / 1000)}s old) as fallback`);
+      return {
+        data: cached.data,
+        fromCache: true,
+        cacheAge: cached.ageMs,
+      };
+    }
 
-        if (cacheAge <= STALE_CACHE_MAX_AGE) {
-          console.log(`[NEWS_STALE_CACHE] Using stale cache data (${Math.round(cacheAge / 1000)}s old) as fallback`);
-          return {
-            data: cacheEntry.data,
-            fromCache: true,
-            cacheAge
-          };
-        } else {
-          console.warn(`[NEWS_STALE_CACHE_TOO_OLD] Stale cache is too old (${Math.round(cacheAge / 1000)}s), not using`);
-        }
-      }
-    } catch (cacheError) {
-      console.error('[NEWS_STALE_CACHE_ERROR] Error reading stale cache:', cacheError);
+    if (cached) {
+      console.warn(`[NEWS_STALE_CACHE_TOO_OLD] Stale cache is too old (${Math.round(cached.ageMs / 1000)}s), not using`);
     }
 
     // If no stale cache available, return empty array

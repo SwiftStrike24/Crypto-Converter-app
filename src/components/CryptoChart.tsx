@@ -621,7 +621,7 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency, time
       setError(error instanceof Error ? error.message : 'Failed to update chart data');
       setChartLoaded(false);
     }
-  }, [timeframe]);
+  }, [cryptoId, timeframe]);
 
   const fetchPriceHistory = useCallback(async (selectedTimeframe: Timeframe) => {
     console.log('🔍 Fetching price history:', { selectedTimeframe, cryptoId, currency });
@@ -672,7 +672,7 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency, time
         cleanup();
       }
     };
-  }, [initChart]);
+  }, [initChart, timeframe]);
 
   useEffect(() => {
     console.log('📊 Data fetch effect triggered');
@@ -700,7 +700,7 @@ const CryptoChart: React.FC<CryptoChartProps> = memo(({ cryptoId, currency, time
       }
       clearInterval(interval);
     };
-  }, [timeframe, fetchPriceHistory]);
+  }, [retryCount, timeframe, fetchPriceHistory]);
 
   useEffect(() => {
     if (seriesRef.current) {

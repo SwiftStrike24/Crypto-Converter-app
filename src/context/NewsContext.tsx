@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, ReactNode } from 'react';
 import { newsService, NewsArticle, NewsFetchResult } from '../services/newsService';
 import { fundraisingService, FundraisingArticle, FundraisingFetchResult } from '../services/fundraisingService';
 
@@ -53,6 +53,8 @@ export const NewsProvider: React.FC<NewsProviderProps> = ({ children }) => {
 
   // General initialization state
   const [isInitializing, setIsInitializing] = useState(true);
+
+  const initPromiseRef = useRef<Promise<void> | null>(null);
 
   // Fetch market news
   const fetchMarketNews = useCallback(async (force: boolean = false): Promise<void> => {
@@ -127,49 +129,59 @@ export const NewsProvider: React.FC<NewsProviderProps> = ({ children }) => {
     console.log('[NEWS_CONTEXT] All news refreshed');
   }, [fetchMarketNews, fetchFundraisingNews]);
 
-  // Initialize data on mount
-  useEffect(() => {
-    const initializeNews = async () => {
-      console.log('[NEWS_CONTEXT] Initializing news data in background...');
+  const initializeNews = useCallback((reason: 'initial' | 'interval'): Promise<void> => {
+    if (reason === 'interval') {
+      if (document.visibilityState !== 'visible') return Promise.resolve();
+      if (!navigator.onLine) return Promise.resolve();
+    }
 
-      try {
-        // Start both fetches in parallel
-        const [marketResult, fundraisingResult] = await Promise.allSettled([
-          fetchMarketNews(false),
-          fetchFundraisingNews(false)
-        ]);
+    if (initPromiseRef.current) return initPromiseRef.current;
 
-        // Log results
-        if (marketResult.status === 'fulfilled') {
-          console.log('[NEWS_CONTEXT] Market news initialized successfully');
-        } else {
-          console.warn('[NEWS_CONTEXT] Market news initialization failed:', marketResult.reason);
-        }
+    console.log('[NEWS_CONTEXT] Initializing news data in background...', { reason });
 
-        if (fundraisingResult.status === 'fulfilled') {
-          console.log('[NEWS_CONTEXT] Fundraising news initialized successfully');
-        } else {
-          console.warn('[NEWS_CONTEXT] Fundraising news initialization failed:', fundraisingResult.reason);
-        }
+    const promise = (async () => {
+      const [marketResult, fundraisingResult] = await Promise.allSettled([
+        fetchMarketNews(false),
+        fetchFundraisingNews(false),
+      ]);
 
-      } catch (error) {
+      if (marketResult.status === 'fulfilled') {
+        console.log('[NEWS_CONTEXT] Market news initialized successfully');
+      } else {
+        console.warn('[NEWS_CONTEXT] Market news initialization failed:', marketResult.reason);
+      }
+
+      if (fundraisingResult.status === 'fulfilled') {
+        console.log('[NEWS_CONTEXT] Fundraising news initialized successfully');
+      } else {
+        console.warn('[NEWS_CONTEXT] Fundraising news initialization failed:', fundraisingResult.reason);
+      }
+    })()
+      .catch((error) => {
         console.error('[NEWS_CONTEXT] Critical error during initialization:', error);
-      } finally {
+      })
+      .finally(() => {
+        initPromiseRef.current = null;
         setIsInitializing(false);
         console.log('[NEWS_CONTEXT] News initialization complete');
-      }
-    };
+      });
 
-    initializeNews();
+    initPromiseRef.current = promise;
+    return promise;
+  }, [fetchFundraisingNews, fetchMarketNews]);
 
-    // Set up periodic refresh every 10 minutes
-    const interval = setInterval(() => {
-      console.log('[NEWS_CONTEXT] Periodic news refresh...');
-      initializeNews();
+  // Initialize data on mount
+  useEffect(() => {
+    void initializeNews('initial');
+
+    const interval = window.setInterval(() => {
+      void initializeNews('interval');
     }, 10 * 60 * 1000);
 
-    return () => clearInterval(interval);
-  }, [fetchMarketNews, fetchFundraisingNews]);
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [initializeNews]);
 
   const contextValue: NewsContextState = {
     // Market news

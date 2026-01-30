@@ -1,115 +1,270 @@
-import { ipcMain, app, shell, BrowserWindow, Notification } from 'electron';
-import { join } from 'path';
-import { createWriteStream, unlink, writeFileSync, existsSync } from 'fs';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { basename, join } from 'path';
+import { createWriteStream, existsSync, unlink, writeFileSync } from 'fs';
+import { stat } from 'fs/promises';
 import { pipeline } from 'stream/promises';
 import axios from 'axios';
-import { stat } from 'fs/promises';
 
-/**
- * Initialize update handlers for the main process
- * @param mainWindow The main BrowserWindow instance
- */
+// Update API configuration
+const UPDATE_API_BASE_URL =
+  process.env.NODE_ENV === 'development' && process.env.API_BASE_URL
+    ? process.env.API_BASE_URL
+    : 'https://cryptovertx.com/api';
+
+// Validation patterns for secure updates
+const DOWNLOAD_KEY_PATTERNS = [
+  /^latest\/CryptoVertX-MSI-Installer-v\d+\.\d+\.\d+\.msi$/,
+  /^latest\/CryptoVertX-Setup-v\d+\.\d+\.\d+\.exe$/,
+];
+const INSTALLER_FILENAME_PATTERNS = [
+  /^CryptoVertX-MSI-Installer-v\d+\.\d+\.\d+\.msi$/,
+  /^CryptoVertX-Setup-v\d+\.\d+\.\d+\.exe$/,
+];
+
+function validateDownloadKey(downloadKey: string): { valid: boolean; error?: string } {
+  if (!downloadKey || typeof downloadKey !== 'string') {
+    return { valid: false, error: 'Download key is required' };
+  }
+
+  if (!downloadKey.startsWith('latest/')) {
+    return { valid: false, error: 'Invalid download key prefix' };
+  }
+
+  if (downloadKey.includes('..') || downloadKey.includes('\\')) {
+    return { valid: false, error: 'Invalid characters in download key' };
+  }
+
+  for (let i = 0; i < downloadKey.length; i++) {
+    const code = downloadKey.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) {
+      return { valid: false, error: 'Control characters not allowed in download key' };
+    }
+  }
+
+  if (!DOWNLOAD_KEY_PATTERNS.some((pattern) => pattern.test(downloadKey))) {
+    return { valid: false, error: 'Download key does not match expected format' };
+  }
+
+  return { valid: true };
+}
+
+function validateInstallerPath(filePath: string): { valid: boolean; error?: string } {
+  if (!filePath || typeof filePath !== 'string') {
+    return { valid: false, error: 'File path is required' };
+  }
+
+  const tempDir = app.getPath('temp');
+  if (!filePath.startsWith(tempDir)) {
+    return { valid: false, error: 'Installer must be in temp directory' };
+  }
+
+  if (filePath.includes('..')) {
+    return { valid: false, error: 'Invalid path' };
+  }
+
+  const filename = basename(filePath);
+  if (!INSTALLER_FILENAME_PATTERNS.some((pattern) => pattern.test(filename)) && !filename.startsWith('CryptoVertX-Update-')) {
+    return { valid: false, error: 'Invalid installer filename' };
+  }
+
+  if (!filePath.endsWith('.msi') && !filePath.endsWith('.exe')) {
+    return { valid: false, error: 'Invalid installer file type' };
+  }
+
+  return { valid: true };
+}
+
+function extractVersionFromFilename(filename: string): string {
+  const vMatch = filename.match(/v(\d+\.\d+\.\d+)/i);
+  if (vMatch) return vMatch[1];
+  const setupMatch = filename.match(/(?:Setup|Mac)-(\d+\.\d+\.\d+)/i);
+  if (setupMatch) return setupMatch[1];
+  const genericMatch = filename.match(/(\d+\.\d+\.\d+)/);
+  if (genericMatch) return genericMatch[1];
+  return '';
+}
+
+function compareVersions(v1: string, v2: string): number {
+  if (!v1 || !v2) return 0;
+  try {
+    const v1Parts = v1.split('.').map(Number);
+    const v2Parts = v2.split('.').map(Number);
+    for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); i++) {
+      const a = v1Parts[i] || 0;
+      const b = v2Parts[i] || 0;
+      if (a > b) return 1;
+      if (a < b) return -1;
+    }
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+type UpdateFile = {
+  key: string;
+  filename: string;
+  sizeBytes: number;
+  version: string;
+};
+
+function normalizeLatestFilesResponse(data: any): UpdateFile[] {
+  const rawEntries: any[] =
+    Array.isArray(data)
+      ? data
+      : Array.isArray(data?.files)
+        ? data.files
+        : data && typeof data === 'object'
+          ? [data]
+          : [];
+
+  return rawEntries
+    .map((f) => {
+      const key = typeof f?.key === 'string' ? f.key : typeof f?.Key === 'string' ? f.Key : '';
+      const filename = typeof f?.filename === 'string' ? f.filename : key.split('/').pop() || '';
+      const sizeBytes =
+        typeof f?.sizeBytes === 'number'
+          ? f.sizeBytes
+          : typeof f?.size === 'number'
+            ? f.size
+            : typeof f?.Size === 'number'
+              ? f.Size
+              : 0;
+      const version = typeof f?.version === 'string' && f.version ? f.version : extractVersionFromFilename(filename || key);
+
+      return { key, filename, sizeBytes, version };
+    })
+    .filter((f) => !!f.key && validateDownloadKey(f.key).valid);
+}
+
 export function initUpdateHandlers(mainWindow: BrowserWindow) {
-  // Handle download update request
-  ipcMain.handle('download-update', async (_event, url: string, fileName?: string) => {
-    try {
-      console.log(`Starting download from: ${url}`);
-      try {
-        const u = new URL(url);
-        console.log(`[UPDATER] Download host: ${u.host}`);
-      } catch { }
+  // ==========================================================================
+  // SECURE NAMESPACED UPDATE HANDLERS (preload API)
+  // ==========================================================================
 
-      // Determine the file extension from the filename or default to .exe
-      let extension = '.exe'; // Default fallback
-      if (fileName) {
-        if (fileName.endsWith('.msi')) {
-          extension = '.msi';
-        } else if (fileName.endsWith('.exe')) {
-          extension = '.exe';
+  ipcMain.handle('cryptovertx:updates:check', async () => {
+    const currentVersion = app.getVersion() || '';
+    try {
+      const response = await axios.get(`${UPDATE_API_BASE_URL}/files`, {
+        timeout: 15000,
+        params: { prefix: 'latest/' },
+        headers: { Accept: 'application/json' },
+      });
+
+      const files = normalizeLatestFilesResponse((response as any).data);
+      if (files.length === 0) {
+        return { hasUpdate: false, currentVersion, latestVersion: currentVersion };
+      }
+
+      // Pick highest version among allowed installers
+      let best = files[0];
+      let bestVersion = best.version || extractVersionFromFilename(best.filename || best.key);
+      for (const file of files.slice(1)) {
+        const v = file.version || extractVersionFromFilename(file.filename || file.key);
+        if (compareVersions(v, bestVersion) > 0) {
+          best = file;
+          bestVersion = v;
         }
       }
 
-      // Create a temporary file path in the app's user data directory
-      const downloadPath = join(app.getPath('temp'), `CryptoVertX-Update-${Date.now()}${extension}`);
-      console.log(`Downloading to: ${downloadPath}`);
+      const latestVersion = bestVersion || currentVersion;
+      const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
 
-      // Configurable timeouts/retries
-      const CONNECT_TIMEOUT_MS = 30_000;           // initial connect timeout
-      // const RESPONSE_HEADER_TIMEOUT_MS = 60_000;   // header wait timeout (unused - axios doesn't have separate header timeout)
-      const OVERALL_REQUEST_TIMEOUT_MS = 10 * 60_000; // 10 minutes per request
-      const MAX_RETRIES = 3;
-      const RETRY_BACKOFF_MS = 2_000;
-      let expectedTotalBytes: number | null = null;
+      return {
+        hasUpdate,
+        currentVersion,
+        latestVersion,
+        downloadKey: hasUpdate ? best.key : undefined,
+        fileName: hasUpdate ? best.filename : undefined,
+        fileSize: hasUpdate ? best.sizeBytes : undefined,
+      };
+    } catch (error) {
+      return {
+        hasUpdate: false,
+        currentVersion,
+        latestVersion: '',
+        error: error instanceof Error ? error.message : 'Failed to check for updates',
+      };
+    }
+  });
 
-      // Internal helper to do a ranged request from an offset
-      const downloadWithRange = async (startOffset: number, totalSizeHint: number | null) => {
-        console.log(`Downloading with Range from offset=${startOffset}`);
+  ipcMain.handle('cryptovertx:updates:download', async (_event, payload: { downloadKey: string }) => {
+    const downloadKey = payload?.downloadKey;
+
+    const validation = validateDownloadKey(downloadKey);
+    if (!validation.valid) {
+      throw new Error(validation.error || 'Invalid download key');
+    }
+
+    const downloadUrl = `${UPDATE_API_BASE_URL}/download?key=${encodeURIComponent(downloadKey)}`;
+    const extension = downloadKey.endsWith('.msi') ? '.msi' : '.exe';
+    const downloadPath = join(app.getPath('temp'), `CryptoVertX-Update-${Date.now()}${extension}`);
+
+    const CONNECT_TIMEOUT_MS = 30_000;
+    const OVERALL_REQUEST_TIMEOUT_MS = 10 * 60_000;
+    const MAX_RETRIES = 3;
+    const RETRY_BACKOFF_MS = 2_000;
+    let expectedTotalBytes: number | null = null;
+
+    // Best-effort HEAD to get size
+    try {
+      const head = await axios({ url: downloadUrl, method: 'HEAD', timeout: CONNECT_TIMEOUT_MS });
+      const cl = (head.headers as any)?.['content-length'];
+      if (cl) expectedTotalBytes = parseInt(cl, 10);
+    } catch {
+      // ignore
+    }
+
+    let attempt = 0;
+    let downloadedBytes = 0;
+
+    while (attempt < MAX_RETRIES) {
+      try {
+        attempt++;
+
+        const resumeOffset = existsSync(downloadPath) ? (await stat(downloadPath)).size : 0;
+        const startAt = Math.max(resumeOffset, downloadedBytes);
         const headers: Record<string, string> = {};
-        if (startOffset > 0) {
-          headers['Range'] = `bytes=${startOffset}-`;
-        }
-        // MSI content-type helps some proxies
-        headers['Accept'] = 'application/octet-stream';
+        if (startAt > 0) headers['Range'] = `bytes=${startAt}-`;
 
         const response = await axios({
-          url,
+          url: downloadUrl,
           method: 'GET',
           responseType: 'stream',
           headers,
-          // axios doesn't have separate header timeout; keep overall generous
           timeout: OVERALL_REQUEST_TIMEOUT_MS,
-          transitional: { clarifyTimeoutError: true }
         });
 
-        // Detect content-length of this segment
-        const isPartial = response.status === 206;
-        const contentLengthHeader = response.headers['content-length'];
-        const contentRange = response.headers['content-range'];
-        const acceptRanges = response.headers['accept-ranges'];
-        const etagHeader = response.headers['etag'];
-        console.log(`[UPDATER] GET headers → Content-Length: ${contentLengthHeader || 'n/a'}, Accept-Ranges: ${acceptRanges || 'n/a'}, ETag: ${etagHeader || 'n/a'}, Status: ${response.status}`);
-        let segmentLength = contentLengthHeader ? parseInt(contentLengthHeader, 10) : 0;
-        let totalSize = totalSizeHint || 0;
+        const contentLengthHeader = (response.headers as any)?.['content-length'];
+        const contentRange = (response.headers as any)?.['content-range'];
         if (contentRange) {
-          // format: bytes start-end/total
           const match = /bytes\s+(\d+)-(\d+)\/(\d+)/i.exec(contentRange);
-          if (match) {
-            const end = parseInt(match[2], 10);
-            const total = parseInt(match[3], 10);
-            totalSize = total;
-            if (segmentLength === 0) segmentLength = end - startOffset + 1;
-          }
-        }
-        // If not partial and server provided Content-Length for full body, use it as expected total
-        if (!isPartial && !contentRange && contentLengthHeader) {
-          totalSize = parseInt(contentLengthHeader, 10);
-        }
-        if (totalSize > 0) {
-          expectedTotalBytes = totalSize;
+          if (match) expectedTotalBytes = parseInt(match[3], 10);
+        } else if (contentLengthHeader && !expectedTotalBytes) {
+          expectedTotalBytes = parseInt(contentLengthHeader, 10);
         }
 
-        // Progress bookkeeping
-        const writer = createWriteStream(downloadPath, { flags: startOffset > 0 ? 'a' : 'w' });
-        let downloadedSize = startOffset;
+        const writer = createWriteStream(downloadPath, { flags: startAt > 0 ? 'a' : 'w' });
+        downloadedBytes = startAt;
         let lastProgressEmit = Date.now();
         let bytesSinceLast = 0;
         let speed = 0;
 
         const sendProgress = () => {
           const total = expectedTotalBytes || 0;
-          const pct = expectedTotalBytes ? Math.min(99, Math.floor((downloadedSize / expectedTotalBytes) * 100)) : 0;
-          const eta = speed > 0 && total > downloadedSize ? Math.round((total - downloadedSize) / speed) : 0;
-          mainWindow.webContents.send('download-progress', {
+          const pct = expectedTotalBytes ? Math.min(99, Math.floor((downloadedBytes / expectedTotalBytes) * 100)) : 0;
+          const eta = speed > 0 && total > downloadedBytes ? Math.round((total - downloadedBytes) / speed) : 0;
+          mainWindow.webContents.send('cryptovertx:updates:downloadProgress', {
             progress: pct,
-            downloadedBytes: downloadedSize,
+            downloadedBytes,
             totalBytes: total,
             speed,
-            eta
+            eta,
           });
         };
 
-        response.data.on('data', (chunk: Buffer) => {
-          downloadedSize += chunk.length;
+        (response.data as any).on('data', (chunk: Buffer) => {
+          downloadedBytes += chunk.length;
           bytesSinceLast += chunk.length;
           const now = Date.now();
           const dt = (now - lastProgressEmit) / 1000;
@@ -121,229 +276,72 @@ export function initUpdateHandlers(mainWindow: BrowserWindow) {
           }
         });
 
-        await pipeline(response.data, writer);
-
-        // Final emit for this segment
+        await pipeline(response.data as any, writer);
         sendProgress();
 
-        return { finalSize: downloadedSize, totalSize: expectedTotalBytes };
-      };
-
-      // First HEAD to discover size and support, but tolerate failures
-      let totalSizeKnown: number | null = null;
-      try {
-        const head = await axios({ url, method: 'HEAD', timeout: CONNECT_TIMEOUT_MS });
-        const cl = head.headers['content-length'];
-        const ar = head.headers['accept-ranges'];
-        const et = head.headers['etag'];
-        console.log(`[UPDATER] HEAD headers → Content-Length: ${cl || 'n/a'}, Accept-Ranges: ${ar || 'n/a'}, ETag: ${et || 'n/a'}`);
-        if (cl) totalSizeKnown = parseInt(cl, 10);
-        if (totalSizeKnown && totalSizeKnown > 0) expectedTotalBytes = totalSizeKnown;
-      } catch {
-        // ignore HEAD failures; proceed to GET
-      }
-
-      // Retry loop with resume
-      let attempt = 0;
-      let downloadedBytes = 0;
-      while (attempt < MAX_RETRIES) {
-        try {
-          attempt++;
-          const resumeOffset = existsSync(downloadPath) ? (await stat(downloadPath)).size : 0;
-          const startAt = Math.max(resumeOffset, downloadedBytes);
-          const { finalSize, totalSize } = await downloadWithRange(startAt, totalSizeKnown);
-          downloadedBytes = finalSize;
-          totalSizeKnown = totalSize || totalSizeKnown;
-
-          // If we reached or exceeded total size, break
-          if (!totalSizeKnown || downloadedBytes >= totalSizeKnown) {
-            break;
-          }
-        } catch (err) {
-          console.warn(`Download attempt ${attempt} failed:`, err instanceof Error ? err.message : err);
-          if (attempt >= MAX_RETRIES) throw err;
-          await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS * attempt));
+        if (!expectedTotalBytes || downloadedBytes >= expectedTotalBytes) {
+          break;
         }
+      } catch (err) {
+        if (attempt >= MAX_RETRIES) throw err;
+        await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS * attempt));
       }
-
-      // Final verification of the file
-      try {
-        const fileStats = await stat(downloadPath);
-        if (expectedTotalBytes && fileStats.size !== expectedTotalBytes) {
-          throw new Error(`Downloaded file size (${fileStats.size}) does not match expected size (${expectedTotalBytes})`);
-        }
-        if (fileStats.size < 1024) {
-          throw new Error('Downloaded file is too small to be a valid installer');
-        }
-        console.log(`Downloaded file size: ${fileStats.size} bytes`);
-      } catch (error) {
-        console.error('File verification failed:', error);
-        unlink(downloadPath, (err) => {
-          if (err) console.error('Error deleting corrupted update file:', err);
-        });
-        throw new Error('Downloaded file is incomplete or corrupted.');
-      }
-
-      // Complete 100%
-      mainWindow.webContents.send('download-progress', {
-        progress: 100,
-        downloadedBytes: downloadedBytes,
-        totalBytes: expectedTotalBytes || downloadedBytes,
-        speed: 0,
-        eta: 0
-      });
-
-      return downloadPath;
-    } catch (error) {
-      console.error('Error downloading update:', error);
-      throw new Error(`Download failed: ${(error as Error).message}`);
     }
-  });
 
-  // Set up listener for download progress
-  ipcMain.on('download-progress-subscribe', (event) => {
-    const sender = event.sender;
+    const fileStats = await stat(downloadPath);
+    if (expectedTotalBytes && fileStats.size !== expectedTotalBytes) {
+      unlink(downloadPath, () => {});
+      throw new Error('Downloaded file size mismatch');
+    }
+    if (fileStats.size < 1024) {
+      unlink(downloadPath, () => {});
+      throw new Error('Downloaded file is too small to be valid');
+    }
 
-    // We'll use IPC for progress updates instead of direct webContents events
-    console.log('Setting up progress handler');
-
-    // Clean up when the sender is destroyed
-    sender.on('destroyed', () => {
-      console.log('Cleaning up progress handler');
+    mainWindow.webContents.send('cryptovertx:updates:downloadProgress', {
+      progress: 100,
+      downloadedBytes,
+      totalBytes: expectedTotalBytes || downloadedBytes,
+      speed: 0,
+      eta: 0,
     });
+
+    return { filePath: downloadPath };
   });
 
-  // Handle install update request
-  ipcMain.handle('install-update', async (_event, filePath: string) => {
-    try {
-      console.log(`Launching installer from: ${filePath}`);
+  ipcMain.handle('cryptovertx:updates:install', async (_event, payload: { filePath: string }) => {
+    const filePath = payload?.filePath;
+    const validation = validateInstallerPath(filePath);
+    if (!validation.valid) {
+      return { success: false, error: validation.error };
+    }
 
-      // Verify the file still exists before attempting to launch
-      try {
-        const fileStats = await stat(filePath);
-        if (fileStats.size === 0) {
-          throw new Error('Installer file is empty or corrupted');
-        }
-        console.log(`Installer file verified: ${fileStats.size} bytes`);
-      } catch (fileError) {
-        console.error('Installer file verification failed:', fileError);
-        throw new Error('Installer file not found or corrupted. Please download the update again.');
+    try {
+      const fileStats = await stat(filePath);
+      if (fileStats.size < 1024) {
+        return { success: false, error: 'Installer file is too small or corrupted' };
       }
 
-      // Set the flag for post-update notification
       const flagPath = join(app.getPath('userData'), 'update.flag');
       try {
         writeFileSync(flagPath, 'true');
-        console.log('Update flag set for post-install notification.');
-      } catch (flagError) {
-        console.error('Failed to write update.flag file:', flagError);
+      } catch {
+        // ignore
       }
 
-      // Launch the installer with its UI. This is like double-clicking the .exe
-      console.log('Attempting to launch installer...');
       const errorMessage = await shell.openPath(filePath);
-
       if (errorMessage) {
-        console.error(`Failed to launch installer: ${errorMessage}`);
-
-        // Clean up the flag immediately on failure
-        try {
-          unlink(flagPath, (err) => {
-            if (err) console.error('Failed to clean up update.flag on error:', err);
-          });
-        } catch (cleanupError) {
-          console.error('Error during flag cleanup:', cleanupError);
-        }
-
-        // Handle the specific "Failed to open path" case - this is user cancellation
+        unlink(flagPath, () => {});
         if (errorMessage === 'Failed to open path') {
-          console.log('User cancelled installation (UAC denial or similar)');
-          throw new Error('Installation was cancelled. Click "Install & Restart" to try again, or run the installer manually.');
+          return { success: false, error: 'Installation was cancelled' };
         }
-
-        // Provide more specific error messages based on the failure type for other errors
-        let userFriendlyMessage = '';
-        if (errorMessage.toLowerCase().includes('access') ||
-          errorMessage.toLowerCase().includes('denied') ||
-          errorMessage.toLowerCase().includes('permission')) {
-          userFriendlyMessage = 'Installation was cancelled or access was denied. You can try again or run the installer manually.';
-        } else if (errorMessage.toLowerCase().includes('not found')) {
-          userFriendlyMessage = 'Installer file not found. Please download the update again.';
-        } else {
-          userFriendlyMessage = `Failed to launch installer: ${errorMessage}. You can try again or run the installer manually.`;
-        }
-
-        throw new Error(userFriendlyMessage);
+        return { success: false, error: `Failed to launch installer: ${errorMessage}` };
       }
 
-      // If launch is successful, quit the app to allow installation to proceed.
-      // A short delay gives the installer window time to appear before the main app disappears.
-      console.log('Installer launched successfully. Quitting app in 500ms...');
-      setTimeout(() => {
-        console.log('Quitting application for installer...');
-        app.quit();
-      }, 500);
-
-      return { success: true };
-
-    } catch (error) {
-      console.error('Error during installation process:', error);
-
-      // Ensure flag cleanup on any error
-      const flagPath = join(app.getPath('userData'), 'update.flag');
-      try {
-        unlink(flagPath, (err) => {
-          if (err && (err as any).code !== 'ENOENT') { // Ignore "file not found" errors
-            console.error('Failed to clean up update.flag on catch:', err);
-          }
-        });
-      } catch (cleanupError) {
-        console.error('Error during flag cleanup in catch block:', cleanupError);
-      }
-
-      // Re-throw the error preserving the specific user-friendly message
-      const errorMessage = (error as Error).message;
-
-      // Check if this is already a user-friendly cancellation message
-      if (errorMessage.includes('Installation was cancelled')) {
-        console.log('Re-throwing cancellation error as-is');
-        throw error; // Re-throw cancellation errors without modification
-      }
-
-      // For other user-friendly messages, preserve them
-      if (errorMessage.includes('try again') ||
-        errorMessage.includes('manually') ||
-        errorMessage.includes('download')) {
-        throw error; // Re-throw user-friendly errors as-is
-      }
-
-      // Only wrap technical/internal errors
-      throw new Error(`Installation failed: ${errorMessage}`);
-    }
-  });
-
-  // Handle show notification request
-  ipcMain.on('show-notification', (_event, options: { title: string, body: string }) => {
-    try {
-      const notification = new Notification({
-        title: options.title,
-        body: options.body
-      });
-      notification.show();
-    } catch (error) {
-      console.error('Failed to show notification:', error);
-    }
-  });
-
-  // Handle open external URL request (for fallback downloads)
-  ipcMain.handle('open-external', async (_event, url: string) => {
-    try {
-      console.log(`Opening external URL: ${url}`);
-      await shell.openExternal(url);
+      setTimeout(() => app.quit(), 500);
       return { success: true };
     } catch (error) {
-      console.error('Failed to open external URL:', error);
-      throw new Error(`Failed to open URL: ${(error as Error).message}`);
+      return { success: false, error: error instanceof Error ? error.message : 'Installation failed' };
     }
   });
-} 
+}

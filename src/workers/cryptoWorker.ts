@@ -1,5 +1,3 @@
-/* eslint-disable no-restricted-globals */
-
 // Define types for the worker messages
 export type WorkerMessage =
     | { id: string; type: 'PROCESS_PRICE_BATCH'; payload: { marketsData: any[]; exchangeRates: any } }

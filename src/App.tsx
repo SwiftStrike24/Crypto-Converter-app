@@ -66,22 +66,23 @@ const AppContent: React.FC = () => {
   const [selectedFiat, setSelectedFiat] = useState('USD');
 
   useEffect(() => {
-    // Resize electron window based on route
-    const { ipcRenderer } = window.require('electron');
-    if (location.pathname === '/chart') {
-      ipcRenderer.send('set-window-size', { width: 1200, height: 800, isFullScreen: true });
-    } else if (location.pathname === '/analysis') {
-      ipcRenderer.send('set-window-size', { width: 800, height: 600, isFullScreen: true });
-    } else if (location.pathname === '/add-tokens') {
-      ipcRenderer.send('set-window-size', { width: 800, height: 830, isFullScreen: true });
-    } else if (location.pathname === '/trending') {
-      ipcRenderer.send('set-window-size', { width: 1200, height: 800, isFullScreen: true });
-    } else if (location.pathname === '/news') {
-      ipcRenderer.send('set-window-size', { width: 1200, height: 800, isFullScreen: true });
-    } else if (isFullScreen) {
-      ipcRenderer.send('set-window-size', { width: 800, height: 600, isFullScreen: true });
-    } else {
-      ipcRenderer.send('set-window-size', { width: 400, height: 300, isFullScreen: false });
+    // Resize electron window based on route using the preload API
+    if (typeof window.cryptovertx?.window?.setWindowSize === 'function') {
+      if (location.pathname === '/chart') {
+        window.cryptovertx.window.setWindowSize({ width: 1200, height: 800, isFullScreen: true });
+      } else if (location.pathname === '/analysis') {
+        window.cryptovertx.window.setWindowSize({ width: 800, height: 600, isFullScreen: true });
+      } else if (location.pathname === '/add-tokens') {
+        window.cryptovertx.window.setWindowSize({ width: 800, height: 830, isFullScreen: true });
+      } else if (location.pathname === '/trending') {
+        window.cryptovertx.window.setWindowSize({ width: 1200, height: 800, isFullScreen: true });
+      } else if (location.pathname === '/news') {
+        window.cryptovertx.window.setWindowSize({ width: 1200, height: 800, isFullScreen: true });
+      } else if (isFullScreen) {
+        window.cryptovertx.window.setWindowSize({ width: 800, height: 600, isFullScreen: true });
+      } else {
+        window.cryptovertx.window.setWindowSize({ width: 400, height: 300, isFullScreen: false });
+      }
     }
   }, [isFullScreen, location.pathname]);
 
@@ -125,21 +126,16 @@ const App: React.FC = () => {
   useEffect(() => {
     const handleUpdateSuccess = () => {
       window.dispatchEvent(new CustomEvent('show-update-notification', {
-        detail: { message: '✅ Update successful!', type: 'success' }
+        detail: { message: 'Update successful!', type: 'success' }
       }));
     };
 
-    if (typeof window.require === 'function') {
-      try {
-        const { ipcRenderer } = window.require('electron');
-        ipcRenderer.on('update-successful', handleUpdateSuccess);
-
-        return () => {
-          ipcRenderer.removeAllListeners('update-successful');
-        };
-      } catch (error) {
-        // Not in electron, so do nothing.
-      }
+    // Use the preload API for update success events
+    if (typeof window.cryptovertx?.events?.onUpdateSuccessful === 'function') {
+      const unsubscribe = window.cryptovertx.events.onUpdateSuccessful(handleUpdateSuccess);
+      return () => {
+        unsubscribe();
+      };
     }
   }, []);
 

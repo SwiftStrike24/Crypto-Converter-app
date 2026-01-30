@@ -211,11 +211,11 @@ The application primarily uses React Context API for managing global state:
 *   **API Key:** Managed via `.env` (`VITE_CRYPTOCOMPARE_API_KEY`).
 *   **Purpose:** Potentially for historical data or as an alternative data source, though less integrated than CoinGecko.
 
-### 4.4. Update Service: Cloudflare R2
+### 4.4. Updates (Backend API + R2 Hosting)
 
-*   **Purpose:** Hosts application updates for the automatic update system.
-*   **SDK:** `@aws-sdk/client-s3` is used to interact with R2 (S3-compatible API).
-*   **Credentials:** Requires `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` in `.env`.
+*   **Purpose:** Hosts application installers and exposes them through the backend API.
+*   **Runtime model:** The Electron main process checks/downloads updates via `https://cryptovertx.com/api` using validated `latest/` keys. The renderer does not receive R2 credentials.
+*   **Publishing model:** Release artifacts are uploaded to Cloudflare R2 via the upload script (requires R2 credentials).
 
 #### 4.4.1 Automated Release Uploads to R2 (Multipart, Sep 2025)
 
@@ -242,7 +242,7 @@ The application primarily uses React Context API for managing global state:
   - Works in GitHub Actions or other CI: export env vars as secrets, run `pnpm build:release:upload`
   - No interactive prompts when `--upload` flag is provided
 - Updater compatibility:
-  - Files are placed under `latest/` so `src/services/updateService.ts` continues to discover the newest Windows installer seamlessly
+  - Files are placed under `latest/` so the app can discover the newest Windows installer via `GET /api/files?prefix=latest/`
 - Post-upload prune:
   - After a successful upload, the uploader prunes older objects in the same `R2_PREFIX` and keeps only the newly uploaded installer
   - Toggle via env: `R2_KEEP_ONLY_LATEST=false` to disable pruning (default is true)

@@ -40,7 +40,7 @@ This document summarizes the current state of the Crypto Converter application b
     *   **Caching:** `localStorage` used for price data (`cryptovertx-price-cache` - **now includes 24h range**), token metadata (`cryptovertx-metadata-cache`), and exchange rates (`cryptovertx-exchange-rates`) with configurable durations. Icon URLs are also cached (`ICON_CACHE_PREFIX`).
     *   **Batching:** `CryptoContext` batches price update requests (`MAX_BATCH_SIZE`). Metadata fetching is also batched (`fetchMetadataInBatches`).
     *   **Retries & Fallbacks:** Smart retry mechanisms with exponential backoff across all APIs. `/simple/price` used as fallback for `/coins/markets`. Fallback values provided for offline operation.
-*   **Update Service:** Cloudflare R2 via `@aws-sdk/client-s3` (requires `CLOUDFLARE_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` in `.env`).
+*   **Update System:** Main-process updater via `https://cryptovertx.com/api` using validated `latest/` keys (no R2 credentials in renderer).
 
 ## UI and Styling
 
@@ -68,7 +68,7 @@ This document summarizes the current state of the Crypto Converter application b
     *   `pnpm build`: Build React frontend assets.
     *   `pnpm electron:dev`: Start Electron app in development mode.
     *   `pnpm build-app [--installer | --portable | --both]`: Interactive or direct build script (using `tsx scripts/build.ts`) for distributable Electron application (handles versioning).
-    *   `pnpm test`: Run tests (details TBD).
+    *   `pnpm test`: Run unit tests (Vitest).
     *   `pnpm lint`: Run ESLint.
 
 ## Key Features Implemented
@@ -88,7 +88,7 @@ This document summarizes the current state of the Crypto Converter application b
 *   Minimize to Tray functionality.
 *   Global Hotkey (`~` or `` ` ``) to toggle window.
 *   Navigation between pages (`react-router-dom`).
-*   Automatic Update System (via Cloudflare R2).
+*   Automatic Update System (main-process updater via backend API + `latest/` keys).
 
 ## Key Dependencies
 
